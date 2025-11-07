@@ -1,0 +1,6 @@
+node_modules/
+build/
+.vite/
+.svelte-kit/
+.DS_Store
+npm-debug.log*
