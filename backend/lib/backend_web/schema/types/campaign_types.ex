@@ -3,6 +3,12 @@ defmodule BackendWeb.Schema.Types.CampaignTypes do
 
   use Absinthe.Schema.Notation
 
+  @desc "Arbitrary JSON value"
+  scalar :json do
+    serialize(& &1)
+    parse(&parse_json/1)
+  end
+
   object :campaign do
     field(:id, non_null(:id))
     field(:name, non_null(:string))
@@ -88,4 +94,48 @@ defmodule BackendWeb.Schema.Types.CampaignTypes do
     field(:q, non_null(:integer))
     field(:r, non_null(:integer))
   end
+
+  defp parse_json(%Absinthe.Blueprint.Input.String{value: value}) do
+    case Jason.decode(value) do
+      {:ok, decoded} -> {:ok, decoded}
+      _ -> :error
+    end
+  end
+
+  defp parse_json(%Absinthe.Blueprint.Input.Null{}), do: {:ok, nil}
+
+  defp parse_json(%Absinthe.Blueprint.Input.Raw{value: value})
+       when is_map(value) or is_list(value),
+       do: {:ok, value}
+
+  defp parse_json(%Absinthe.Blueprint.Input.Object{fields: fields}) do
+    Enum.reduce_while(fields, {:ok, %{}}, fn %{name: name, input_value: input_value},
+                                             {:ok, acc} ->
+      case parse_json(input_value) do
+        {:ok, value} -> {:cont, {:ok, Map.put(acc, name, value)}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, map} -> {:ok, map}
+      :error -> :error
+    end
+  end
+
+  defp parse_json(%Absinthe.Blueprint.Input.List{items: items}) do
+    items
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
+      case parse_json(item) do
+        {:ok, value} -> {:cont, {:ok, [value | acc]}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, values} -> {:ok, Enum.reverse(values)}
+      :error -> :error
+    end
+  end
+
+  defp parse_json(value) when is_map(value) or is_list(value), do: {:ok, value}
+  defp parse_json(value), do: {:ok, value}
 end
