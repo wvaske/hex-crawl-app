@@ -3,6 +3,7 @@ defmodule BackendWeb.Schema do
 
   alias BackendWeb.Resolvers.CampaignResolver
 
+  import_types(Absinthe.Type.Custom)
   import_types(BackendWeb.Schema.Types.CampaignTypes)
 
   query do
