@@ -76,7 +76,7 @@ defmodule BackendWeb.Schema.Types.CampaignTypes do
     field(:campaign_id, non_null(:id))
     field(:type, non_null(:string))
     field(:occurred_at, non_null(:naive_datetime))
-    field(:payload, non_null(:json))
+    field(:payload, non_null(:string))
   end
 
   input_object :hex_coords_input do

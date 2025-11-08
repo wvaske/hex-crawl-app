@@ -46,5 +46,5 @@ export type ExplorationEvent = {
   id: string;
   type: string;
   occurred_at: string;
-  payload: Record<string, unknown>;
+  payload: string;
 };

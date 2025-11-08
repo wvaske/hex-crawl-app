@@ -232,7 +232,7 @@
         <li>
           <span class="timestamp">{new Date(entry.occurred_at).toLocaleString()}</span>
           <strong>{entry.type}</strong>
-          <code>{JSON.stringify(entry.payload)}</code>
+          <code>{entry.payload}</code>
         </li>
       {/each}
     </ul>

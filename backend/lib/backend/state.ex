@@ -107,7 +107,12 @@ defmodule Backend.State do
             campaign_id: campaign.id,
             type: :move_players,
             occurred_at: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_naive(),
-            payload: %{q: 12, r: 18, reason: "Session start"}
+            payload:
+              Jason.encode!(%{
+                q: 12,
+                r: 18,
+                reason: "Session start"
+              })
           }
         ]
 

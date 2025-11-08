@@ -378,19 +378,24 @@ defmodule Backend.Campaigns do
   end
 
   defp record_event(state, campaign_id, map_id, type, payload) do
+    payload_string = encode_payload(payload)
+
     event = %ExplorationEvent{
       id: "evt-#{System.unique_integer([:positive])}",
       campaign_id: campaign_id,
       map_id: map_id,
       type: type,
       occurred_at: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_naive(),
-      payload: payload
+      payload: payload_string
     }
 
     _ = Events.broadcast_campaign(campaign_id, {:history_event, event})
 
     {event, update_in(state, [:events], fn events -> [event | events] end)}
   end
+
+  defp encode_payload(payload) when is_binary(payload), do: payload
+  defp encode_payload(payload), do: Jason.encode!(payload)
 
   defp maybe_apply_cursor(events, nil), do: events
 
