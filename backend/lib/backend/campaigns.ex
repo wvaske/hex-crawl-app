@@ -56,7 +56,7 @@ defmodule Backend.Campaigns do
       :maps,
       Enum.map(campaign.maps, fn map_id -> maybe_normalise_map(Map.get(maps, map_id)) end)
     )
-    |> Map.update(:share_links, [], &Enum.map(&1, &Map.from_struct/1))
+    |> Map.update(:share_links, [], fn links -> Enum.map(links, &Map.from_struct/1) end)
   end
 
   def create_campaign(attrs) do

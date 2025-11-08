@@ -1,4 +1,4 @@
 defmodule BackendWeb.Gettext do
   @moduledoc false
-  use Gettext, otp_app: :backend
+  use Gettext.Backend, otp_app: :backend
 end

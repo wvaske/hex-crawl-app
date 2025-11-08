@@ -20,7 +20,7 @@ defmodule Backend.Application do
 
     opts = [strategy: :one_for_one, name: Backend.Supervisor]
 
-    with {:ok, pid} = result <- Supervisor.start_link(children, opts) do
+    with {:ok, _pid} = result <- Supervisor.start_link(children, opts) do
       :ok = Backend.State.seed_demo_data()
       result
     end
