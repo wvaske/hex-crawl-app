@@ -33,12 +33,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can pan the map by dragging and zoom with scroll wheel smoothly
   4. Hex grid uses axial/cube coordinate system internally (verified by hovering a hex and seeing its coordinates)
   5. Grid renders at 60 FPS with 500+ hexes visible without jank
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md -- Scaffold pnpm monorepo, install dependencies, hex math foundation, shared types, Zustand stores
+- [ ] 01-02-PLAN.md -- PixiJS canvas setup, runtime terrain textures, sprite-based hex rendering with viewport culling
+- [ ] 01-03-PLAN.md -- Terrain generation (seed-and-grow BFS), React UI (side panel, creation dialog, terrain palette)
+- [ ] 01-04-PLAN.md -- Hex interaction (hover, select, multi-select), highlight layers, JSON import/export, full integration
 
 ### Phase 2: Server & Authentication
 **Goal**: Users can create accounts, log in, and DMs can create campaigns and invite players -- all campaign data persists in PostgreSQL across browser sessions
@@ -161,7 +162,7 @@ Note: Phase 6 (Map Image Upload) depends only on Phase 1 and can execute in para
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
-| 1. Hex Grid Foundation | 0/3 | Not started | - |
+| 1. Hex Grid Foundation | 0/4 | Planning complete | - |
 | 2. Server & Authentication | 0/3 | Not started | - |
 | 3. Real-Time Infrastructure | 0/3 | Not started | - |
 | 4. Fog of War | 0/3 | Not started | - |
