@@ -1,0 +1,7 @@
+{
+  "name": "@hex-crawl/server",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "HexCrawl server - placeholder for Phase 2"
+}
