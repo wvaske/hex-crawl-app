@@ -5,6 +5,7 @@ import type { SidePanelTab } from '../stores/useUIStore';
 import { useMapStore } from '../stores/useMapStore';
 import { TerrainPalette } from './TerrainPalette';
 import { CreationDialog } from './CreationDialog';
+import { ImportExportDialog } from './ImportExportDialog';
 
 const TABS: { id: SidePanelTab; label: string }[] = [
   { id: 'info', label: 'Info' },
@@ -163,16 +164,7 @@ export function SidePanel() {
         {activeTab === 'info' && <HexInfoContent />}
         {activeTab === 'terrain' && <TerrainPalette />}
         {activeTab === 'create' && <CreationDialog />}
-        {activeTab === 'import-export' && (
-          <div className="p-4">
-            <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-2">
-              Import / Export
-            </h3>
-            <p className="text-sm text-gray-500 italic">
-              Import and export functionality coming soon.
-            </p>
-          </div>
-        )}
+        {activeTab === 'import-export' && <ImportExportDialog />}
       </div>
     </div>
   );
