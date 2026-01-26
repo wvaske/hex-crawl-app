@@ -116,49 +116,49 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MAP-01 | TBD | Pending |
-| MAP-02 | TBD | Pending |
-| MAP-03 | TBD | Pending |
-| MAP-04 | TBD | Pending |
-| MAP-05 | TBD | Pending |
-| MAP-06 | TBD | Pending |
-| FOG-01 | TBD | Pending |
-| FOG-02 | TBD | Pending |
-| FOG-03 | TBD | Pending |
-| FOG-04 | TBD | Pending |
-| FOG-05 | TBD | Pending |
-| HEX-01 | TBD | Pending |
-| HEX-02 | TBD | Pending |
-| HEX-03 | TBD | Pending |
-| HEX-04 | TBD | Pending |
-| HEX-05 | TBD | Pending |
-| HEX-06 | TBD | Pending |
-| HEX-07 | TBD | Pending |
-| HEX-08 | TBD | Pending |
-| HEX-09 | TBD | Pending |
-| RT-01 | TBD | Pending |
-| RT-02 | TBD | Pending |
-| RT-03 | TBD | Pending |
-| RT-04 | TBD | Pending |
-| RT-05 | TBD | Pending |
-| TOK-01 | TBD | Pending |
-| TOK-02 | TBD | Pending |
-| TOK-03 | TBD | Pending |
-| TOK-04 | TBD | Pending |
-| AUTH-01 | TBD | Pending |
-| AUTH-02 | TBD | Pending |
-| AUTH-03 | TBD | Pending |
-| AUTH-04 | TBD | Pending |
-| AUTH-05 | TBD | Pending |
-| AUTH-06 | TBD | Pending |
-| CHAR-01 | TBD | Pending |
-| CHAR-02 | TBD | Pending |
+| MAP-01 | Phase 1 | Pending |
+| MAP-02 | Phase 1 | Pending |
+| MAP-03 | Phase 6 | Pending |
+| MAP-04 | Phase 6 | Pending |
+| MAP-05 | Phase 1 | Pending |
+| MAP-06 | Phase 1 | Pending |
+| FOG-01 | Phase 4 | Pending |
+| FOG-02 | Phase 4 | Pending |
+| FOG-03 | Phase 4 | Pending |
+| FOG-04 | Phase 4 | Pending |
+| FOG-05 | Phase 4 | Pending |
+| HEX-01 | Phase 7 | Pending |
+| HEX-02 | Phase 7 | Pending |
+| HEX-03 | Phase 7 | Pending |
+| HEX-04 | Phase 7 | Pending |
+| HEX-05 | Phase 7 | Pending |
+| HEX-06 | Phase 8 | Pending |
+| HEX-07 | Phase 8 | Pending |
+| HEX-08 | Phase 8 | Pending |
+| HEX-09 | Phase 8 | Pending |
+| RT-01 | Phase 3 | Pending |
+| RT-02 | Phase 3 | Pending |
+| RT-03 | Phase 3 | Pending |
+| RT-04 | Phase 5 | Pending |
+| RT-05 | Phase 3 | Pending |
+| TOK-01 | Phase 5 | Pending |
+| TOK-02 | Phase 5 | Pending |
+| TOK-03 | Phase 5 | Pending |
+| TOK-04 | Phase 5 | Pending |
+| AUTH-01 | Phase 2 | Pending |
+| AUTH-02 | Phase 2 | Pending |
+| AUTH-03 | Phase 2 | Pending |
+| AUTH-04 | Phase 2 | Pending |
+| AUTH-05 | Phase 2 | Pending |
+| AUTH-06 | Phase 2 | Pending |
+| CHAR-01 | Phase 8 | Pending |
+| CHAR-02 | Phase 8 | Pending |
 
 **Coverage:**
 - v1 requirements: 37 total
-- Mapped to phases: 0
-- Unmapped: 37
+- Mapped to phases: 37
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-26*
-*Last updated: 2026-01-26 after initial definition*
+*Last updated: 2026-01-26 after roadmap creation*
