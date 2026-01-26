@@ -1,6 +1,7 @@
 import { useApplication } from '@pixi/react';
 import { type Viewport } from 'pixi-viewport';
 import { useCallback, useRef, type ReactNode } from 'react';
+import { setViewportRef } from './ViewportContext';
 
 interface ViewportContainerProps {
   worldWidth: number;
@@ -11,6 +12,9 @@ interface ViewportContainerProps {
 /**
  * Wrapper around pixi-viewport's Viewport, registered via extend() as <viewport>.
  * Provides drag-to-pan, scroll-wheel zoom, pinch-to-zoom, and decelerate.
+ *
+ * Shares the viewport instance via setViewportRef() so sibling components
+ * (HexInteraction, HighlightLayer, UIOverlayLayer) can access it.
  *
  * CRITICAL: passes events={app.renderer.events} (PITFALL 3 from RESEARCH.md).
  * Without this, no mouse/touch events will work on the viewport.
@@ -24,11 +28,14 @@ export function ViewportContainer({
   const viewportConfigured = useRef(false);
 
   const viewportRef = useCallback(
-    (viewport: Viewport | null) => {
-      if (!viewport || viewportConfigured.current) return;
+    (vp: Viewport | null) => {
+      // Share viewport with other components via module-level ref
+      setViewportRef(vp);
+
+      if (!vp || viewportConfigured.current) return;
 
       // Configure viewport interaction plugins
-      viewport
+      vp
         .drag()
         .pinch()
         .wheel({ smooth: 5 })
