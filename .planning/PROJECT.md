@@ -59,6 +59,7 @@ Real-time hex crawl exploration with fog of war — the DM controls what players
 - **Real-time**: Must support simultaneous access with low-latency updates (WebSockets or similar)
 - **Image handling**: Must handle uploaded map images (potentially large high-resolution files)
 - **Persistence**: Full campaign state must persist between sessions with no data loss
+- **Remote development**: Development occurs on a remote system — all dev servers must bind to `0.0.0.0` (not localhost) so they are accessible from the developer's machine
 
 ## Key Decisions
 

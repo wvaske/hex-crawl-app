@@ -2,7 +2,7 @@ import { useTick } from '@pixi/react';
 import { useCallback, useEffect, useRef } from 'react';
 import { Container } from 'pixi.js';
 import { hexKey } from '@hex-crawl/shared';
-import { pixelToHex } from '../hex/coordinates';
+import { pixelToHex, axialToOffset, offsetToAxial } from '../hex/coordinates';
 import { useMapStore } from '../stores/useMapStore';
 import { useUIStore } from '../stores/useUIStore';
 import { getViewportRef } from './ViewportContext';
@@ -69,10 +69,17 @@ export function HexInteraction() {
   } | null>(null);
   const lastMoveTimeRef = useRef(0);
 
-  // Read the hexes map to validate hex existence during hover/click
-  const hexes = useMapStore((s) => s.hexes);
-  const hexesRef = useRef(hexes);
-  hexesRef.current = hexes;
+  // Read grid dimensions for bounds checking (allows interacting with empty hexes)
+  const gridWidth = useMapStore((s) => s.gridWidth);
+  const gridHeight = useMapStore((s) => s.gridHeight);
+  const gridRef = useRef({ w: gridWidth, h: gridHeight });
+  gridRef.current = { w: gridWidth, h: gridHeight };
+
+  /** Check whether axial coords fall within the grid (converts to offset for bounds check) */
+  const isInBounds = (q: number, r: number) => {
+    const { col, row } = axialToOffset(q, r);
+    return col >= 0 && col < gridRef.current.w && row >= 0 && row < gridRef.current.h;
+  };
 
   // Pending world position for throttled hover updates
   const pendingWorldPos = useRef<{ x: number; y: number } | null>(null);
@@ -92,8 +99,7 @@ export function HexInteraction() {
 
     // Only update store if the hovered hex changed
     if (key !== lastHoveredRef.current) {
-      const exists = hexesRef.current.has(key);
-      if (exists) {
+      if (isInBounds(q, r)) {
         lastHoveredRef.current = key;
         useUIStore.getState().setHoveredHex(key);
       } else if (lastHoveredRef.current !== null) {
@@ -189,24 +195,23 @@ export function HexInteraction() {
         const minY = Math.min(dragSelectRef.current.startWorldY, endWorld.y);
         const maxY = Math.max(dragSelectRef.current.startWorldY, endWorld.y);
 
-        const currentHexes = hexesRef.current;
         const hexSize = useMapStore.getState().hexSize;
+        const { w: gw, h: gh } = gridRef.current;
         const keysToSelect: string[] = [];
 
-        // Find all hexes whose center falls within the drag rectangle
-        for (const [key] of currentHexes) {
-          const parts = key.split(',');
-          const q = Number(parts[0]);
-          const r = Number(parts[1]);
-          const center = hexCenterWorld(q, r, hexSize);
-
-          if (
-            center.x >= minX &&
-            center.x <= maxX &&
-            center.y >= minY &&
-            center.y <= maxY
-          ) {
-            keysToSelect.push(key);
+        // Iterate offset grid positions, convert to axial for world-position math
+        for (let col = 0; col < gw; col++) {
+          for (let row = 0; row < gh; row++) {
+            const { q, r } = offsetToAxial(col, row);
+            const center = hexCenterWorld(q, r, hexSize);
+            if (
+              center.x >= minX &&
+              center.x <= maxX &&
+              center.y >= minY &&
+              center.y <= maxY
+            ) {
+              keysToSelect.push(hexKey(q, r));
+            }
           }
         }
 
@@ -231,16 +236,14 @@ export function HexInteraction() {
         const worldPos = viewport.toWorld(screen.x, screen.y);
         const { q, r } = pixelToHex(worldPos.x, worldPos.y);
         const key = hexKey(q, r);
-        const exists = hexesRef.current.has(key);
-
-        if (exists) {
+        if (isInBounds(q, r)) {
           if (e.shiftKey) {
             useUIStore.getState().toggleSelectHex(key);
           } else {
             useUIStore.getState().selectHex(key);
           }
         } else {
-          // Clicked empty space -- clear selection
+          // Clicked outside grid bounds -- clear selection
           useUIStore.getState().clearSelection();
         }
       }
@@ -259,7 +262,7 @@ export function HexInteraction() {
       htmlCanvas.removeEventListener('pointerdown', onPointerDown);
       htmlCanvas.removeEventListener('pointerup', onPointerUp);
     };
-  }, [hexes]);
+  }, [gridWidth, gridHeight]);
 
   // Non-visual component: renders an empty container
   return (

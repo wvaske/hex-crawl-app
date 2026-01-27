@@ -115,9 +115,9 @@ export function UIOverlayLayer() {
 
     const hex = targetHex as GameHex;
 
-    // Position at hex center (topLeft origin means we need to add half width/height)
-    const cx = hex.x + hex.width / 2;
-    const cy = hex.y + hex.height / 2;
+    // Position at hex center (hex.x/hex.y IS the center despite origin: 'topLeft')
+    const cx = hex.x;
+    const cy = hex.y;
 
     // Update text content and position
     text.text = `q: ${coord.q}, r: ${coord.r}`;

@@ -61,9 +61,10 @@ export function TerrainLayer() {
       );
       const sprite = new Sprite(texture);
 
-      // Position sprite at the hex's pixel coordinates
-      // GameHex uses origin: 'topLeft', so hex.x/hex.y is the top-left corner
-      sprite.position.set(hex.x, hex.y);
+      // Position sprite at the hex's top-left corner.
+      // Despite origin: 'topLeft', hex.x/hex.y returns the hex CENTER,
+      // so we subtract half width/height to get the bounding-box top-left.
+      sprite.position.set(hex.x - hex.width / 2, hex.y - hex.height / 2);
       sprite.anchor.set(0, 0);
 
       // Start invisible; viewport culling will show visible ones

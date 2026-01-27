@@ -102,11 +102,12 @@ export function GridLineLayer() {
 
     // Draw hex outlines for visible hexes
     grid.forEach((hex: GameHex) => {
-      // Quick AABB check using hex position
-      const hx = hex.x;
-      const hy = hex.y;
+      // Quick AABB check using hex position.
+      // hex.x/hex.y is the CENTER, so compute bounding-box edges.
       const hw = hex.width;
       const hh = hex.height;
+      const hx = hex.x - hw / 2;
+      const hy = hex.y - hh / 2;
 
       if (
         hx + hw < visLeft ||

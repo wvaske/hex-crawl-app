@@ -12,9 +12,11 @@ export function TerrainPalette() {
   const selectedHexes = useUIStore((s) => s.selectedHexes);
   const hexes = useMapStore((s) => s.hexes);
   const setTerrainBatch = useMapStore((s) => s.setTerrainBatch);
+  const removeHexes = useMapStore((s) => s.removeHexes);
 
   // Determine the active terrain (if all selected hexes share the same terrain)
   let activeTerrain: TerrainType | null = null;
+  let allEmpty = selectedHexes.size > 0;
   if (selectedHexes.size > 0) {
     const selectedKeys = [...selectedHexes];
     const terrains = new Set<TerrainType>();
@@ -22,6 +24,7 @@ export function TerrainPalette() {
       const hex = hexes.get(key);
       if (hex) {
         terrains.add(hex.terrain);
+        allEmpty = false;
       }
     }
     if (terrains.size === 1) {
@@ -33,6 +36,11 @@ export function TerrainPalette() {
     if (selectedHexes.size === 0) return;
     const keys = [...selectedHexes];
     setTerrainBatch(keys, terrain);
+  }
+
+  function handleRemoveTerrain() {
+    if (selectedHexes.size === 0) return;
+    removeHexes([...selectedHexes]);
   }
 
   return (
@@ -79,6 +87,25 @@ export function TerrainPalette() {
           );
         })}
       </div>
+
+      {/* Remove Terrain button */}
+      <button
+        onClick={handleRemoveTerrain}
+        disabled={selectedHexes.size === 0 || allEmpty}
+        className={`
+          w-full mt-3 px-3 py-2 rounded-md text-sm font-medium
+          transition-colors duration-150
+          ${
+            allEmpty && selectedHexes.size > 0
+              ? 'bg-gray-700 ring-2 ring-red-400 text-red-300 cursor-default'
+              : selectedHexes.size === 0 || allEmpty
+                ? 'bg-gray-700 text-gray-500 opacity-50 cursor-not-allowed'
+                : 'bg-red-900/60 text-red-200 hover:bg-red-800/70 cursor-pointer'
+          }
+        `}
+      >
+        Remove Terrain
+      </button>
     </div>
   );
 }

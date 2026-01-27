@@ -46,14 +46,26 @@ function HexInfoContent() {
   if (selectedHexes.size === 1) {
     const key = [...selectedHexes][0]!;
     const hex = hexes.get(key);
+    const coord = parseHexKey(key);
     if (!hex) {
       return (
-        <div className="p-4">
-          <p className="text-sm text-gray-500">Hex data not found.</p>
+        <div className="p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
+            Hex Info
+          </h3>
+          <div>
+            <span className="text-xs text-gray-500">Coordinates</span>
+            <p className="text-gray-200 font-mono">
+              q: {coord.q}, r: {coord.r}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-gray-500">Terrain</span>
+            <p className="text-gray-400 italic mt-1">Empty (no terrain)</p>
+          </div>
         </div>
       );
     }
-    const coord = parseHexKey(key);
     return (
       <div className="p-4 space-y-3">
         <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
@@ -91,11 +103,29 @@ function HexInfoContent() {
 
   // Multiple hexes selected
   const terrainCounts = new Map<TerrainType, number>();
+  let emptyCount = 0;
   for (const key of selectedHexes) {
     const hex = hexes.get(key);
     if (hex) {
       terrainCounts.set(hex.terrain, (terrainCounts.get(hex.terrain) ?? 0) + 1);
+    } else {
+      emptyCount++;
     }
+  }
+
+  // All selected hexes are empty
+  if (emptyCount === selectedHexes.size) {
+    return (
+      <div className="p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
+          Selection
+        </h3>
+        <p className="text-gray-200">
+          {selectedHexes.size} hexes selected
+        </p>
+        <p className="text-gray-400 italic">All hexes empty</p>
+      </div>
+    );
   }
 
   return (
@@ -123,6 +153,17 @@ function HexInfoContent() {
                 </span>
               </li>
             ))}
+          {emptyCount > 0 && (
+            <li className="flex items-center gap-2">
+              <span
+                className="w-3 h-3 rounded-sm border border-gray-500"
+                style={{ backgroundColor: '#374151' }}
+              />
+              <span className="text-gray-400 italic text-sm">
+                empty: {emptyCount}
+              </span>
+            </li>
+          )}
         </ul>
       </div>
     </div>

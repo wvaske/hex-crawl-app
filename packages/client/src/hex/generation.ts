@@ -1,6 +1,7 @@
 import type { TerrainType } from '@hex-crawl/shared';
 import { hexKey } from '@hex-crawl/shared';
 import { getNeighborCoords } from './neighbors';
+import { offsetToAxial } from './coordinates';
 
 /** Primary terrain types used for seed generation */
 const PRIMARY_TERRAINS: readonly TerrainType[] = [
@@ -96,16 +97,17 @@ function parseKey(key: string): { q: number; r: number } {
 
 /**
  * Generate all valid hex coordinates for a rectangular grid.
- * Uses offset coordinates internally but returns axial (q, r) pairs.
+ * Iterates offset (col, row) positions and converts to axial (q, r)
+ * to match honeycomb-grid's coordinate system.
  */
 function generateGridCoords(
   gridWidth: number,
   gridHeight: number,
 ): { q: number; r: number }[] {
   const coords: { q: number; r: number }[] = [];
-  for (let r = 0; r < gridHeight; r++) {
-    for (let q = 0; q < gridWidth; q++) {
-      coords.push({ q, r });
+  for (let row = 0; row < gridHeight; row++) {
+    for (let col = 0; col < gridWidth; col++) {
+      coords.push(offsetToAxial(col, row));
     }
   }
   return coords;

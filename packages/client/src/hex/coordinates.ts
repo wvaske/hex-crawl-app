@@ -24,3 +24,19 @@ export function pixelToHex(
 export function hexToKey(hex: GameHex): string {
   return `${hex.q},${hex.r}`;
 }
+
+/**
+ * Convert offset coordinates (col, row) to axial coordinates (q, r).
+ * For flat-top, odd-q offset (offset: -1): q = col, r = row - floor(col / 2)
+ */
+export function offsetToAxial(col: number, row: number): { q: number; r: number } {
+  return { q: col, r: row - Math.floor(col / 2) };
+}
+
+/**
+ * Convert axial coordinates (q, r) to offset coordinates (col, row).
+ * For flat-top, odd-q offset (offset: -1): col = q, row = r + floor(q / 2)
+ */
+export function axialToOffset(q: number, r: number): { col: number; row: number } {
+  return { col: q, row: r + Math.floor(q / 2) };
+}

@@ -26,6 +26,8 @@ interface MapActions {
   setTerrain: (key: string, terrain: TerrainType) => void;
   /** Set terrain for multiple hexes at once (batch painting) */
   setTerrainBatch: (keys: string[], terrain: TerrainType) => void;
+  /** Remove hexes from the map (delete terrain data) */
+  removeHexes: (keys: string[]) => void;
   /** Clear all map data */
   clearMap: () => void;
 }
@@ -66,7 +68,25 @@ export const useMapStore = create<MapStore>((set) => ({
         const hex = hexes.get(key);
         if (hex) {
           hexes.set(key, { ...hex, terrain });
+        } else {
+          // Create a new HexData entry for an empty grid position
+          const [qStr, rStr] = key.split(',');
+          hexes.set(key, {
+            q: Number(qStr),
+            r: Number(rStr),
+            terrain,
+            terrainVariant: 0,
+          });
         }
+      }
+      return { hexes };
+    }),
+
+  removeHexes: (keys) =>
+    set((state) => {
+      const hexes = new Map(state.hexes); // New reference (PITFALL 6)
+      for (const key of keys) {
+        hexes.delete(key);
       }
       return { hexes };
     }),
