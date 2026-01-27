@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "pnpm --filter @hex-crawl/client dev",
     "build": "pnpm --filter @hex-crawl/client build",
+    "dev:server": "pnpm --filter @hex-crawl/server dev",
     "dev:all": "pnpm --parallel --filter './packages/*' dev"
   }
 }
