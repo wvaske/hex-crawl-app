@@ -10,29 +10,29 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 ## Current Position
 
 Phase: 2 of 8 (Server & Authentication)
-Plan: 1 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-27 - Completed 02-01-PLAN.md
+Last activity: 2026-01-27 - Completed 02-03-PLAN.md
 
-Progress: [█████░░░░░] ~20% (5 of ~25 total plans)
+Progress: [██████░░░░] ~24% (6 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 7min
-- Total execution time: 38min
+- Total execution time: 42min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
-| 02-server-authentication | 1/4 | 5min | 5min |
+| 02-server-authentication | 2/4 | 9min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 6min, 12min, 9min, 5min
-- Trend: consistent
+- Last 5 plans: 6min, 12min, 9min, 5min, 4min
+- Trend: consistent, accelerating
 
 *Updated after each plan completion*
 
@@ -70,6 +70,10 @@ Recent decisions affecting current work:
 - [02-01]: Manual Better Auth schema (CLI incompatible with ESM barrel .js imports via jiti CJS resolver)
 - [02-01]: drizzle.config.ts uses explicit schema file array (not barrel index.ts) for same CJS/ESM reason
 - [02-01]: Direct cross-origin CORS instead of Vite proxy (matches production, per Better Auth Hono integration guide)
+- [02-03]: AuthGuard uses state toggle (useState) for login/signup switching, not React Router
+- [02-03]: Logout button as fixed top-right overlay to avoid modifying MapView component
+- [02-03]: Forgot password link is placeholder alert (email infrastructure not yet configured)
+- [02-03]: Inline error display maps error message keywords to specific form fields
 
 ### Pending Todos
 
@@ -81,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-27T15:47:31Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-01-27T15:56:29Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None
