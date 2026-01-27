@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { auth } from "./auth.js";
+import campaigns from "./routes/campaigns.js";
 
-type AppVariables = {
+export type AppVariables = {
   user: typeof auth.$Infer.Session.user | null;
   session: typeof auth.$Infer.Session.session | null;
 };
@@ -24,6 +25,9 @@ app.use(
 app.on(["POST", "GET"], "/api/auth/**", (c) => {
   return auth.handler(c.req.raw);
 });
+
+// Campaign routes
+app.route("/api/campaigns", campaigns);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));
