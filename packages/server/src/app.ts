@@ -1,0 +1,32 @@
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { auth } from "./auth.js";
+
+type AppVariables = {
+  user: typeof auth.$Infer.Session.user | null;
+  session: typeof auth.$Infer.Session.session | null;
+};
+
+const app = new Hono<{ Variables: AppVariables }>();
+
+// CORS must come before routes
+app.use(
+  "/api/*",
+  cors({
+    origin: "http://localhost:5173",
+    allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["POST", "GET", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  })
+);
+
+// Mount Better Auth handler
+app.on(["POST", "GET"], "/api/auth/**", (c) => {
+  return auth.handler(c.req.raw);
+});
+
+// Health check
+app.get("/api/health", (c) => c.json({ status: "ok" }));
+
+export default app;
+export type AppType = typeof app;
