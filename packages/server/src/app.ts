@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { auth } from "./auth.js";
 import campaigns from "./routes/campaigns.js";
+import invitations from "./routes/invitations.js";
 
 export type AppVariables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -21,6 +22,9 @@ app.use(
   })
 );
 
+// Health check (before auth-protected routers)
+app.get("/api/health", (c) => c.json({ status: "ok" }));
+
 // Mount Better Auth handler
 app.on(["POST", "GET"], "/api/auth/**", (c) => {
   return auth.handler(c.req.raw);
@@ -29,8 +33,8 @@ app.on(["POST", "GET"], "/api/auth/**", (c) => {
 // Campaign routes
 app.route("/api/campaigns", campaigns);
 
-// Health check
-app.get("/api/health", (c) => c.json({ status: "ok" }));
+// Invitation routes (mounted at /api with full paths inside router)
+app.route("/api", invitations);
 
 export default app;
 export type AppType = typeof app;
