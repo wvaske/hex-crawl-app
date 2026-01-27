@@ -5,34 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 2 - Server & Authentication
+**Current focus:** Phase 2 complete. Ready for Phase 3 - Real-Time Infrastructure
 
 ## Current Position
 
-Phase: 2 of 8 (Server & Authentication)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-27 - Completed 02-02-PLAN.md (02-03 also complete)
+Phase: 2 of 8 (Server & Authentication) - COMPLETE
+Plan: 4 of 4 in current phase
+Status: Complete
+Last activity: 2026-01-27 - Phase 2 verified and complete
 
-Progress: [███████░░░] ~28% (7 of ~25 total plans)
+Progress: [████████░░] ~32% (8 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 7min
-- Total execution time: 47min
+- Total execution time: 59min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
-| 02-server-authentication | 3/4 | 14min | 5min |
+| 02-server-authentication | 4/4 | 26min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 12min, 9min, 5min, 4min, 5min
-- Trend: consistent, accelerating
+- Last 5 plans: 9min, 5min, 4min, 5min, 12min
+- Trend: consistent
 
 *Updated after each plan completion*
 
@@ -69,7 +69,6 @@ Recent decisions affecting current work:
 - [01-04]: 5px click-vs-drag threshold to prevent accidental selection during pan
 - [02-01]: Manual Better Auth schema (CLI incompatible with ESM barrel .js imports via jiti CJS resolver)
 - [02-01]: drizzle.config.ts uses explicit schema file array (not barrel index.ts) for same CJS/ESM reason
-- [02-01]: Direct cross-origin CORS instead of Vite proxy (matches production, per Better Auth Hono integration guide)
 - [02-02]: Extensionless imports in schema files (./auth not ./auth.js) for drizzle-kit CJS resolver compatibility
 - [02-02]: AppVariables type exported from app.ts for route-level type safety
 - [02-02]: Campaign creation + DM member insert wrapped in db.transaction() for atomicity
@@ -77,6 +76,9 @@ Recent decisions affecting current work:
 - [02-03]: Logout button as fixed top-right overlay to avoid modifying MapView component
 - [02-03]: Forgot password link is placeholder alert (email infrastructure not yet configured)
 - [02-03]: Inline error display maps error message keywords to specific form fields
+- [02-04]: Vite proxy with origin rewrite replaces direct cross-origin CORS for dev
+- [02-04]: Invitations router mounted at /api with full paths inside (no conflict with /api/campaigns)
+- [02-04]: View-state navigation with useState enum (campaigns|dashboard|map) instead of router library
 
 ### Pending Todos
 
@@ -88,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-27T15:57:25Z
-Stopped at: Completed 02-02-PLAN.md (02-03 also complete)
+Last session: 2026-01-27T18:30:00Z
+Stopped at: Phase 2 complete. Ready for Phase 3.
 Resume file: None

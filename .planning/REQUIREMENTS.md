@@ -145,12 +145,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TOK-02 | Phase 5 | Pending |
 | TOK-03 | Phase 5 | Pending |
 | TOK-04 | Phase 5 | Pending |
-| AUTH-01 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
-| AUTH-03 | Phase 2 | Pending |
-| AUTH-04 | Phase 2 | Pending |
-| AUTH-05 | Phase 2 | Pending |
-| AUTH-06 | Phase 2 | Pending |
+| AUTH-01 | Phase 2 | Complete |
+| AUTH-02 | Phase 2 | Complete |
+| AUTH-03 | Phase 2 | Complete |
+| AUTH-04 | Phase 2 | Complete |
+| AUTH-05 | Phase 2 | Complete |
+| AUTH-06 | Phase 2 | Complete |
 | CHAR-01 | Phase 8 | Pending |
 | CHAR-02 | Phase 8 | Pending |
 
