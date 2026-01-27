@@ -68,12 +68,13 @@ Plans:
   2. DM client receives the full, unfiltered session state
   3. Player client receives only role-appropriate state (no DM-only data visible)
   4. A client that disconnects and reconnects receives the current session state without missing any changes that occurred during disconnection
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md -- WebSocket server setup, session/event DB schema, shared message types, Vite WS proxy
+- [ ] 03-02-PLAN.md -- Server-side SessionManager with room tracking, message handlers, event logging
+- [ ] 03-03-PLAN.md -- Client WebSocket hook with reconnection, session Zustand store, connection/session UI overlays
+- [ ] 03-04-PLAN.md -- Integration wiring: DM session controls, player presence list, end-to-end verification
 
 ### Phase 4: Fog of War
 **Goal**: The DM controls what hexes players can see -- unrevealed hexes are opaque to players, the DM can reveal/hide individual hexes, and reveals propagate to all players in real time with no content leakage
@@ -165,7 +166,7 @@ Note: Phase 6 (Map Image Upload) depends only on Phase 1 and can execute in para
 |-------|---------------|--------|-----------|
 | 1. Hex Grid Foundation | 0/4 | Planning complete | - |
 | 2. Server & Authentication | 4/4 | Complete | 2026-01-27 |
-| 3. Real-Time Infrastructure | 0/3 | Not started | - |
+| 3. Real-Time Infrastructure | 0/4 | Planning complete | - |
 | 4. Fog of War | 0/3 | Not started | - |
 | 5. Tokens & Movement | 0/2 | Not started | - |
 | 6. Map Image Upload | 0/2 | Not started | - |
