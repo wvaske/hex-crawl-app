@@ -51,12 +51,13 @@ Plans:
   3. DM can invite a player by email; the invited player can accept and join the campaign
   4. Campaign state (any data saved) persists between sessions -- closing and reopening the browser shows the same campaign data
   5. DM and player roles are enforced -- a player cannot access DM-only actions
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
-- [ ] 02-03: TBD
+- [ ] 02-01-PLAN.md -- PostgreSQL setup, Hono server scaffold, Better Auth + Drizzle ORM foundation
+- [ ] 02-02-PLAN.md -- Application schema (campaign, member, invitation) and campaign CRUD routes with auth middleware
+- [ ] 02-03-PLAN.md -- Client auth integration (Better Auth React client, login/signup pages, AuthGuard)
+- [ ] 02-04-PLAN.md -- Invitation routes, campaign/invitation UI, end-to-end verification
 
 ### Phase 3: Real-Time Infrastructure
 **Goal**: Multiple users connected to the same campaign session receive live updates via WebSocket -- the DM sees everything, players see only what their role permits, and reconnecting clients recover without data loss
@@ -163,7 +164,7 @@ Note: Phase 6 (Map Image Upload) depends only on Phase 1 and can execute in para
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
 | 1. Hex Grid Foundation | 0/4 | Planning complete | - |
-| 2. Server & Authentication | 0/3 | Not started | - |
+| 2. Server & Authentication | 0/4 | Planning complete | - |
 | 3. Real-Time Infrastructure | 0/3 | Not started | - |
 | 4. Fog of War | 0/3 | Not started | - |
 | 5. Tokens & Movement | 0/2 | Not started | - |
