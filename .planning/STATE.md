@@ -5,32 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 1 - Hex Grid Foundation
+**Current focus:** Phase 2 - Server & Authentication
 
 ## Current Position
 
-Phase: 1 of 8 (Hex Grid Foundation)
-Plan: 4 of 4 in current phase
-Status: Awaiting human verification (checkpoint)
-Last activity: 2026-01-26 - Completed 01-04-PLAN.md Tasks 1-2, awaiting Task 3 checkpoint
+Phase: 2 of 8 (Server & Authentication)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-27 - Completed 02-01-PLAN.md
 
-Progress: [████░░░░░░] ~16% (4 of ~25 total plans)
+Progress: [█████░░░░░] ~20% (5 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 8min
-- Total execution time: 33min
+- Total plans completed: 5
+- Average duration: 7min
+- Total execution time: 38min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
+| 02-server-authentication | 1/4 | 5min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 6min, 6min, 12min, 9min
+- Last 5 plans: 6min, 12min, 9min, 5min
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -66,6 +67,9 @@ Recent decisions affecting current work:
 - [01-04]: Shift+drag area selection with viewport drag plugin pause/resume
 - [01-04]: Graphics for dynamic highlight overlays, Sprites for static terrain tiles
 - [01-04]: 5px click-vs-drag threshold to prevent accidental selection during pan
+- [02-01]: Manual Better Auth schema (CLI incompatible with ESM barrel .js imports via jiti CJS resolver)
+- [02-01]: drizzle.config.ts uses explicit schema file array (not barrel index.ts) for same CJS/ESM reason
+- [02-01]: Direct cross-origin CORS instead of Vite proxy (matches production, per Better Auth Hono integration guide)
 
 ### Pending Todos
 
@@ -77,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-26T16:57:48Z
-Stopped at: 01-04-PLAN.md Task 3 checkpoint (human verification)
+Last session: 2026-01-27T15:47:31Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
