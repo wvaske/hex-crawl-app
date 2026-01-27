@@ -4,8 +4,8 @@ import { defineConfig } from "drizzle-kit";
 export default defineConfig({
   schema: [
     "./src/db/schema/auth.ts",
-    // Add additional schema files here as they're created
-    // "./src/db/schema/campaign.ts",
+    "./src/db/schema/campaign.ts",
+    "./src/db/schema/invitation.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",
