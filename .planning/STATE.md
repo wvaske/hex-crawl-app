@@ -12,26 +12,26 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 Phase: 2 of 8 (Server & Authentication)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-27 - Completed 02-03-PLAN.md
+Last activity: 2026-01-27 - Completed 02-02-PLAN.md (02-03 also complete)
 
-Progress: [██████░░░░] ~24% (6 of ~25 total plans)
+Progress: [███████░░░] ~28% (7 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: 7min
-- Total execution time: 42min
+- Total execution time: 47min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
-| 02-server-authentication | 2/4 | 9min | 5min |
+| 02-server-authentication | 3/4 | 14min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 6min, 12min, 9min, 5min, 4min
+- Last 5 plans: 12min, 9min, 5min, 4min, 5min
 - Trend: consistent, accelerating
 
 *Updated after each plan completion*
@@ -70,6 +70,9 @@ Recent decisions affecting current work:
 - [02-01]: Manual Better Auth schema (CLI incompatible with ESM barrel .js imports via jiti CJS resolver)
 - [02-01]: drizzle.config.ts uses explicit schema file array (not barrel index.ts) for same CJS/ESM reason
 - [02-01]: Direct cross-origin CORS instead of Vite proxy (matches production, per Better Auth Hono integration guide)
+- [02-02]: Extensionless imports in schema files (./auth not ./auth.js) for drizzle-kit CJS resolver compatibility
+- [02-02]: AppVariables type exported from app.ts for route-level type safety
+- [02-02]: Campaign creation + DM member insert wrapped in db.transaction() for atomicity
 - [02-03]: AuthGuard uses state toggle (useState) for login/signup switching, not React Router
 - [02-03]: Logout button as fixed top-right overlay to avoid modifying MapView component
 - [02-03]: Forgot password link is placeholder alert (email infrastructure not yet configured)
@@ -85,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-27T15:56:29Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-01-27T15:57:25Z
+Stopped at: Completed 02-02-PLAN.md (02-03 also complete)
 Resume file: None
