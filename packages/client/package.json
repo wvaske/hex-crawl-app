@@ -10,15 +10,16 @@
   },
   "dependencies": {
     "@hex-crawl/shared": "workspace:*",
-    "pixi.js": "^8.15.0",
     "@pixi/react": "^8.0.5",
+    "better-auth": "^1.4.17",
     "honeycomb-grid": "^4.1.5",
     "pixi-viewport": "^6.0.3",
-    "zustand": "^5.0.10",
+    "pixi.js": "^8.15.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router": "^7.13.0",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "zustand": "^5.0.10"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
