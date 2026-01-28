@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 2 complete. Ready for Phase 3 - Real-Time Infrastructure
+**Current focus:** Phase 3 - Real-Time Infrastructure (Plan 1 of 4 complete)
 
 ## Current Position
 
-Phase: 2 of 8 (Server & Authentication) - COMPLETE
-Plan: 4 of 4 in current phase
-Status: Complete
-Last activity: 2026-01-27 - Phase 2 verified and complete
+Phase: 3 of 8 (Real-Time Infrastructure)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-28 - Completed 03-01-PLAN.md
 
-Progress: [████████░░] ~32% (8 of ~25 total plans)
+Progress: [█████████░] ~36% (9 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 7min
-- Total execution time: 59min
+- Total execution time: 66min
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [████████░░] ~32% (8 of ~25 total plans)
 |-------|-------|-------|----------|
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
 | 02-server-authentication | 4/4 | 26min | 7min |
+| 03-real-time-infrastructure | 1/4 | 7min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 9min, 5min, 4min, 5min, 12min
+- Last 5 plans: 5min, 4min, 5min, 12min, 7min
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -79,6 +80,10 @@ Recent decisions affecting current work:
 - [02-04]: Vite proxy with origin rewrite replaces direct cross-origin CORS for dev
 - [02-04]: Invitations router mounted at /api with full paths inside (no conflict with /api/campaigns)
 - [02-04]: View-state navigation with useState enum (campaigns|dashboard|map) instead of router library
+- [03-01]: Hono<any> type parameter for WS setup/handler to accommodate AppVariables generic
+- [03-01]: Origin validation allows no-Origin connections (browser WS always sends it, CLI may not)
+- [03-01]: Campaign membership verified once at WS upgrade, not per-message
+- [03-01]: WS close codes: 4001=Unauthorized, 4002=Missing campaignId, 4003=Forbidden/Not member
 
 ### Pending Todos
 
@@ -90,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-27T18:30:00Z
-Stopped at: Phase 2 complete. Ready for Phase 3.
+Last session: 2026-01-28T01:09:16Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
