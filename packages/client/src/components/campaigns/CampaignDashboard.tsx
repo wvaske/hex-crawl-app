@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { InvitePlayerDialog } from "./InvitePlayerDialog";
+import { SessionControls } from "./SessionControls";
+import { PlayerPresenceList } from "./PlayerPresenceList";
+import { useSessionStore } from "../../stores/useSessionStore";
 
 interface CampaignDetails {
   id: string;
@@ -88,9 +91,11 @@ export function CampaignDashboard({
     );
   }
 
+  const sessionStatus = useSessionStore((s) => s.sessionStatus);
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
           <button
@@ -113,6 +118,28 @@ export function CampaignDashboard({
               >
                 {isDM ? "DM" : "Player"}
               </span>
+              {/* Session status badge for players */}
+              {!isDM && (
+                <span
+                  className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                    sessionStatus === "active"
+                      ? "bg-green-900/50 text-green-300 border border-green-700"
+                      : sessionStatus === "paused"
+                        ? "bg-yellow-900/50 text-yellow-300 border border-yellow-700"
+                        : sessionStatus === "ended"
+                          ? "bg-red-900/50 text-red-300 border border-red-700"
+                          : "bg-gray-700/50 text-gray-400 border border-gray-600"
+                  }`}
+                >
+                  {sessionStatus === "active"
+                    ? "Session Active"
+                    : sessionStatus === "paused"
+                      ? "Session Paused"
+                      : sessionStatus === "ended"
+                        ? "Session Ended"
+                        : "Waiting for DM"}
+                </span>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -140,65 +167,77 @@ export function CampaignDashboard({
           </p>
         </div>
 
-        {/* Members */}
-        <section className="mb-8">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
-            Members ({members.length})
-          </h2>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg divide-y divide-gray-700">
-            {members.map((m) => (
-              <div key={m.id} className="px-4 py-3 flex items-center justify-between">
-                <span className="text-gray-200">
-                  {m.userId === campaign.ownerId ? "Campaign Owner" : `Player`}
-                </span>
-                <span
-                  className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                    m.role === "dm"
-                      ? "bg-blue-900/50 text-blue-300 border border-blue-700"
-                      : "bg-green-900/50 text-green-300 border border-green-700"
-                  }`}
-                >
-                  {m.role === "dm" ? "DM" : "Player"}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Invitation Status (DM only) */}
-        {isDM && invitations.length > 0 && (
-          <section>
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
-              Invitations ({invitations.length})
-            </h2>
-            <div className="bg-gray-800 border border-gray-700 rounded-lg divide-y divide-gray-700">
-              {invitations.map((inv) => (
-                <div
-                  key={inv.id}
-                  className="px-4 py-3 flex items-center justify-between"
-                >
-                  <div>
-                    <span className="text-gray-200">{inv.email}</span>
-                    <span className="text-gray-500 text-sm ml-2">
-                      {new Date(inv.createdAt).toLocaleDateString()}
+        {/* Two-column layout: main content left, session sidebar right */}
+        <div className="flex gap-6">
+          {/* Main content */}
+          <div className="flex-1 min-w-0">
+            {/* Members */}
+            <section className="mb-8">
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                Members ({members.length})
+              </h2>
+              <div className="bg-gray-800 border border-gray-700 rounded-lg divide-y divide-gray-700">
+                {members.map((m) => (
+                  <div key={m.id} className="px-4 py-3 flex items-center justify-between">
+                    <span className="text-gray-200">
+                      {m.userId === campaign.ownerId ? "Campaign Owner" : `Player`}
+                    </span>
+                    <span
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        m.role === "dm"
+                          ? "bg-blue-900/50 text-blue-300 border border-blue-700"
+                          : "bg-green-900/50 text-green-300 border border-green-700"
+                      }`}
+                    >
+                      {m.role === "dm" ? "DM" : "Player"}
                     </span>
                   </div>
-                  <span
-                    className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                      inv.status === "pending"
-                        ? "bg-amber-900/50 text-amber-300 border border-amber-700"
-                        : inv.status === "accepted"
-                          ? "bg-green-900/50 text-green-300 border border-green-700"
-                          : "bg-red-900/50 text-red-300 border border-red-700"
-                    }`}
-                  >
-                    {inv.status}
-                  </span>
+                ))}
+              </div>
+            </section>
+
+            {/* Invitation Status (DM only) */}
+            {isDM && invitations.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                  Invitations ({invitations.length})
+                </h2>
+                <div className="bg-gray-800 border border-gray-700 rounded-lg divide-y divide-gray-700">
+                  {invitations.map((inv) => (
+                    <div
+                      key={inv.id}
+                      className="px-4 py-3 flex items-center justify-between"
+                    >
+                      <div>
+                        <span className="text-gray-200">{inv.email}</span>
+                        <span className="text-gray-500 text-sm ml-2">
+                          {new Date(inv.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          inv.status === "pending"
+                            ? "bg-amber-900/50 text-amber-300 border border-amber-700"
+                            : inv.status === "accepted"
+                              ? "bg-green-900/50 text-green-300 border border-green-700"
+                              : "bg-red-900/50 text-red-300 border border-red-700"
+                        }`}
+                      >
+                        {inv.status}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
+              </section>
+            )}
+          </div>
+
+          {/* Session sidebar */}
+          <div className="w-72 shrink-0 space-y-4">
+            <SessionControls />
+            <PlayerPresenceList />
+          </div>
+        </div>
 
         {showInvite && (
           <InvitePlayerDialog

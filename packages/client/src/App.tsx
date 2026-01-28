@@ -3,9 +3,12 @@ import { MapView } from './components/MapView';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { CampaignList } from './components/campaigns/CampaignList';
 import { CampaignDashboard } from './components/campaigns/CampaignDashboard';
+import { ConnectionBanner } from './components/ConnectionBanner';
+import { SessionOverlay } from './components/SessionOverlay';
 import { authClient } from './lib/auth-client';
 import { useMapStore } from './stores/useMapStore';
 import { useUIStore } from './stores/useUIStore';
+import { useWebSocket } from './hooks/useWebSocket';
 
 type AppView = 'campaigns' | 'dashboard' | 'map';
 
@@ -23,6 +26,9 @@ function AppContent() {
 
   const hexCount = useMapStore((s) => s.hexes.size);
   const setSidePanel = useUIStore((s) => s.setSidePanel);
+
+  // WebSocket connection -- connects when viewing a campaign, disconnects on unmount/campaign change
+  useWebSocket(selectedCampaignId);
 
   // When entering map view with no map, show the Create tab
   useEffect(() => {
@@ -55,6 +61,10 @@ function AppContent() {
 
   return (
     <div className="relative">
+      {/* Real-time connection and session overlays */}
+      <ConnectionBanner />
+      <SessionOverlay />
+
       {view === 'campaigns' && (
         <CampaignList onSelectCampaign={handleSelectCampaign} />
       )}
