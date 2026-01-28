@@ -68,6 +68,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@hex-crawl/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@hono/node-server':
         specifier: ^1.14.0
         version: 1.19.9(hono@4.11.7)
