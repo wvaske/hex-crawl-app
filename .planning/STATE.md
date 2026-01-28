@@ -84,6 +84,9 @@ Recent decisions affecting current work:
 - [03-01]: Origin validation allows no-Origin connections (browser WS always sends it, CLI may not)
 - [03-01]: Campaign membership verified once at WS upgrade, not per-message
 - [03-01]: WS close codes: 4001=Unauthorized, 4002=Missing campaignId, 4003=Forbidden/Not member
+- [03-02]: No broadcast_mode_change event logging since session_event_type enum lacks matching value; mode change reflected in room state
+- [03-02]: Empty rooms in waiting/ended state auto-cleaned on last client disconnect; active/paused rooms preserved
+- [03-02]: broadcastToAll for dm:preparing notification since both DM and players need broadcast mode signal
 - [03-03]: sendMessage exposed via Zustand store (not hook return) for cross-component access
 - [03-03]: Intentional WS close nulls onclose handler to prevent reconnection loop on cleanup
 - [03-03]: Session overlay z-index layers: z-[100] connection banner, z-[90] session overlays, z-[80] subtle indicators
