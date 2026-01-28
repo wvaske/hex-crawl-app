@@ -1,10 +1,15 @@
 import "dotenv/config";
 import { serve } from "@hono/node-server";
 import app from "./app.js";
+import { setupWebSocket } from "./ws/setup.js";
+import { createWsRoute } from "./ws/handler.js";
+
+const { injectWebSocket, upgradeWebSocket } = setupWebSocket(app);
+createWsRoute(app, upgradeWebSocket);
 
 const port = Number(process.env.PORT) || 3000;
 
-serve(
+const server = serve(
   {
     fetch: app.fetch,
     port,
@@ -14,3 +19,5 @@ serve(
     console.log(`Server running at http://0.0.0.0:${info.port}`);
   }
 );
+
+injectWebSocket(server);
