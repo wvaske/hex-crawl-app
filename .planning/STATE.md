@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 3 - Real-Time Infrastructure (Plan 1 of 4 complete)
+**Current focus:** Phase 3 - Real-Time Infrastructure (Plan 3 of 4 complete)
 
 ## Current Position
 
 Phase: 3 of 8 (Real-Time Infrastructure)
-Plan: 1 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-28 - Completed 03-01-PLAN.md
+Last activity: 2026-01-28 - Completed 03-03-PLAN.md
 
-Progress: [█████████░] ~36% (9 of ~25 total plans)
+Progress: [███████████░] ~44% (11 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 7min
-- Total execution time: 66min
+- Total plans completed: 11
+- Average duration: 6min
+- Total execution time: 68min
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [█████████░] ~36% (9 of ~25 total plans)
 |-------|-------|-------|----------|
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
 | 02-server-authentication | 4/4 | 26min | 7min |
-| 03-real-time-infrastructure | 1/4 | 7min | 7min |
+| 03-real-time-infrastructure | 3/4 | 9min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 5min, 4min, 5min, 12min, 7min
+- Last 5 plans: 4min, 5min, 12min, 7min, 2min
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -84,6 +84,9 @@ Recent decisions affecting current work:
 - [03-01]: Origin validation allows no-Origin connections (browser WS always sends it, CLI may not)
 - [03-01]: Campaign membership verified once at WS upgrade, not per-message
 - [03-01]: WS close codes: 4001=Unauthorized, 4002=Missing campaignId, 4003=Forbidden/Not member
+- [03-03]: sendMessage exposed via Zustand store (not hook return) for cross-component access
+- [03-03]: Intentional WS close nulls onclose handler to prevent reconnection loop on cleanup
+- [03-03]: Session overlay z-index layers: z-[100] connection banner, z-[90] session overlays, z-[80] subtle indicators
 
 ### Pending Todos
 
@@ -95,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-28T01:09:16Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-01-28T01:14:43Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
