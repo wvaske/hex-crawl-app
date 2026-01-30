@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSessionStore } from '../stores/useSessionStore';
 import type { ClientMessage, ServerMessage } from '@hex-crawl/shared';
 
@@ -16,87 +16,99 @@ const BACKOFF_MULTIPLIER = 2;
  * - Cleans up on campaignId change or unmount
  */
 export function useWebSocket(campaignId: string | null) {
-  const wsRef = useRef<WebSocket | null>(null);
-  const retryCountRef = useRef(0);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const dispatch = useSessionStore((s) => s.dispatch);
-  const setConnectionStatus = useSessionStore((s) => s.setConnectionStatus);
-  const setSendMessage = useSessionStore((s) => s.setSendMessage);
-  const reset = useSessionStore((s) => s.reset);
-
-  const connect = useCallback(() => {
-    if (!campaignId) return;
-
-    setConnectionStatus('connecting');
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(
-      `${protocol}//${window.location.host}/ws?campaignId=${campaignId}`
-    );
-
-    ws.onopen = () => {
-      retryCountRef.current = 0;
-      setConnectionStatus('connected');
-
-      // Expose sendMessage on the store for outbound messages
-      const send = (msg: ClientMessage) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify(msg));
-        }
-      };
-      setSendMessage(send);
-    };
-
-    ws.onmessage = (event: MessageEvent) => {
-      try {
-        const message = JSON.parse(event.data as string) as ServerMessage;
-        dispatch(message);
-      } catch {
-        console.warn('[WS] Failed to parse message:', event.data);
-      }
-    };
-
-    ws.onerror = (event) => {
-      console.warn('[WS] Error:', event);
-    };
-
-    ws.onclose = () => {
-      // Clear sendMessage since the socket is closed
-      setSendMessage(null);
-      setConnectionStatus('reconnecting');
-
-      // Exponential backoff with jitter (75-125% of computed delay)
-      const delay = Math.min(
-        INITIAL_DELAY * BACKOFF_MULTIPLIER ** retryCountRef.current,
-        MAX_DELAY
-      );
-      const jitteredDelay = delay * (0.75 + Math.random() * 0.5);
-      retryCountRef.current++;
-
-      reconnectTimerRef.current = setTimeout(connect, jitteredDelay);
-    };
-
-    wsRef.current = ws;
-  }, [campaignId, dispatch, setConnectionStatus, setSendMessage]);
+  // Use refs for store actions so the effect only re-runs when campaignId changes
+  const dispatchRef = useRef(useSessionStore.getState().dispatch);
+  const setConnectionStatusRef = useRef(useSessionStore.getState().setConnectionStatus);
+  const setSendMessageRef = useRef(useSessionStore.getState().setSendMessage);
+  const resetRef = useRef(useSessionStore.getState().reset);
 
   useEffect(() => {
+    if (!campaignId) return;
+
+    const dispatch = dispatchRef.current;
+    const setConnectionStatus = setConnectionStatusRef.current;
+    const setSendMessage = setSendMessageRef.current;
+
+    let cancelled = false;
+    let retryCount = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let ws: WebSocket | null = null;
+
+    console.log(`[WS-DIAG] ${Date.now()} status=connecting cancelled=${cancelled}`);
+    setConnectionStatus('connecting');
+
+    const connect = () => {
+      if (cancelled) {
+        console.log(`[WS-DIAG] ${Date.now()} connect() skipped — cancelled`);
+        return;
+      }
+
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(
+        `${protocol}//${window.location.host}/ws?campaignId=${campaignId}`
+      );
+
+      ws.onopen = () => {
+        console.log(`[WS-DIAG] ${Date.now()} onopen cancelled=${cancelled} readyState=${ws?.readyState}`);
+        if (cancelled) { ws?.close(); return; }
+        retryCount = 0;
+        setConnectionStatus('connected');
+
+        const currentWs = ws;
+        const send = (msg: ClientMessage) => {
+          if (currentWs?.readyState === WebSocket.OPEN) {
+            currentWs.send(JSON.stringify(msg));
+          }
+        };
+        setSendMessage(send);
+      };
+
+      ws.onmessage = (event: MessageEvent) => {
+        if (cancelled) return;
+        try {
+          const message = JSON.parse(event.data as string) as ServerMessage;
+          dispatch(message);
+        } catch {
+          console.warn('[WS] Failed to parse message:', event.data);
+        }
+      };
+
+      ws.onerror = (event) => {
+        console.warn('[WS] Error:', event);
+      };
+
+      ws.onclose = () => {
+        console.log(`[WS-DIAG] ${Date.now()} onclose cancelled=${cancelled} readyState=${ws?.readyState}`);
+        if (cancelled) return;
+
+        setSendMessage(null);
+        setConnectionStatus('reconnecting');
+
+        // Exponential backoff with jitter (75-125% of computed delay)
+        const delay = Math.min(
+          INITIAL_DELAY * BACKOFF_MULTIPLIER ** retryCount,
+          MAX_DELAY
+        );
+        const jitteredDelay = delay * (0.75 + Math.random() * 0.5);
+        retryCount++;
+
+        reconnectTimer = setTimeout(connect, jitteredDelay);
+      };
+    };
+
     connect();
 
     return () => {
-      // Cleanup: close existing ws, clear reconnect timer, reset store
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
+      console.log(`[WS-DIAG] ${Date.now()} cleanup — setting cancelled=true`);
+      cancelled = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
       }
-      if (wsRef.current) {
-        wsRef.current.onclose = null; // Prevent reconnect on intentional close
-        wsRef.current.close();
-        wsRef.current = null;
+      if (ws) {
+        ws.onclose = null;
+        ws.close();
       }
-      reset();
+      resetRef.current();
     };
-  }, [connect, reset]);
-
-  return wsRef;
+  }, [campaignId]);
 }

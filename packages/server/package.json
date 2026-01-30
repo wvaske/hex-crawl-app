@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hex-crawl/shared": "workspace:*",
@@ -30,6 +31,7 @@
     "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.0",
     "tsx": "^4.19.0",
-    "typescript": "~5.8.0"
+    "typescript": "~5.8.0",
+    "vitest": "^4.0.18"
   }
 }

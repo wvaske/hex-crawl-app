@@ -67,6 +67,17 @@ export class SessionManager {
     ws: WSContext
   ): void {
     const room = this.getOrCreateRoom(campaignId);
+    const existing = room.connectedClients.get(userId);
+    if (existing && existing.ws !== ws) {
+      console.log(
+        `[WS] Replacing existing connection for userId=${userId} in campaign=${campaignId}`
+      );
+      try {
+        existing.ws.close(4000, "Replaced by new connection");
+      } catch {
+        // already closed
+      }
+    }
     room.connectedClients.set(userId, { userId, name, role, ws });
   }
 

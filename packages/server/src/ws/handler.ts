@@ -89,8 +89,11 @@ export function createWsRoute(
       const role = membership[0]!.role as "dm" | "player";
 
       // 5. Return connection handlers
+      let connectedWs: typeof ws | null = null;
+
       return {
         onOpen(_evt, ws) {
+          connectedWs = ws;
           console.log(
             `[WS] Connected: userId=${userId}, campaignId=${campaignId}, role=${role}`
           );
@@ -161,12 +164,19 @@ export function createWsRoute(
         },
 
         onClose() {
+          // Guard against stale close events from replaced connections
+          const room = sessionManager.getRoom(campaignId);
+          const current = room?.connectedClients.get(userId);
+          if (current && current.ws !== connectedWs) {
+            console.log(
+              `[WS] Ignoring stale close for userId=${userId}, campaignId=${campaignId}`
+            );
+            return;
+          }
+
           console.log(
             `[WS] Disconnected: userId=${userId}, campaignId=${campaignId}`
           );
-
-          // Check for active session before removing connection
-          const room = sessionManager.getRoom(campaignId);
 
           // Remove connection from SessionManager
           sessionManager.removeConnection(campaignId, userId);

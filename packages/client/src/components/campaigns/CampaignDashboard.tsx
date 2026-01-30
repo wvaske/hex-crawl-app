@@ -43,6 +43,7 @@ export function CampaignDashboard({
   const [invitations, setInvitations] = useState<InvitationStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
+  const sessionStatus = useSessionStore((s) => s.sessionStatus);
 
   const isDM = campaign?.role === "dm";
 
@@ -90,8 +91,6 @@ export function CampaignDashboard({
       </div>
     );
   }
-
-  const sessionStatus = useSessionStore((s) => s.sessionStatus);
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
