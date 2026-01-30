@@ -8,10 +8,13 @@ import { eq, and } from "drizzle-orm";
 import { sessionManager } from "./session-manager.js";
 import { handleClientMessage } from "./message-handlers.js";
 
-const ALLOWED_ORIGINS = [
-  "http://localhost:5173",
-  "http://10.241.120.98:5173",
-];
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// In development, allow any origin when no explicit list is configured
+const isDev = process.env.NODE_ENV !== "production";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createWsRoute(
@@ -23,7 +26,12 @@ export function createWsRoute(
     upgradeWebSocket(async (c) => {
       // 1. Validate Origin header (CSWSH protection)
       const origin = c.req.header("origin");
-      if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+      if (
+        origin &&
+        !isDev &&
+        ALLOWED_ORIGINS.length > 0 &&
+        !ALLOWED_ORIGINS.includes(origin)
+      ) {
         return {
           onOpen(_evt, ws) {
             ws.close(4003, "Forbidden origin");
@@ -148,7 +156,7 @@ export function createWsRoute(
           }
         },
 
-        onMessage(event, _ws) {
+        onMessage(event, ws) {
           const data = typeof event.data === "string"
             ? event.data
             : event.data instanceof ArrayBuffer

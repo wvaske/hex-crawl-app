@@ -12,10 +12,20 @@ export type AppVariables = {
 const app = new Hono<{ Variables: AppVariables }>();
 
 // CORS must come before routes
+const corsOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 app.use(
   "/api/*",
   cors({
-    origin: ["http://localhost:5173", "http://10.241.120.98:5173"],
+    origin:
+      process.env.NODE_ENV !== "production"
+        ? (origin) => origin // allow any origin in dev
+        : corsOrigins.length > 0
+          ? corsOrigins
+          : ["http://localhost:5173"],
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["POST", "GET", "PUT", "DELETE", "OPTIONS"],
     credentials: true,

@@ -90,11 +90,13 @@ function AppContent() {
         </>
       )}
 
-      {/* Sign Out button -- always visible */}
+      {/* Sign Out button -- always visible, offset past side panel in map view */}
       <button
         type="button"
         onClick={handleLogout}
-        className="fixed top-3 right-3 z-50 px-3 py-1.5 text-sm text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-700/90 border border-gray-600 rounded transition-colors"
+        className={`fixed top-3 z-50 px-3 py-1.5 text-sm text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-700/90 border border-gray-600 rounded transition-colors ${
+          view === 'map' ? 'right-[316px]' : 'right-3'
+        }`}
       >
         Sign Out
       </button>

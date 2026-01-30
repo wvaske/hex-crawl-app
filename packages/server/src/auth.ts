@@ -15,5 +15,11 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // refresh every 24h
   },
-  trustedOrigins: ["http://localhost:5173", "http://10.241.120.98:5173"],
+  trustedOrigins:
+    process.env.NODE_ENV !== "production"
+      ? ["*"]
+      : (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
 });

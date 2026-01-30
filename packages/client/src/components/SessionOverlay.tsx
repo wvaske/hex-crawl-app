@@ -29,8 +29,8 @@ export function SessionOverlay() {
     );
   }
 
-  // 'paused' -- all roles see a pause overlay
-  if (sessionStatus === 'paused') {
+  // 'paused' -- players see a full-screen pause overlay; DM uses dashboard controls
+  if (sessionStatus === 'paused' && userRole === 'player') {
     return (
       <div className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-900/70 backdrop-blur-sm">
         <div className="bg-gray-800 text-gray-200 border border-gray-700 rounded-lg p-8 text-center max-w-sm">
