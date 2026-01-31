@@ -516,11 +516,8 @@ async function handleHexReveal(
       changes: room.stagedChanges,
     });
   } else {
-    sessionManager.broadcastToPlayers(
-      campaignId,
-      revealPayload,
-      targetPlayerIds
-    );
+    // Broadcast to all (DM + players) so DM's fog layer updates too
+    sessionManager.broadcastToAll(campaignId, revealPayload);
   }
 
   // Log event
@@ -595,11 +592,10 @@ async function handleHexHide(
     console.error("[WS] Failed to delete hex visibility:", err);
   }
 
-  // Broadcast hex:hidden to affected players
-  sessionManager.broadcastToPlayers(
+  // Broadcast hex:hidden to all (DM + players) so DM's fog layer updates too
+  sessionManager.broadcastToAll(
     campaignId,
-    { type: "hex:hidden", hexKeys: message.hexKeys },
-    targetPlayerIds
+    { type: "hex:hidden", hexKeys: message.hexKeys }
   );
 
   // Log event
