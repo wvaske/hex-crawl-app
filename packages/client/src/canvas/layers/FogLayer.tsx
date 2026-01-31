@@ -87,8 +87,9 @@ function collectHexHatchSegments(
     let clipped = true;
 
     for (const e of edges) {
-      const nx = -(e.y2 - e.y1);
-      const ny = e.x2 - e.x1;
+      // Inward normal for CCW polygon winding
+      const nx = e.y2 - e.y1;
+      const ny = -(e.x2 - e.x1);
       const denom = nx * dx + ny * dy;
       const num = nx * (lx1 - e.x1) + ny * (ly1 - e.y1);
 
