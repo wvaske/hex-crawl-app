@@ -1,5 +1,6 @@
 import { SidePanel } from './SidePanel';
 import { HexMapCanvas } from '../canvas/HexMapCanvas';
+import { ImageLayer } from '../canvas/layers/ImageLayer';
 import { TerrainLayer } from '../canvas/layers/TerrainLayer';
 import { GridLineLayer } from '../canvas/layers/GridLineLayer';
 import { FogLayer } from '../canvas/layers/FogLayer';
@@ -17,12 +18,13 @@ import { useMapStore } from '../stores/useMapStore';
  * - Right side (w-[300px]): SidePanel with tabs
  *
  * Layer order inside the viewport:
- *   z:0 - TerrainLayer (hex terrain sprites)
- *   z:1 - GridLineLayer (hex border outlines)
- *   z:2 - FogLayer (two-tier fog of war overlays)
- *   z:3 - TokenLayer (token sprites with colored rings)
- *   z:4 - HighlightLayer (hover/selection highlights)
- *   z:5 - UIOverlayLayer (coordinate text on hover)
+ *   z:0 - ImageLayer (uploaded map background images)
+ *   z:1 - TerrainLayer (hex terrain sprites)
+ *   z:2 - GridLineLayer (hex border outlines)
+ *   z:3 - FogLayer (two-tier fog of war overlays)
+ *   z:4 - TokenLayer (token sprites with colored rings)
+ *   z:5 - HighlightLayer (hover/selection highlights)
+ *   z:6 - UIOverlayLayer (coordinate text on hover)
  *   HexInteraction (non-visual, handles mouse events)
  */
 export function MapView() {
@@ -34,6 +36,7 @@ export function MapView() {
       <div className="flex-1 relative">
         {hasMap ? (
           <HexMapCanvas>
+            <ImageLayer />
             <TerrainLayer />
             <GridLineLayer />
             <FogLayer />
