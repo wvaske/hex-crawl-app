@@ -17,8 +17,8 @@ const TIER1_ALPHA = 0.55;
 /** DM hatching on unrevealed hexes: diagonal slash pattern */
 const DM_HATCH_COLOR = 0xff4444;
 const DM_HATCH_ALPHA = 0.35;
-const DM_HATCH_SPACING = 12;
-const DM_HATCH_WIDTH = 2;
+const DM_HATCH_SPACING = 6;
+const DM_HATCH_WIDTH = 4;
 
 /**
  * Draw a filled hex polygon on a Graphics object.
