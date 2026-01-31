@@ -7,6 +7,7 @@ import { useMapStore } from '../stores/useMapStore';
 import { useUIStore } from '../stores/useUIStore';
 import { useTokenStore } from '../stores/useTokenStore';
 import { useSessionStore } from '../stores/useSessionStore';
+import { useImageLayerStore } from '../stores/useImageLayerStore';
 import { getViewportRef } from './ViewportContext';
 
 /** Maximum pixel movement to still count as a "click" (not a drag) */
@@ -252,6 +253,9 @@ export function HexInteraction() {
     if (!htmlCanvas) return;
 
     const onPointerMove = (e: PointerEvent) => {
+      // Skip all hex interaction during alignment mode
+      if (useImageLayerStore.getState().alignmentMode) return;
+
       const screen = eventToScreen(e, htmlCanvas);
       const worldPos = viewport.toWorld(screen.x, screen.y);
       pendingWorldPos.current = { x: worldPos.x, y: worldPos.y };
@@ -303,6 +307,9 @@ export function HexInteraction() {
     const onPointerDown = (e: PointerEvent) => {
       // Only handle left mouse button
       if (e.button !== 0) return;
+
+      // Skip all hex interaction during alignment mode
+      if (useImageLayerStore.getState().alignmentMode) return;
 
       const screen = eventToScreen(e, htmlCanvas);
       const worldPos = viewport.toWorld(screen.x, screen.y);
@@ -390,6 +397,9 @@ export function HexInteraction() {
 
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
+
+      // Skip all hex interaction during alignment mode
+      if (useImageLayerStore.getState().alignmentMode) return;
 
       const down = pointerDownRef.current;
 

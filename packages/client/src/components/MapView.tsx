@@ -8,6 +8,7 @@ import { TokenLayer } from '../canvas/layers/TokenLayer';
 import { HighlightLayer } from '../canvas/layers/HighlightLayer';
 import { UIOverlayLayer } from '../canvas/layers/UIOverlayLayer';
 import { HexInteraction } from '../canvas/HexInteraction';
+import { AlignmentControls } from './AlignmentControls';
 import { useMapStore } from '../stores/useMapStore';
 
 /**
@@ -34,6 +35,7 @@ export function MapView() {
     <div className="flex h-screen bg-gray-900 text-gray-100">
       {/* Canvas area (flex-1 takes remaining space, full height) */}
       <div className="flex-1 relative">
+        <AlignmentControls />
         {hasMap ? (
           <HexMapCanvas>
             <ImageLayer />
