@@ -36,6 +36,9 @@ interface SessionState {
 
   /** Hex keys revealed to this client (Phase 4 will populate) */
   revealedHexKeys: Set<string>;
+
+  /** Hex keys adjacent to revealed hexes (tier-1 fog for players) */
+  adjacentHexKeys: Set<string>;
 }
 
 interface SessionActions {
@@ -67,6 +70,7 @@ const initialState: SessionState = {
   stagedChanges: [],
   dmPreparing: false,
   revealedHexKeys: new Set(),
+  adjacentHexKeys: new Set(),
 };
 
 export const useSessionStore = create<SessionStore>((set) => ({
@@ -89,11 +93,15 @@ export const useSessionStore = create<SessionStore>((set) => ({
         }
         // Build new Set from revealed hex keys -- always new instance (PITFALL 6)
         const revealed = new Set(message.revealedHexes);
+        const adjacent = message.adjacentHexes
+          ? new Set(message.adjacentHexes.map((h) => h.key))
+          : new Set<string>();
         set({
           sessionStatus: message.status,
           broadcastMode: message.broadcastMode,
           connectedPlayers: players,
           revealedHexKeys: revealed,
+          adjacentHexKeys: adjacent,
         });
         break;
       }
@@ -149,7 +157,26 @@ export const useSessionStore = create<SessionStore>((set) => ({
           for (const key of message.hexKeys) {
             revealed.add(key);
           }
-          return { revealedHexKeys: revealed };
+          // Update adjacent hex keys if provided
+          const adjacent = message.adjacentHexes
+            ? new Set(message.adjacentHexes.map((h) => h.key))
+            : new Set(state.adjacentHexKeys);
+          // Remove any hex from adjacent that is now revealed
+          for (const key of revealed) {
+            adjacent.delete(key);
+          }
+          return { revealedHexKeys: revealed, adjacentHexKeys: adjacent };
+        });
+        break;
+
+      case 'hex:hidden':
+        set((state) => {
+          const revealed = new Set(state.revealedHexKeys);
+          for (const key of message.hexKeys) {
+            revealed.delete(key);
+          }
+          // Clear adjacentHexKeys -- will be repopulated on next session:state
+          return { revealedHexKeys: revealed, adjacentHexKeys: new Set<string>() };
         });
         break;
 
