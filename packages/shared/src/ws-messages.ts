@@ -86,6 +86,55 @@ const ConnectedMessage = z.object({
   role: z.enum(["dm", "player"]),
 });
 
+// ---------------------------------------------------------------------------
+// Token schemas (shared between client and server messages)
+// ---------------------------------------------------------------------------
+
+const TokenSchema = z.object({
+  id: z.string(),
+  hexKey: z.string(),
+  ownerId: z.string().nullable(),
+  label: z.string(),
+  icon: z.string(),
+  color: z.string(),
+  tokenType: z.enum(["pc", "npc"]),
+  visible: z.boolean(),
+});
+
+const TokenMovedMessage = z.object({
+  type: z.literal("token:moved"),
+  tokenId: z.string(),
+  fromHexKey: z.string(),
+  toHexKey: z.string(),
+  movedBy: z.string(),
+});
+
+const TokenCreatedMessage = z.object({
+  type: z.literal("token:created"),
+  token: TokenSchema,
+});
+
+const TokenUpdatedMessage = z.object({
+  type: z.literal("token:updated"),
+  tokenId: z.string(),
+  updates: z.object({
+    icon: z.string().optional(),
+    color: z.string().optional(),
+    visible: z.boolean().optional(),
+    label: z.string().optional(),
+  }),
+});
+
+const TokenDeletedMessage = z.object({
+  type: z.literal("token:deleted"),
+  tokenId: z.string(),
+});
+
+const TokenStateMessage = z.object({
+  type: z.literal("token:state"),
+  tokens: z.array(TokenSchema),
+});
+
 export const ServerMessageSchema = z.discriminatedUnion("type", [
   SessionStateMessage,
   SessionStatusChangedMessage,
@@ -99,6 +148,11 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   StagedChangesMessage,
   ErrorMessage,
   ConnectedMessage,
+  TokenMovedMessage,
+  TokenCreatedMessage,
+  TokenUpdatedMessage,
+  TokenDeletedMessage,
+  TokenStateMessage,
 ]);
 
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
@@ -160,6 +214,38 @@ const StagedUndoMessage = z.object({
   index: z.number(),
 });
 
+const TokenMoveMessage = z.object({
+  type: z.literal("token:move"),
+  tokenId: z.string(),
+  toHexKey: z.string(),
+});
+
+const TokenCreateMessage = z.object({
+  type: z.literal("token:create"),
+  hexKey: z.string(),
+  label: z.string(),
+  icon: z.string(),
+  color: z.string(),
+  tokenType: z.enum(["pc", "npc"]),
+  ownerId: z.string().optional(),
+});
+
+const TokenUpdateMessage = z.object({
+  type: z.literal("token:update"),
+  tokenId: z.string(),
+  updates: z.object({
+    icon: z.string().optional(),
+    color: z.string().optional(),
+    visible: z.boolean().optional(),
+    label: z.string().optional(),
+  }),
+});
+
+const TokenDeleteMessage = z.object({
+  type: z.literal("token:delete"),
+  tokenId: z.string(),
+});
+
 export const ClientMessageSchema = z.discriminatedUnion("type", [
   SessionStartMessage,
   SessionPauseMessage,
@@ -171,6 +257,10 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   HexUpdateMessage,
   HexHideMessage,
   StagedUndoMessage,
+  TokenMoveMessage,
+  TokenCreateMessage,
+  TokenUpdateMessage,
+  TokenDeleteMessage,
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;

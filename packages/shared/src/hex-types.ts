@@ -68,6 +68,18 @@ export function hexKey(q: number, r: number): string {
   return `${q},${r}`;
 }
 
+/** A token placed on the hex map */
+export interface Token {
+  id: string;
+  hexKey: string;
+  ownerId: string | null;
+  label: string;
+  icon: string;
+  color: string;
+  tokenType: "pc" | "npc";
+  visible: boolean;
+}
+
 /** Parse a hex key string back to axial coordinates */
 export function parseHexKey(key: string): HexCoord {
   const [qStr, rStr] = key.split(',');
