@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 3 - Real-Time Infrastructure (Plan 3 of 4 complete)
+**Current focus:** Phase 3 complete. Ready for Phase 4 - Fog of War.
 
 ## Current Position
 
-Phase: 3 of 8 (Real-Time Infrastructure)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-28 - Completed 03-03-PLAN.md
+Phase: 3 of 8 (Real-Time Infrastructure) - COMPLETE
+Plan: 4 of 4 in current phase (all done)
+Status: Complete - checkpoint verified
+Last activity: 2026-01-30 - Completed 03-04-PLAN.md, all checkpoint items passed
 
-Progress: [███████████░] ~44% (11 of ~25 total plans)
+Progress: [████████████░] ~48% (12 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: 6min
-- Total execution time: 68min
+- Total execution time: ~74min
 
 **By Phase:**
 
@@ -29,7 +29,7 @@ Progress: [███████████░] ~44% (11 of ~25 total plans)
 |-------|-------|-------|----------|
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
 | 02-server-authentication | 4/4 | 26min | 7min |
-| 03-real-time-infrastructure | 3/4 | 9min | 3min |
+| 03-real-time-infrastructure | 4/4 | ~15min | ~4min |
 
 **Recent Trend:**
 - Last 5 plans: 4min, 5min, 12min, 7min, 2min
@@ -90,6 +90,11 @@ Recent decisions affecting current work:
 - [03-03]: sendMessage exposed via Zustand store (not hook return) for cross-component access
 - [03-03]: Intentional WS close nulls onclose handler to prevent reconnection loop on cleanup
 - [03-03]: Session overlay z-index layers: z-[100] connection banner, z-[90] session overlays, z-[80] subtle indicators
+- [03-04]: Dev-mode origin permissiveness: CORS, WS origin, and Better Auth trustedOrigins all accept any origin when NODE_ENV !== production
+- [03-04]: ALLOWED_ORIGINS env var for production origin configuration (comma-separated)
+- [03-04]: StrictMode WS guard: server closes old socket on replacement (code 4000), skips stale onClose events
+- [03-04]: Pause overlay shown only to players so DM retains access to resume/end controls
+- [03-04]: Sign Out button offset to right-[316px] in map view to clear SidePanel
 
 ### Pending Todos
 
@@ -101,6 +106,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-28T01:14:43Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-01-30
+Stopped at: Phase 3 complete, all checkpoint items verified
 Resume file: None
+Next: Phase 4 - Fog of War

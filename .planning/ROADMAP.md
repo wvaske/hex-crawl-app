@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Hex Grid Foundation** - Interactive hex grid renders in the browser with pan, zoom, terrain display, and correct coordinate math
 - [x] **Phase 2: Server & Authentication** - Users create accounts, DMs create campaigns and invite players, all data persists in PostgreSQL
-- [ ] **Phase 3: Real-Time Infrastructure** - Connected users receive live updates via WebSocket with role-based filtering and reconnection support
+- [x] **Phase 3: Real-Time Infrastructure** - Connected users receive live updates via WebSocket with role-based filtering and reconnection support
 - [ ] **Phase 4: Fog of War** - DM reveals and hides hexes; players see only what the DM allows, enforced server-side, synced in real time
 - [ ] **Phase 5: Tokens & Movement** - Players move character tokens on the map; all connected users see token positions update in real time
 - [ ] **Phase 6: Map Image Upload** - DM uploads custom map images that display as background layers beneath the hex grid overlay
@@ -166,7 +166,7 @@ Note: Phase 6 (Map Image Upload) depends only on Phase 1 and can execute in para
 |-------|---------------|--------|-----------|
 | 1. Hex Grid Foundation | 0/4 | Planning complete | - |
 | 2. Server & Authentication | 4/4 | Complete | 2026-01-27 |
-| 3. Real-Time Infrastructure | 0/4 | Planning complete | - |
+| 3. Real-Time Infrastructure | 4/4 | Complete | 2026-01-30 |
 | 4. Fog of War | 0/3 | Not started | - |
 | 5. Tokens & Movement | 0/2 | Not started | - |
 | 6. Map Image Upload | 0/2 | Not started | - |
