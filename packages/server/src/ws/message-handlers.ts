@@ -592,10 +592,19 @@ async function handleHexHide(
     console.error("[WS] Failed to delete hex visibility:", err);
   }
 
+  // Recompute adjacentHexes after the hide so players get correct fog tiers
+  const remainingRevealed = new Set<string>();
+  for (const [hexKey, viewers] of room.revealedHexes) {
+    if (viewers.size > 0) {
+      remainingRevealed.add(hexKey);
+    }
+  }
+  const fogPayload = buildPlayerFogPayload(remainingRevealed, room.mapData);
+
   // Broadcast hex:hidden to all (DM + players) so DM's fog layer updates too
   sessionManager.broadcastToAll(
     campaignId,
-    { type: "hex:hidden", hexKeys: message.hexKeys }
+    { type: "hex:hidden", hexKeys: message.hexKeys, adjacentHexes: fogPayload.adjacentHexes }
   );
 
   // Log event

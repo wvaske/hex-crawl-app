@@ -182,8 +182,15 @@ export const useSessionStore = create<SessionStore>((set) => ({
           for (const key of message.hexKeys) {
             revealed.delete(key);
           }
-          // Clear adjacentHexKeys -- will be repopulated on next session:state
-          return { revealedHexKeys: revealed, adjacentHexKeys: new Set<string>() };
+          // Use recomputed adjacentHexes from server if provided
+          const adjacent = message.adjacentHexes
+            ? new Set(message.adjacentHexes.map((h) => h.key))
+            : new Set<string>();
+          // Remove any hex from adjacent that is revealed
+          for (const key of revealed) {
+            adjacent.delete(key);
+          }
+          return { revealedHexKeys: revealed, adjacentHexKeys: adjacent };
         });
         break;
 

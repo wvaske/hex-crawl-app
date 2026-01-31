@@ -1,4 +1,5 @@
 import { TERRAIN_COLORS, parseHexKey } from '@hex-crawl/shared';
+import { axialToOffset } from '../hex/coordinates';
 import type { TerrainType } from '@hex-crawl/shared';
 import { useUIStore } from '../stores/useUIStore';
 import type { SidePanelTab } from '../stores/useUIStore';
@@ -49,6 +50,7 @@ function HexInfoContent() {
     const key = [...selectedHexes][0]!;
     const hex = hexes.get(key);
     const coord = parseHexKey(key);
+    const offset = axialToOffset(coord.q, coord.r);
     if (!hex) {
       return (
         <div className="p-4 space-y-3">
@@ -58,7 +60,7 @@ function HexInfoContent() {
           <div>
             <span className="text-xs text-gray-500">Coordinates</span>
             <p className="text-gray-200 font-mono">
-              q: {coord.q}, r: {coord.r}
+              {offset.col + 1}, {offset.row + 1}
             </p>
           </div>
           <div>

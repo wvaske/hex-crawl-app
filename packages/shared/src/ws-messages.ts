@@ -32,6 +32,7 @@ const HexRevealedMessage = z.object({
 const HexHiddenMessage = z.object({
   type: z.literal("hex:hidden"),
   hexKeys: z.array(z.string()),
+  adjacentHexes: z.array(AdjacentHexSchema).optional(),
 });
 
 const HexUpdatedMessage = z.object({

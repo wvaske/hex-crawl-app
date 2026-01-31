@@ -5,6 +5,7 @@ import { parseHexKey } from '@hex-crawl/shared';
 import { useUIStore } from '../../stores/useUIStore';
 import { useMapStore } from '../../stores/useMapStore';
 import { createGrid, GameHex } from '../../hex/grid';
+import { axialToOffset } from '../../hex/coordinates';
 
 /** Text style for coordinate display */
 const COORD_TEXT_STYLE = new TextStyle({
@@ -120,7 +121,8 @@ export function UIOverlayLayer() {
     const cy = hex.y;
 
     // Update text content and position
-    text.text = `q: ${coord.q}, r: ${coord.r}`;
+    const offset = axialToOffset(coord.q, coord.r);
+    text.text = `${offset.col + 1}, ${offset.row + 1}`;
     text.position.set(cx, cy);
     text.visible = true;
 
