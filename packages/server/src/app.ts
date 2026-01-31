@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { auth } from "./auth.js";
 import campaigns from "./routes/campaigns.js";
 import invitations from "./routes/invitations.js";
 import mapRoutes from "./routes/map.js";
+import mapImages from "./routes/map-images.js";
 
 export type AppVariables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -49,6 +51,12 @@ app.route("/api", invitations);
 
 // Map data routes
 app.route("/api/campaigns", mapRoutes);
+
+// Map image upload routes
+app.route("/api/campaigns", mapImages);
+
+// Static file serving for uploads
+app.use("/uploads/*", serveStatic({ root: "./" }));
 
 export default app;
 export type AppType = typeof app;

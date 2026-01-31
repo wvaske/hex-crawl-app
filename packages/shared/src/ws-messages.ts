@@ -135,6 +135,49 @@ const TokenStateMessage = z.object({
   tokens: z.array(TokenSchema),
 });
 
+// ---------------------------------------------------------------------------
+// Map image layer schemas
+// ---------------------------------------------------------------------------
+
+const LayerSchema = z.object({
+  id: z.string(),
+  mapId: z.string(),
+  fileName: z.string(),
+  storageKey: z.string(),
+  contentType: z.string(),
+  fileSize: z.number(),
+  offsetX: z.number(),
+  offsetY: z.number(),
+  scaleX: z.number(),
+  scaleY: z.number(),
+  sortOrder: z.number(),
+  visible: z.boolean(),
+  playerVisible: z.boolean(),
+  url: z.string(),
+});
+
+const LayerAddedMessage = z.object({
+  type: z.literal("layer:added"),
+  layer: LayerSchema,
+});
+
+const LayerUpdatedMessage = z.object({
+  type: z.literal("layer:updated"),
+  layerId: z.string(),
+  updates: z.record(z.string(), z.unknown()),
+});
+
+const LayerRemovedMessage = z.object({
+  type: z.literal("layer:removed"),
+  layerId: z.string(),
+});
+
+const MapUpdatedMessage = z.object({
+  type: z.literal("map:updated"),
+  mapId: z.string(),
+  updates: z.record(z.string(), z.unknown()),
+});
+
 export const ServerMessageSchema = z.discriminatedUnion("type", [
   SessionStateMessage,
   SessionStatusChangedMessage,
@@ -153,6 +196,10 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   TokenUpdatedMessage,
   TokenDeletedMessage,
   TokenStateMessage,
+  LayerAddedMessage,
+  LayerUpdatedMessage,
+  LayerRemovedMessage,
+  MapUpdatedMessage,
 ]);
 
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
