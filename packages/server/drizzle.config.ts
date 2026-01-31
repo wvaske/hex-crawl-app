@@ -7,6 +7,8 @@ export default defineConfig({
     "./src/db/schema/campaign.ts",
     "./src/db/schema/invitation.ts",
     "./src/db/schema/session.ts",
+    "./src/db/schema/fog.ts",
+    "./src/db/schema/hex-data.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",

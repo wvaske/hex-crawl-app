@@ -31,6 +31,7 @@ export const sessionEventTypeEnum = pgEnum("session_event_type", [
   "player_join",
   "player_leave",
   "token_move",
+  "hex_hide",
 ]);
 
 export const sessionEvent = pgTable(
