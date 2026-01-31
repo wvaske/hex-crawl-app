@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { campaign, campaignMember, campaignHex } from "../db/schema/index.js";
+import { campaign, campaignMember, campaignHex, campaignToken } from "../db/schema/index.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AppVariables } from "../app.js";
 import { loadFogState, computeAdjacentHexes } from "../ws/fog-utils.js";
@@ -96,14 +96,32 @@ const mapRoutes = new Hono<{ Variables: AppVariables }>()
 
     const isDM = membership[0].role === "dm";
 
+    // Query tokens for this campaign
+    const tokenRows = await db
+      .select()
+      .from(campaignToken)
+      .where(eq(campaignToken.campaignId, campaignId));
+
+    const mapToken = (t: typeof tokenRows[number]) => ({
+      id: t.id,
+      hexKey: t.hexKey,
+      ownerId: t.ownerId,
+      label: t.label,
+      icon: t.icon,
+      color: t.color,
+      tokenType: t.tokenType,
+      visible: t.visible,
+    });
+
     if (isDM) {
-      // DM gets all hex data
+      // DM gets all hex data and all tokens
       return c.json({
         hexes: rows.map((r) => ({
           key: r.hexKey,
           terrain: r.terrain,
           terrainVariant: r.terrainVariant,
         })),
+        tokens: tokenRows.map(mapToken),
       });
     }
 
@@ -138,6 +156,7 @@ const mapRoutes = new Hono<{ Variables: AppVariables }>()
         const rVal = Number(parts[1]);
         return rVal + Math.floor(q / 2);
       })) + 1 : 0,
+      tokens: tokenRows.filter((t) => t.visible).map(mapToken),
     });
   });
 
