@@ -10,6 +10,7 @@ import {
   layoutTokensInHex,
   updateTokenDisplayObject,
 } from '../TokenSprite';
+import { registerTokenDisplay, unregisterTokenDisplay } from '../HexInteraction';
 
 /**
  * Compute the world-space center of a hex from axial coords.
@@ -70,6 +71,7 @@ export function TokenLayer() {
       if (!currentTokenIds.has(id)) {
         container.removeChild(display);
         display.destroy({ children: true });
+        unregisterTokenDisplay(id);
         displays.delete(id);
       }
     });
@@ -90,6 +92,7 @@ export function TokenLayer() {
           display = createTokenDisplayObject(token, hexSize);
           container.addChild(display);
           displays.set(token.id, display);
+          registerTokenDisplay(token.id, display);
         } else {
           // Update existing display object visuals
           updateTokenDisplayObject(display, token, hexSize);
