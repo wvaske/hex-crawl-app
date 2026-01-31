@@ -3,8 +3,9 @@ import { ClientMessageSchema } from "@hex-crawl/shared";
 import type { ClientMessage } from "@hex-crawl/shared";
 import { sessionManager } from "./session-manager.js";
 import type { StagedChange } from "./session-manager.js";
+import { parseHexKey } from "@hex-crawl/shared";
 import { db } from "../db/index.js";
-import { gameSession, sessionEvent, hexVisibility } from "../db/schema/index.js";
+import { gameSession, sessionEvent, hexVisibility, campaignToken } from "../db/schema/index.js";
 import { eq, and, inArray } from "drizzle-orm";
 import { buildPlayerFogPayload } from "./fog-utils.js";
 
@@ -59,6 +60,8 @@ function isDmOnly(messageType: string): boolean {
     "hex:reveal",
     "hex:hide",
     "hex:update",
+    "token:create",
+    "token:delete",
   ]);
   return dmOnlyTypes.has(messageType);
 }
@@ -132,6 +135,18 @@ export async function handleClientMessage(
       break;
     case "hex:update":
       await handleHexUpdate(campaignId, userId, message);
+      break;
+    case "token:move":
+      await handleTokenMove(campaignId, userId, role, message, ws);
+      break;
+    case "token:create":
+      await handleTokenCreate(campaignId, userId, message);
+      break;
+    case "token:update":
+      await handleTokenUpdate(campaignId, userId, role, message, ws);
+      break;
+    case "token:delete":
+      await handleTokenDelete(campaignId, message);
       break;
   }
 }
@@ -656,4 +671,207 @@ async function handleHexUpdate(
       changes: message.changes,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Token handlers
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert axial (q, r) to cube (q, r, s) where s = -q - r.
+ * Then compute cube distance = max(|dq|, |dr|, |ds|).
+ */
+function hexDistance(aKey: string, bKey: string): number {
+  const a = parseHexKey(aKey);
+  const b = parseHexKey(bKey);
+  const dq = a.q - b.q;
+  const dr = a.r - b.r;
+  const ds = -dq - dr; // since s = -q - r
+  return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds));
+}
+
+async function handleTokenMove(
+  campaignId: string,
+  userId: string,
+  role: "dm" | "player",
+  message: Extract<ClientMessage, { type: "token:move" }>,
+  ws: WSContext
+): Promise<void> {
+  // Load token from DB
+  const [token] = await db
+    .select()
+    .from(campaignToken)
+    .where(
+      and(
+        eq(campaignToken.id, message.tokenId),
+        eq(campaignToken.campaignId, campaignId)
+      )
+    )
+    .limit(1);
+
+  if (!token) {
+    sendError(ws, "Token not found");
+    return;
+  }
+
+  // Permission: players can only move their own token
+  if (role === "player" && token.ownerId !== userId) {
+    sendError(ws, "You can only move your own token");
+    return;
+  }
+
+  // Adjacency: players must move to adjacent hex only
+  if (role !== "dm") {
+    const dist = hexDistance(token.hexKey, message.toHexKey);
+    if (dist !== 1) {
+      sendError(ws, "Can only move to adjacent hexes");
+      return;
+    }
+  }
+
+  const fromHexKey = token.hexKey;
+
+  // Update token position in DB
+  await db
+    .update(campaignToken)
+    .set({ hexKey: message.toHexKey })
+    .where(eq(campaignToken.id, message.tokenId));
+
+  // Broadcast to all clients
+  sessionManager.broadcastToAll(campaignId, {
+    type: "token:moved",
+    tokenId: message.tokenId,
+    fromHexKey,
+    toHexKey: message.toHexKey,
+    movedBy: userId,
+  });
+}
+
+async function handleTokenCreate(
+  campaignId: string,
+  userId: string,
+  message: Extract<ClientMessage, { type: "token:create" }>
+): Promise<void> {
+  const id = crypto.randomUUID();
+
+  await db.insert(campaignToken).values({
+    id,
+    campaignId,
+    hexKey: message.hexKey,
+    label: message.label,
+    icon: message.icon,
+    color: message.color,
+    tokenType: message.tokenType,
+    ownerId: message.ownerId ?? null,
+    visible: true,
+    createdBy: userId,
+  });
+
+  // Broadcast full token object
+  sessionManager.broadcastToAll(campaignId, {
+    type: "token:created",
+    token: {
+      id,
+      campaignId,
+      hexKey: message.hexKey,
+      label: message.label,
+      icon: message.icon,
+      color: message.color,
+      tokenType: message.tokenType,
+      ownerId: message.ownerId ?? null,
+      visible: true,
+    },
+  });
+}
+
+async function handleTokenUpdate(
+  campaignId: string,
+  userId: string,
+  role: "dm" | "player",
+  message: Extract<ClientMessage, { type: "token:update" }>,
+  ws: WSContext
+): Promise<void> {
+  // Load token
+  const [token] = await db
+    .select()
+    .from(campaignToken)
+    .where(
+      and(
+        eq(campaignToken.id, message.tokenId),
+        eq(campaignToken.campaignId, campaignId)
+      )
+    )
+    .limit(1);
+
+  if (!token) {
+    sendError(ws, "Token not found");
+    return;
+  }
+
+  // Players can only update their own token's icon
+  if (role === "player") {
+    if (token.ownerId !== userId) {
+      sendError(ws, "You can only update your own token");
+      return;
+    }
+    // Strip all fields except icon for players
+    const playerUpdates: Record<string, unknown> = {};
+    if (message.updates.icon !== undefined) {
+      playerUpdates.icon = message.updates.icon;
+    }
+    if (Object.keys(playerUpdates).length === 0) {
+      sendError(ws, "Players can only update icon");
+      return;
+    }
+    await db
+      .update(campaignToken)
+      .set(playerUpdates)
+      .where(eq(campaignToken.id, message.tokenId));
+
+    sessionManager.broadcastToAll(campaignId, {
+      type: "token:updated",
+      tokenId: message.tokenId,
+      updates: playerUpdates as { icon?: string },
+    });
+    return;
+  }
+
+  // DM can update any field
+  const dmUpdates: Record<string, unknown> = {};
+  if (message.updates.icon !== undefined) dmUpdates.icon = message.updates.icon;
+  if (message.updates.color !== undefined) dmUpdates.color = message.updates.color;
+  if (message.updates.visible !== undefined) dmUpdates.visible = message.updates.visible;
+  if (message.updates.label !== undefined) dmUpdates.label = message.updates.label;
+
+  if (Object.keys(dmUpdates).length === 0) return;
+
+  await db
+    .update(campaignToken)
+    .set(dmUpdates)
+    .where(eq(campaignToken.id, message.tokenId));
+
+  sessionManager.broadcastToAll(campaignId, {
+    type: "token:updated",
+    tokenId: message.tokenId,
+    updates: dmUpdates as { icon?: string; color?: string; visible?: boolean; label?: string },
+  });
+}
+
+async function handleTokenDelete(
+  campaignId: string,
+  message: Extract<ClientMessage, { type: "token:delete" }>
+): Promise<void> {
+  await db
+    .delete(campaignToken)
+    .where(
+      and(
+        eq(campaignToken.id, message.tokenId),
+        eq(campaignToken.campaignId, campaignId)
+      )
+    );
+
+  sessionManager.broadcastToAll(campaignId, {
+    type: "token:deleted",
+    tokenId: message.tokenId,
+  });
 }
