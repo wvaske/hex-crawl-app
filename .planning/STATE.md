@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 3 complete. Ready for Phase 4 - Fog of War.
+**Current focus:** Phase 4 - Fog of War in progress.
 
 ## Current Position
 
-Phase: 3 of 8 (Real-Time Infrastructure) - COMPLETE
-Plan: 4 of 4 in current phase (all done)
-Status: Complete - checkpoint verified
-Last activity: 2026-01-30 - Completed 03-04-PLAN.md, all checkpoint items passed
+Phase: 4 of 8 (Fog of War)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-31 - Completed 04-01-PLAN.md
 
-Progress: [████████████░] ~48% (12 of ~25 total plans)
+Progress: [█████████████░] ~52% (13 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: 6min
-- Total execution time: ~74min
+- Total execution time: ~77min
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: [████████████░] ~48% (12 of ~25 total plans)
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
 | 02-server-authentication | 4/4 | 26min | 7min |
 | 03-real-time-infrastructure | 4/4 | ~15min | ~4min |
+| 04-fog-of-war | 1/4 | 3min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 5min, 12min, 7min, 2min
+- Last 5 plans: 5min, 12min, 7min, 2min, 3min
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -95,6 +96,7 @@ Recent decisions affecting current work:
 - [03-04]: StrictMode WS guard: server closes old socket on replacement (code 4000), skips stale onClose events
 - [03-04]: Pause overlay shown only to players so DM retains access to resume/end controls
 - [03-04]: Sign Out button offset to right-[316px] in map view to clear SidePanel
+- [04-01]: "__all__" sentinel string for hex_visibility.user_id instead of NULL (PostgreSQL NULL uniqueness issue)
 
 ### Pending Todos
 
@@ -106,7 +108,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-30
-Stopped at: Phase 3 complete, all checkpoint items verified
+Last session: 2026-01-31
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
-Next: Phase 4 - Fog of War
+Next: 04-02-PLAN.md
