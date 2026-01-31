@@ -154,13 +154,13 @@ export function FogLayer() {
   const hexesRef = useRef(hexes);
   hexesRef.current = hexes;
 
-  // Track last drawn state to avoid unnecessary redraws
+  // Track last drawn state to avoid unnecessary redraws (compare Set references, not sizes)
   const lastDrawnRef = useRef<{
-    revealedSize: number;
-    adjacentSize: number;
+    revealed: Set<string> | null;
+    adjacent: Set<string> | null;
     role: string | null;
-    hexCount: number;
-  }>({ revealedSize: -1, adjacentSize: -1, role: null, hexCount: -1 });
+    hexes: Map<string, unknown> | null;
+  }>({ revealed: null, adjacent: null, role: null, hexes: null });
 
   // Create grid for hex coordinate lookup
   useEffect(() => {
@@ -196,21 +196,21 @@ export function FogLayer() {
     const role = userRoleRef.current;
     const allHexes = hexesRef.current;
 
-    // Check if state actually changed
+    // Check if state actually changed (compare references — Zustand creates new Sets on change)
     const last = lastDrawnRef.current;
     if (
-      revealed.size === last.revealedSize &&
-      adjacent.size === last.adjacentSize &&
+      revealed === last.revealed &&
+      adjacent === last.adjacent &&
       role === last.role &&
-      allHexes.size === last.hexCount
+      allHexes === last.hexes
     ) {
       return;
     }
     lastDrawnRef.current = {
-      revealedSize: revealed.size,
-      adjacentSize: adjacent.size,
+      revealed,
+      adjacent,
       role,
-      hexCount: allHexes.size,
+      hexes: allHexes,
     };
 
     gfx.clear();
