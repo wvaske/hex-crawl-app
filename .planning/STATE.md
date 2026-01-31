@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 ## Current Position
 
 Phase: 6 of 8 (Map Image Upload)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-31 - Completed 06-02-PLAN.md
+Last activity: 2026-01-31 - Completed 06-03-PLAN.md
 
-Progress: [█████████████████████] ~84% (21 of ~25 total plans)
+Progress: [██████████████████████] ~88% (22 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 21
-- Average duration: 5min
-- Total execution time: ~91min
+- Total plans completed: 22
+- Average duration: 4min
+- Total execution time: ~95min
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [█████████████████████] ~84%
 | 05-tokens-and-movement | 4/4 | 10min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 3min, 3min, 3min, 1min
+- Last 5 plans: 3min, 3min, 3min, 1min, 4min
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -105,6 +105,9 @@ Recent decisions affecting current work:
 - [05-04]: Optimistic moves with pendingMoves guard to prevent double-drag
 - [06-02]: ImageLayer uses sortableChildren + zIndex for multi-image z-ordering
 - [06-02]: Async texture loading via Assets.load with snapshot capture to avoid stale closures
+- [06-03]: Auto-resolve mapId by listing campaign maps and creating 'Default' if none exist
+- [06-03]: AlignmentControls as absolute-positioned overlay (z-50) in MapView
+- [06-03]: Alignment mode check via getState() at top of HexInteraction pointer handlers
 
 ### Pending Todos
 
@@ -117,6 +120,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 06-01-PLAN.md
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
-Next: 06-02-PLAN.md
+Next: 06-04-PLAN.md
