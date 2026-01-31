@@ -5,3 +5,5 @@ export * from "./session";
 export * from "./fog";
 export * from "./hex-data";
 export * from "./token";
+export * from "./map";
+export * from "./map-image-layer";

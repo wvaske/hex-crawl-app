@@ -10,6 +10,8 @@ export default defineConfig({
     "./src/db/schema/fog.ts",
     "./src/db/schema/hex-data.ts",
     "./src/db/schema/token.ts",
+    "./src/db/schema/map.ts",
+    "./src/db/schema/map-image-layer.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",
