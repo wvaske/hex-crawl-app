@@ -104,11 +104,13 @@ Plans:
   3. When one player moves their token, all other connected users see the token move in real time
   4. Token positions persist across sessions -- closing and reopening the browser shows tokens where they were left
   5. A player can only move their own token, not other players' tokens
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Token DB schema, shared types, WS message definitions
+- [ ] 05-02-PLAN.md — Server-side token handlers (move validation, CRUD, broadcasting)
+- [ ] 05-03-PLAN.md — Client token store, TokenLayer rendering, token display objects
+- [ ] 05-04-PLAN.md — Token drag interaction, move animation, DM creation UI, integration
 
 ### Phase 6: Map Image Upload
 **Goal**: The DM can upload a custom map image that displays as a background layer beneath the transparent hex grid, with controls to align the grid to the image
@@ -169,7 +171,7 @@ Note: Phase 6 (Map Image Upload) depends only on Phase 1 and can execute in para
 | 2. Server & Authentication | 4/4 | Complete | 2026-01-27 |
 | 3. Real-Time Infrastructure | 4/4 | Complete | 2026-01-30 |
 | 4. Fog of War | 4/4 | Complete | 2026-01-31 |
-| 5. Tokens & Movement | 0/2 | Not started | - |
+| 5. Tokens & Movement | 0/4 | Planning complete | - |
 | 6. Map Image Upload | 0/2 | Not started | - |
 | 7. Hex Content Management | 0/3 | Not started | - |
 | 8. Skill Checks & Character Data | 0/2 | Not started | - |
