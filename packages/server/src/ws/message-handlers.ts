@@ -4,8 +4,9 @@ import type { ClientMessage } from "@hex-crawl/shared";
 import { sessionManager } from "./session-manager.js";
 import type { StagedChange } from "./session-manager.js";
 import { db } from "../db/index.js";
-import { gameSession, sessionEvent } from "../db/schema/index.js";
-import { eq } from "drizzle-orm";
+import { gameSession, sessionEvent, hexVisibility } from "../db/schema/index.js";
+import { eq, and, inArray } from "drizzle-orm";
+import { buildPlayerFogPayload } from "./fog-utils.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -56,6 +57,7 @@ function isDmOnly(messageType: string): boolean {
     "broadcast:publish",
     "staged:undo",
     "hex:reveal",
+    "hex:hide",
     "hex:update",
   ]);
   return dmOnlyTypes.has(messageType);
@@ -124,6 +126,9 @@ export async function handleClientMessage(
       break;
     case "hex:reveal":
       await handleHexReveal(campaignId, userId, message);
+      break;
+    case "hex:hide":
+      await handleHexHide(campaignId, userId, message);
       break;
     case "hex:update":
       await handleHexUpdate(campaignId, userId, message);
@@ -422,13 +427,17 @@ async function handleHexReveal(
   const room = sessionManager.getRoom(campaignId);
   if (!room) return;
 
-  // Update in-memory reveal state
   const targetPlayerIds =
     message.targets === "all"
       ? undefined
       : message.targets.playerIds;
 
-  // Track which hexes are revealed to which users
+  // Determine the DB user_id values to persist
+  const dbUserIds: string[] = targetPlayerIds
+    ? targetPlayerIds
+    : ["__all__"];
+
+  // Update in-memory reveal state
   for (const hexKey of message.hexKeys) {
     if (!room.revealedHexes.has(hexKey)) {
       room.revealedHexes.set(hexKey, new Set());
@@ -439,29 +448,61 @@ async function handleHexReveal(
         viewers.add(pid);
       }
     } else {
-      // "all" -- add all currently connected players
-      for (const client of room.connectedClients.values()) {
-        if (client.role === "player") {
-          viewers.add(client.userId);
-        }
-      }
+      viewers.add("__all__");
     }
   }
 
-  // Build terrain data (placeholder -- actual terrain data comes from client message or DB)
-  const terrain = message.hexKeys.map((key) => ({
-    key,
-    terrain: "revealed",
-  }));
+  // Persist to hex_visibility DB
+  try {
+    const rows = message.hexKeys.flatMap((hexKey) =>
+      dbUserIds.map((uid) => ({
+        campaignId,
+        hexKey,
+        userId: uid,
+        revealedBy: userId,
+      }))
+    );
+    if (rows.length > 0) {
+      await db
+        .insert(hexVisibility)
+        .values(rows)
+        .onConflictDoNothing({ target: [hexVisibility.campaignId, hexVisibility.hexKey, hexVisibility.userId] });
+    }
+  } catch (err) {
+    console.error("[WS] Failed to persist hex visibility:", err);
+  }
+
+  // Build terrain data from mapData cache
+  const terrain = message.hexKeys.map((key) => {
+    const data = room.mapData.get(key);
+    return { key, terrain: data?.terrain ?? "unknown" };
+  });
+
+  // Compute adjacent hexes for the reveal payload
+  // Gather revealed keys for target players to compute adjacency
+  const playerRevealedKeys = new Set(message.hexKeys);
+  for (const [hexKey, viewers] of room.revealedHexes) {
+    if (targetPlayerIds) {
+      for (const pid of targetPlayerIds) {
+        if (viewers.has(pid) || viewers.has("__all__")) {
+          playerRevealedKeys.add(hexKey);
+        }
+      }
+    } else {
+      playerRevealedKeys.add(hexKey);
+    }
+  }
+
+  const fogPayload = buildPlayerFogPayload(playerRevealedKeys, room.mapData);
 
   const revealPayload = {
     type: "hex:revealed" as const,
     hexKeys: message.hexKeys,
     terrain,
+    adjacentHexes: fogPayload.adjacentHexes,
   };
 
   if (room.broadcastMode === "staged") {
-    // Stage the change instead of broadcasting
     const stagedChange: StagedChange = {
       id: crypto.randomUUID(),
       description: `Reveal ${message.hexKeys.length} hex(es)`,
@@ -470,13 +511,11 @@ async function handleHexReveal(
     };
     sessionManager.addStagedChange(campaignId, stagedChange);
 
-    // Notify DM of updated staged changes
     sessionManager.broadcastToDM(campaignId, {
       type: "staged:changes",
       changes: room.stagedChanges,
     });
   } else {
-    // Immediate mode -- broadcast to target players
     sessionManager.broadcastToPlayers(
       campaignId,
       revealPayload,
@@ -487,6 +526,86 @@ async function handleHexReveal(
   // Log event
   if (room.sessionId) {
     await logSessionEvent(room.sessionId, "hex_reveal", userId, {
+      hexKeys: message.hexKeys,
+      targets: message.targets,
+    });
+  }
+}
+
+async function handleHexHide(
+  campaignId: string,
+  userId: string,
+  message: Extract<ClientMessage, { type: "hex:hide" }>
+): Promise<void> {
+  const room = sessionManager.getRoom(campaignId);
+  if (!room) return;
+
+  const targetPlayerIds =
+    message.targets === "all"
+      ? undefined
+      : message.targets.playerIds;
+
+  // Remove from in-memory state
+  for (const hexKey of message.hexKeys) {
+    const viewers = room.revealedHexes.get(hexKey);
+    if (!viewers) continue;
+
+    if (targetPlayerIds) {
+      for (const pid of targetPlayerIds) {
+        viewers.delete(pid);
+      }
+    } else {
+      viewers.clear();
+    }
+
+    if (viewers.size === 0) {
+      room.revealedHexes.delete(hexKey);
+    }
+  }
+
+  // Delete from hex_visibility DB
+  try {
+    if (targetPlayerIds) {
+      // Delete specific user visibility rows
+      for (const hexKey of message.hexKeys) {
+        await db
+          .delete(hexVisibility)
+          .where(
+            and(
+              eq(hexVisibility.campaignId, campaignId),
+              eq(hexVisibility.hexKey, hexKey),
+              inArray(hexVisibility.userId, targetPlayerIds)
+            )
+          );
+      }
+    } else {
+      // Delete all visibility rows for these hexes
+      for (const hexKey of message.hexKeys) {
+        await db
+          .delete(hexVisibility)
+          .where(
+            and(
+              eq(hexVisibility.campaignId, campaignId),
+              eq(hexVisibility.hexKey, hexKey)
+            )
+          );
+      }
+    }
+  } catch (err) {
+    console.error("[WS] Failed to delete hex visibility:", err);
+  }
+
+  // Broadcast hex:hidden to affected players
+  sessionManager.broadcastToPlayers(
+    campaignId,
+    { type: "hex:hidden", hexKeys: message.hexKeys },
+    targetPlayerIds
+  );
+
+  // Log event
+  if (room.sessionId) {
+    await logSessionEvent(room.sessionId, "hex_reveal", userId, {
+      action: "hex_hide",
       hexKeys: message.hexKeys,
       targets: message.targets,
     });

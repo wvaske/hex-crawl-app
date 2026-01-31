@@ -6,6 +6,7 @@ import { campaignMember, sessionEvent } from "../db/schema/index.js";
 import { eq, and } from "drizzle-orm";
 import { sessionManager } from "./session-manager.js";
 import { handleClientMessage } from "./message-handlers.js";
+import { loadFogState, loadMapData, buildPlayerFogPayload } from "./fog-utils.js";
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "")
   .split(",")
@@ -113,27 +114,8 @@ export function createWsRoute(
             JSON.stringify({ type: "connected", userId, role })
           );
 
-          // Send current session state
-          const room = sessionManager.getRoom(campaignId);
-          if (room) {
-            // Build revealed hexes for this user
-            const revealedHexes: string[] = [];
-            for (const [hexKey, viewers] of room.revealedHexes) {
-              if (role === "dm" || viewers.has(userId)) {
-                revealedHexes.push(hexKey);
-              }
-            }
-
-            ws.send(
-              JSON.stringify({
-                type: "session:state",
-                status: room.status,
-                broadcastMode: room.broadcastMode,
-                connectedPlayers: sessionManager.getPresenceList(campaignId),
-                revealedHexes,
-              })
-            );
-          }
+          // Send current session state with fog filtering (async, fire and forget)
+          void sendSessionState(campaignId, userId, role, ws);
 
           // Broadcast player join to all others
           sessionManager.broadcastToAll(campaignId, {
@@ -149,9 +131,10 @@ export function createWsRoute(
           });
 
           // Log player_join event if there's an active session
-          if (room?.sessionId && (room.status === "active" || room.status === "paused")) {
+          const currentRoom = sessionManager.getRoom(campaignId);
+          if (currentRoom?.sessionId && (currentRoom.status === "active" || currentRoom.status === "paused")) {
             // Fire and forget -- don't block onOpen
-            void logPlayerEvent(room.sessionId, "player_join", userId);
+            void logPlayerEvent(currentRoom.sessionId, "player_join", userId);
           }
         },
 
@@ -208,6 +191,70 @@ export function createWsRoute(
       };
     })
   );
+}
+
+// ---------------------------------------------------------------------------
+// Helper for sending fog-filtered session state on connect
+// ---------------------------------------------------------------------------
+
+async function sendSessionState(
+  campaignId: string,
+  userId: string,
+  role: "dm" | "player",
+  ws: WSContext
+): Promise<void> {
+  const room = sessionManager.getRoom(campaignId);
+  if (!room) return;
+
+  // Load fog state and map data from DB if not cached
+  if (room.revealedHexes.size === 0 && room.mapData.size === 0) {
+    try {
+      const [fogState, mapData] = await Promise.all([
+        loadFogState(campaignId),
+        loadMapData(campaignId),
+      ]);
+      for (const [hexKey, viewers] of fogState) {
+        room.revealedHexes.set(hexKey, viewers);
+      }
+      for (const [hexKey, data] of mapData) {
+        room.mapData.set(hexKey, data);
+      }
+    } catch (err) {
+      console.error("[WS] Failed to load fog/map state:", err);
+    }
+  }
+
+  if (role === "dm") {
+    const revealedHexes = Array.from(room.revealedHexes.keys());
+    ws.send(
+      JSON.stringify({
+        type: "session:state",
+        status: room.status,
+        broadcastMode: room.broadcastMode,
+        connectedPlayers: sessionManager.getPresenceList(campaignId),
+        revealedHexes,
+      })
+    );
+  } else {
+    const playerRevealedKeys = new Set<string>();
+    for (const [hexKey, viewers] of room.revealedHexes) {
+      if (viewers.has(userId) || viewers.has("__all__")) {
+        playerRevealedKeys.add(hexKey);
+      }
+    }
+
+    const fogPayload = buildPlayerFogPayload(playerRevealedKeys, room.mapData);
+    ws.send(
+      JSON.stringify({
+        type: "session:state",
+        status: room.status,
+        broadcastMode: room.broadcastMode,
+        connectedPlayers: sessionManager.getPresenceList(campaignId),
+        revealedHexes: fogPayload.revealedHexes,
+        adjacentHexes: fogPayload.adjacentHexes,
+      })
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
