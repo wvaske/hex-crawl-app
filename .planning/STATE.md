@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 5 complete. Ready for Phase 6.
+**Current focus:** Phase 6 in progress - Map Image Upload.
 
 ## Current Position
 
-Phase: 5 of 8 (Tokens and Movement)
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-01-31 - Completed 05-04-PLAN.md
+Phase: 6 of 8 (Map Image Upload)
+Plan: 2 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-31 - Completed 06-02-PLAN.md
 
-Progress: [████████████████████] ~80% (20 of ~25 total plans)
+Progress: [█████████████████████] ~84% (21 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20
+- Total plans completed: 21
 - Average duration: 5min
-- Total execution time: ~90min
+- Total execution time: ~91min
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [████████████████████] ~80% (2
 | 05-tokens-and-movement | 4/4 | 10min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 1min, 3min, 3min, 3min, 3min
+- Last 5 plans: 3min, 3min, 3min, 3min, 1min
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -103,6 +103,8 @@ Recent decisions affecting current work:
 - [05-04]: Module-level tokenDisplayMap for cross-component token display access during drag
 - [05-04]: Ticker-based animation with ease-out quad (200ms) for smooth token moves
 - [05-04]: Optimistic moves with pendingMoves guard to prevent double-drag
+- [06-02]: ImageLayer uses sortableChildren + zIndex for multi-image z-ordering
+- [06-02]: Async texture loading via Assets.load with snapshot capture to avoid stale closures
 
 ### Pending Todos
 
@@ -115,6 +117,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 05-04-PLAN.md (Phase 5 complete)
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
-Next: Phase 6
+Next: 06-03-PLAN.md
