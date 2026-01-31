@@ -136,7 +136,7 @@ export function GridLineLayer() {
       color: GRID_LINE_COLOR,
       alpha: GRID_LINE_ALPHA,
     });
-  }, [hexes]);
+  }, [hexes, gridWidth, gridHeight]);
 
   // Draw on each tick (only redraws when viewport bounds change)
   useTick(drawGridLines);

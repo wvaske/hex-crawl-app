@@ -82,7 +82,7 @@ const initialState: SessionState = {
   campaignId: null,
 };
 
-export const useSessionStore = create<SessionStore>((set) => ({
+export const useSessionStore = create<SessionStore>((set, get) => ({
   ...initialState,
 
   // Actions
@@ -112,6 +112,18 @@ export const useSessionStore = create<SessionStore>((set) => ({
           revealedHexKeys: revealed,
           adjacentHexKeys: adjacent,
         });
+        // For players: seed map store with terrain from adjacentHexes
+        if (get().userRole === 'player' && message.adjacentHexes) {
+          const mapState = useMapStore.getState();
+          const hexes = new Map(mapState.hexes);
+          for (const a of message.adjacentHexes) {
+            if (!hexes.has(a.key)) {
+              const [qStr, rStr] = a.key.split(',');
+              hexes.set(a.key, { q: Number(qStr), r: Number(rStr), terrain: a.terrain as TerrainType, terrainVariant: 0 });
+            }
+          }
+          useMapStore.setState({ hexes });
+        }
         break;
       }
 
@@ -174,8 +186,8 @@ export const useSessionStore = create<SessionStore>((set) => ({
           }
           return { revealedHexKeys: revealed, adjacentHexKeys: adjacent };
         });
-        // Add revealed terrain data to map store
-        if (message.terrain) {
+        // Add revealed terrain data to map store (players only — DM already has all terrain)
+        if (get().userRole === 'player' && message.terrain) {
           const mapState = useMapStore.getState();
           const hexes = new Map(mapState.hexes);
           for (const t of message.terrain) {
@@ -211,13 +223,15 @@ export const useSessionStore = create<SessionStore>((set) => ({
           }
           return { revealedHexKeys: revealed, adjacentHexKeys: adjacent };
         });
-        // Remove hidden hex terrain from map store (player shouldn't retain it)
-        const mapState = useMapStore.getState();
-        const hexes = new Map(mapState.hexes);
-        for (const key of message.hexKeys) {
-          hexes.delete(key);
+        // Remove hidden hex terrain from map store (players only — DM keeps all hex data)
+        if (get().userRole === 'player') {
+          const mapState = useMapStore.getState();
+          const hexes = new Map(mapState.hexes);
+          for (const key of message.hexKeys) {
+            hexes.delete(key);
+          }
+          useMapStore.setState({ hexes });
         }
-        useMapStore.setState({ hexes });
         break;
       }
 
