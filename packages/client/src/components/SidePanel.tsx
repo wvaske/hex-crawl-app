@@ -6,8 +6,10 @@ import { useMapStore } from '../stores/useMapStore';
 import { TerrainPalette } from './TerrainPalette';
 import { CreationDialog } from './CreationDialog';
 import { ImportExportDialog } from './ImportExportDialog';
+import { FogControls } from './FogControls';
+import { useSessionStore } from '../stores/useSessionStore';
 
-const TABS: { id: SidePanelTab; label: string }[] = [
+const BASE_TABS: { id: SidePanelTab; label: string }[] = [
   { id: 'info', label: 'Info' },
   { id: 'terrain', label: 'Terrain' },
   { id: 'create', label: 'Create' },
@@ -177,12 +179,18 @@ function HexInfoContent() {
 export function SidePanel() {
   const activeTab = useUIStore((s) => s.sidePanel);
   const setSidePanel = useUIStore((s) => s.setSidePanel);
+  const userRole = useSessionStore((s) => s.userRole);
+
+  // DM gets the Fog tab
+  const tabs = userRole === 'dm'
+    ? [...BASE_TABS, { id: 'fog' as SidePanelTab, label: 'Fog' }]
+    : BASE_TABS;
 
   return (
     <div className="w-[300px] h-full bg-gray-800 border-l border-gray-700 flex flex-col shrink-0">
       {/* Tab buttons */}
       <div className="flex border-b border-gray-700">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setSidePanel(tab.id)}
@@ -206,6 +214,7 @@ export function SidePanel() {
         {activeTab === 'terrain' && <TerrainPalette />}
         {activeTab === 'create' && <CreationDialog />}
         {activeTab === 'import-export' && <ImportExportDialog />}
+        {activeTab === 'fog' && <FogControls />}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type SidePanelTab = 'info' | 'terrain' | 'create' | 'import-export';
+export type SidePanelTab = 'info' | 'terrain' | 'create' | 'import-export' | 'fog';
 
 interface UIState {
   /** Currently selected hex keys */

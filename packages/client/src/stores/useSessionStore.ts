@@ -39,6 +39,9 @@ interface SessionState {
 
   /** Hex keys adjacent to revealed hexes (tier-1 fog for players) */
   adjacentHexKeys: Set<string>;
+
+  /** Current campaign ID (set when WebSocket connects) */
+  campaignId: string | null;
 }
 
 interface SessionActions {
@@ -56,6 +59,9 @@ interface SessionActions {
 
   /** Set the sendMessage function (called by useWebSocket hook) */
   setSendMessage: (fn: ((msg: ClientMessage) => void) | null) => void;
+
+  /** Set the current campaign ID */
+  setCampaignId: (id: string | null) => void;
 }
 
 export type SessionStore = SessionState & SessionActions;
@@ -71,6 +77,7 @@ const initialState: SessionState = {
   dmPreparing: false,
   revealedHexKeys: new Set(),
   adjacentHexKeys: new Set(),
+  campaignId: null,
 };
 
 export const useSessionStore = create<SessionStore>((set) => ({
@@ -195,4 +202,6 @@ export const useSessionStore = create<SessionStore>((set) => ({
   sendMessage: null,
 
   setSendMessage: (fn) => set({ sendMessage: fn }),
+
+  setCampaignId: (id) => set({ campaignId: id }),
 }));

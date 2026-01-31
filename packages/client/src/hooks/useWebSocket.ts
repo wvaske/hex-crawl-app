@@ -20,6 +20,7 @@ export function useWebSocket(campaignId: string | null) {
   const dispatchRef = useRef(useSessionStore.getState().dispatch);
   const setConnectionStatusRef = useRef(useSessionStore.getState().setConnectionStatus);
   const setSendMessageRef = useRef(useSessionStore.getState().setSendMessage);
+  const setCampaignIdRef = useRef(useSessionStore.getState().setCampaignId);
   const resetRef = useRef(useSessionStore.getState().reset);
 
   useEffect(() => {
@@ -28,6 +29,10 @@ export function useWebSocket(campaignId: string | null) {
     const dispatch = dispatchRef.current;
     const setConnectionStatus = setConnectionStatusRef.current;
     const setSendMessage = setSendMessageRef.current;
+    const setCampaignId = setCampaignIdRef.current;
+
+    // Store campaignId so hooks/components can access it
+    setCampaignId(campaignId);
 
     let cancelled = false;
     let retryCount = 0;
