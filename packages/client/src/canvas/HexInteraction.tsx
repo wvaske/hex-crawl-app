@@ -1,10 +1,12 @@
 import { useTick } from '@pixi/react';
 import { useCallback, useEffect, useRef } from 'react';
 import { Container } from 'pixi.js';
-import { hexKey } from '@hex-crawl/shared';
+import { hexKey, parseHexKey } from '@hex-crawl/shared';
 import { pixelToHex, axialToOffset, offsetToAxial } from '../hex/coordinates';
 import { useMapStore } from '../stores/useMapStore';
 import { useUIStore } from '../stores/useUIStore';
+import { useTokenStore } from '../stores/useTokenStore';
+import { useSessionStore } from '../stores/useSessionStore';
 import { getViewportRef } from './ViewportContext';
 
 /** Maximum pixel movement to still count as a "click" (not a drag) */
@@ -12,6 +14,9 @@ const CLICK_THRESHOLD = 5;
 
 /** Minimum shift+drag distance to start area selection */
 const DRAG_SELECT_THRESHOLD = 8;
+
+/** Animation duration for token move (ms) */
+const TOKEN_MOVE_DURATION = 200;
 
 /**
  * Convert a browser pointer event's coordinates to viewport screen coordinates.
@@ -41,6 +46,24 @@ function hexCenterWorld(q: number, r: number, size: number): { x: number; y: num
 }
 
 /**
+ * Get the 6 axial neighbors of a hex.
+ */
+function getNeighborKeys(hexKeyStr: string): string[] {
+  const { q, r } = parseHexKey(hexKeyStr);
+  const directions = [
+    [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
+  ];
+  return directions.map(([dq, dr]) => hexKey(q + dq!, r + dr!));
+}
+
+/**
+ * Ease-out quad: t * (2 - t)
+ */
+function easeOutQuad(t: number): number {
+  return t * (2 - t);
+}
+
+/**
  * Find all hex keys whose polygon touches the given world-space rectangle.
  * Expands rect by the hex inradius (apothem) so edge-touching hexes are included.
  */
@@ -67,6 +90,67 @@ function hexesInRect(
   return keys;
 }
 
+// ---------------------------------------------------------------------------
+// Module-level map for token display objects (set by TokenLayer-like code)
+// Token drag needs to move display objects directly during drag.
+// We store references keyed by tokenId.
+// ---------------------------------------------------------------------------
+
+const tokenDisplayMap = new Map<string, Container>();
+
+/** Register a token display object for drag interaction */
+export function registerTokenDisplay(tokenId: string, container: Container): void {
+  tokenDisplayMap.set(tokenId, container);
+}
+
+/** Unregister a token display object */
+export function unregisterTokenDisplay(tokenId: string): void {
+  tokenDisplayMap.delete(tokenId);
+}
+
+// ---------------------------------------------------------------------------
+// Pending token move animations (for remote moves and snap-back)
+// ---------------------------------------------------------------------------
+
+interface TokenAnimation {
+  tokenId: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  startTime: number;
+  duration: number;
+}
+
+const activeAnimations: TokenAnimation[] = [];
+
+/** Queue a smooth token animation */
+export function animateTokenMove(
+  tokenId: string,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  duration: number = TOKEN_MOVE_DURATION,
+): void {
+  // Remove any existing animation for this token
+  const idx = activeAnimations.findIndex((a) => a.tokenId === tokenId);
+  if (idx >= 0) activeAnimations.splice(idx, 1);
+
+  activeAnimations.push({
+    tokenId,
+    fromX,
+    fromY,
+    toX,
+    toY,
+    startTime: performance.now(),
+    duration,
+  });
+}
+
+// Tokens currently being dragged (prevent double-drag)
+const pendingMoves = new Set<string>();
+
 /**
  * Non-visual component that handles all mouse interaction with the hex canvas.
  *
@@ -75,6 +159,7 @@ function hexesInRect(
  * - Click selection: single click selects hex, shift-click toggles multi-select
  * - Click vs drag distinction: only triggers selection if pointer moved < 5px
  * - Shift+drag area selection: selects all hexes within the drag rectangle
+ * - Token drag: pointerdown hit-tests tokens, pointermove follows cursor, pointerup validates and sends WS
  *
  * Lives inside the @pixi/react tree. Accesses the viewport via module-level ref.
  * Attaches pointer event listeners to the HTML canvas element.
@@ -96,6 +181,16 @@ export function HexInteraction() {
   } | null>(null);
   const lastMoveTimeRef = useRef(0);
 
+  // Token drag state
+  const tokenDragRef = useRef<{
+    tokenId: string;
+    startHexKey: string;
+    startWorldX: number;
+    startWorldY: number;
+    originalContainerX: number;
+    originalContainerY: number;
+  } | null>(null);
+
   // Read grid dimensions for bounds checking (allows interacting with empty hexes)
   const gridWidth = useMapStore((s) => s.gridWidth);
   const gridHeight = useMapStore((s) => s.gridHeight);
@@ -114,11 +209,18 @@ export function HexInteraction() {
   /** Throttled hover update running each tick (~60fps, but only processes ~30fps) */
   const updateHover = useCallback(() => {
     const pos = pendingWorldPos.current;
-    if (!pos) return;
+    if (!pos) {
+      // Process animations even when no pending hover
+      processAnimations();
+      return;
+    }
 
     // Throttle to ~30fps (every ~33ms)
     const now = performance.now();
-    if (now - lastMoveTimeRef.current < 33) return;
+    if (now - lastMoveTimeRef.current < 33) {
+      processAnimations();
+      return;
+    }
     lastMoveTimeRef.current = now;
 
     const { q, r } = pixelToHex(pos.x, pos.y);
@@ -136,6 +238,7 @@ export function HexInteraction() {
     }
 
     pendingWorldPos.current = null;
+    processAnimations();
   }, []);
 
   useTick(updateHover);
@@ -152,6 +255,24 @@ export function HexInteraction() {
       const screen = eventToScreen(e, htmlCanvas);
       const worldPos = viewport.toWorld(screen.x, screen.y);
       pendingWorldPos.current = { x: worldPos.x, y: worldPos.y };
+
+      // Handle token drag move
+      const tokenDrag = tokenDragRef.current;
+      if (tokenDrag) {
+        const container = tokenDisplayMap.get(tokenDrag.tokenId);
+        if (container && container.parent) {
+          // Move the display object to follow cursor in world coords
+          // The container is a child of a hex-group container positioned at hex center.
+          // We need to set it in world-space by adjusting parent-relative coords.
+          const parentWorldTransform = container.parent.worldTransform;
+          // Compute local coords from world coords
+          const localX = (worldPos.x - parentWorldTransform.tx) / parentWorldTransform.a;
+          const localY = (worldPos.y - parentWorldTransform.ty) / parentWorldTransform.d;
+          container.x = localX;
+          container.y = localY;
+        }
+        return;
+      }
 
       // Track drag state
       const down = pointerDownRef.current;
@@ -186,6 +307,71 @@ export function HexInteraction() {
       const screen = eventToScreen(e, htmlCanvas);
       const worldPos = viewport.toWorld(screen.x, screen.y);
 
+      // --- Token hit-testing ---
+      const hexSize = useMapStore.getState().hexSize;
+      const tokens = useTokenStore.getState().tokens;
+      const userRole = useSessionStore.getState().userRole;
+      const userId = useSessionStore.getState().userId;
+
+      // Collect all tokens with their world positions for hit-testing
+      type TokenHit = { tokenId: string; dist: number };
+      const hits: TokenHit[] = [];
+
+      for (const [tokenId, token] of tokens) {
+        if (pendingMoves.has(tokenId)) continue; // Skip tokens mid-move
+        const { q, r } = parseHexKey(token.hexKey);
+        const center = hexCenterWorld(q, r, hexSize);
+        // TODO: account for layout offset when multiple tokens share a hex
+        const dx = worldPos.x - center.x;
+        const dy = worldPos.y - center.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const hitRadius = hexSize * 0.35; // Same as token visual radius
+        if (dist <= hitRadius) {
+          hits.push({ tokenId, dist });
+        }
+      }
+
+      // Sort by distance (closest first)
+      hits.sort((a, b) => a.dist - b.dist);
+
+      if (hits.length > 0) {
+        const hit = hits[0]!;
+        const token = tokens.get(hit.tokenId)!;
+
+        // Permission check
+        const canDrag =
+          userRole === 'dm' || (userRole === 'player' && token.ownerId === userId);
+
+        if (canDrag) {
+          // Start token drag
+          const container = tokenDisplayMap.get(hit.tokenId);
+          tokenDragRef.current = {
+            tokenId: hit.tokenId,
+            startHexKey: token.hexKey,
+            startWorldX: worldPos.x,
+            startWorldY: worldPos.y,
+            originalContainerX: container?.x ?? 0,
+            originalContainerY: container?.y ?? 0,
+          };
+
+          // Pause viewport drag to prevent panning
+          viewport.plugins.pause('drag');
+
+          // Set pointer down but skip hex selection
+          pointerDownRef.current = {
+            screenX: e.clientX,
+            screenY: e.clientY,
+            worldX: worldPos.x,
+            worldY: worldPos.y,
+            shiftKey: e.shiftKey,
+          };
+          isDraggingRef.current = false;
+          dragSelectRef.current = null;
+          return;
+        }
+        // If not permitted, fall through to normal hex interaction
+      }
+
       pointerDownRef.current = {
         screenX: e.clientX,
         screenY: e.clientY,
@@ -206,6 +392,96 @@ export function HexInteraction() {
       if (e.button !== 0) return;
 
       const down = pointerDownRef.current;
+
+      // --- Token drag release ---
+      const tokenDrag = tokenDragRef.current;
+      if (tokenDrag) {
+        const screen = eventToScreen(e, htmlCanvas);
+        const worldPos = viewport.toWorld(screen.x, screen.y);
+        const { q, r } = pixelToHex(worldPos.x, worldPos.y);
+        const targetKey = hexKey(q, r);
+
+        const hexSize = useMapStore.getState().hexSize;
+        const userRole = useSessionStore.getState().userRole;
+        const sendMessage = useSessionStore.getState().sendMessage;
+
+        const startCoord = parseHexKey(tokenDrag.startHexKey);
+        const startCenter = hexCenterWorld(startCoord.q, startCoord.r, hexSize);
+
+        // Check if same hex (no move)
+        if (targetKey === tokenDrag.startHexKey) {
+          // Snap back to original position
+          const container = tokenDisplayMap.get(tokenDrag.tokenId);
+          if (container) {
+            animateTokenMove(
+              tokenDrag.tokenId,
+              container.x,
+              container.y,
+              tokenDrag.originalContainerX,
+              tokenDrag.originalContainerY,
+            );
+          }
+        } else {
+          // Validate: players can only move to adjacent hex
+          const neighbors = getNeighborKeys(tokenDrag.startHexKey);
+          const isAdjacent = neighbors.includes(targetKey);
+          const isValid = userRole === 'dm' || isAdjacent;
+
+          if (isValid && sendMessage) {
+            // Optimistic move: animate to target hex center
+            const targetCoord = parseHexKey(targetKey);
+            const targetCenter = hexCenterWorld(targetCoord.q, targetCoord.r, hexSize);
+
+            const container = tokenDisplayMap.get(tokenDrag.tokenId);
+            if (container && container.parent) {
+              const parentWorldTransform = container.parent.worldTransform;
+              const toLocalX = (targetCenter.x - parentWorldTransform.tx) / parentWorldTransform.a;
+              const toLocalY = (targetCenter.y - parentWorldTransform.ty) / parentWorldTransform.d;
+              animateTokenMove(
+                tokenDrag.tokenId,
+                container.x,
+                container.y,
+                toLocalX,
+                toLocalY,
+              );
+            }
+
+            // Mark as pending and send move message
+            pendingMoves.add(tokenDrag.tokenId);
+            sendMessage({
+              type: 'token:move',
+              tokenId: tokenDrag.tokenId,
+              toHexKey: targetKey,
+            });
+
+            // Optimistically update store
+            useTokenStore.getState().moveToken(tokenDrag.tokenId, targetKey);
+
+            // Clear pending after a timeout (server response should clear it via token:moved)
+            setTimeout(() => pendingMoves.delete(tokenDrag.tokenId), 3000);
+          } else {
+            // Invalid move: snap back
+            const container = tokenDisplayMap.get(tokenDrag.tokenId);
+            if (container) {
+              animateTokenMove(
+                tokenDrag.tokenId,
+                container.x,
+                container.y,
+                tokenDrag.originalContainerX,
+                tokenDrag.originalContainerY,
+              );
+            }
+          }
+        }
+
+        // Resume viewport drag and clear token drag state
+        viewport.plugins.resume('drag');
+        tokenDragRef.current = null;
+        pointerDownRef.current = null;
+        isDraggingRef.current = false;
+        dragSelectRef.current = null;
+        return;
+      }
 
       // Re-enable viewport drag if we paused it
       if (down?.shiftKey) {
@@ -287,4 +563,40 @@ export function HexInteraction() {
       }}
     />
   );
+}
+
+// ---------------------------------------------------------------------------
+// Animation processor (called each tick)
+// ---------------------------------------------------------------------------
+
+function processAnimations(): void {
+  const now = performance.now();
+  const toRemove: number[] = [];
+
+  for (let i = 0; i < activeAnimations.length; i++) {
+    const anim = activeAnimations[i]!;
+    const elapsed = now - anim.startTime;
+    const t = Math.min(elapsed / anim.duration, 1);
+    const eased = easeOutQuad(t);
+
+    const container = tokenDisplayMap.get(anim.tokenId);
+    if (container) {
+      container.x = anim.fromX + (anim.toX - anim.fromX) * eased;
+      container.y = anim.fromY + (anim.toY - anim.fromY) * eased;
+    }
+
+    if (t >= 1) {
+      toRemove.push(i);
+    }
+  }
+
+  // Remove completed animations in reverse order
+  for (let i = toRemove.length - 1; i >= 0; i--) {
+    activeAnimations.splice(toRemove[i]!, 1);
+  }
+}
+
+/** Clear pending move for a token (called when server confirms) */
+export function clearPendingMove(tokenId: string): void {
+  pendingMoves.delete(tokenId);
 }

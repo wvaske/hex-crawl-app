@@ -10,6 +10,8 @@ import type {
   TerrainType,
 } from '@hex-crawl/shared';
 import { useMapStore } from './useMapStore';
+import { useTokenStore } from './useTokenStore';
+import { clearPendingMove } from '../canvas/HexInteraction';
 
 interface SessionState {
   /** WebSocket connection status */
@@ -237,6 +239,32 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
       case 'hex:updated':
         // Phase 4 will handle hex terrain updates on the map store
+        break;
+
+      case 'token:moved': {
+        const currentUserId = get().userId;
+        // Only update store for remote moves (local was already optimistically applied)
+        if (message.movedBy !== currentUserId) {
+          useTokenStore.getState().moveToken(message.tokenId, message.toHexKey);
+        }
+        clearPendingMove(message.tokenId);
+        break;
+      }
+
+      case 'token:created':
+        useTokenStore.getState().addToken(message.token);
+        break;
+
+      case 'token:updated':
+        useTokenStore.getState().updateToken(message.tokenId, message.updates);
+        break;
+
+      case 'token:deleted':
+        useTokenStore.getState().removeToken(message.tokenId);
+        break;
+
+      case 'token:state':
+        useTokenStore.getState().setTokens(message.tokens);
         break;
 
       case 'error':
