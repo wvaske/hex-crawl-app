@@ -2,6 +2,7 @@ import { SidePanel } from './SidePanel';
 import { HexMapCanvas } from '../canvas/HexMapCanvas';
 import { TerrainLayer } from '../canvas/layers/TerrainLayer';
 import { GridLineLayer } from '../canvas/layers/GridLineLayer';
+import { FogLayer } from '../canvas/layers/FogLayer';
 import { HighlightLayer } from '../canvas/layers/HighlightLayer';
 import { UIOverlayLayer } from '../canvas/layers/UIOverlayLayer';
 import { HexInteraction } from '../canvas/HexInteraction';
@@ -17,8 +18,9 @@ import { useMapStore } from '../stores/useMapStore';
  * Layer order inside the viewport:
  *   z:0 - TerrainLayer (hex terrain sprites)
  *   z:1 - GridLineLayer (hex border outlines)
- *   z:2 - HighlightLayer (hover/selection highlights)
- *   z:3 - UIOverlayLayer (coordinate text on hover)
+ *   z:2 - FogLayer (two-tier fog of war overlays)
+ *   z:3 - HighlightLayer (hover/selection highlights)
+ *   z:4 - UIOverlayLayer (coordinate text on hover)
  *   HexInteraction (non-visual, handles mouse events)
  */
 export function MapView() {
@@ -32,6 +34,7 @@ export function MapView() {
           <HexMapCanvas>
             <TerrainLayer />
             <GridLineLayer />
+            <FogLayer />
             <HighlightLayer />
             <UIOverlayLayer />
             <HexInteraction />
