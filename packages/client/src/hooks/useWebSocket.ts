@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSessionStore } from '../stores/useSessionStore';
+import { useMapStore } from '../stores/useMapStore';
 import type { ClientMessage, ServerMessage } from '@hex-crawl/shared';
 
 const INITIAL_DELAY = 1000;
@@ -73,6 +74,22 @@ export function useWebSocket(campaignId: string | null) {
         try {
           const message = JSON.parse(event.data as string) as ServerMessage;
           dispatch(message);
+
+          // After receiving session:state, fetch map data from server
+          // so both DM and players have hex data in the map store
+          if (message.type === 'session:state' && campaignId) {
+            const mapHexes = useMapStore.getState().hexes;
+            if (mapHexes.size === 0) {
+              fetch(`/api/campaigns/${campaignId}/map`, { credentials: 'include' })
+                .then((res) => res.json())
+                .then((data: { hexes?: Array<{ key: string; terrain: string; terrainVariant: number }> }) => {
+                  if (data.hexes && data.hexes.length > 0) {
+                    useMapStore.getState().loadFromServer(data.hexes);
+                  }
+                })
+                .catch((err) => console.warn('[WS] Failed to fetch map data:', err));
+            }
+          }
         } catch {
           console.warn('[WS] Failed to parse message:', event.data);
         }

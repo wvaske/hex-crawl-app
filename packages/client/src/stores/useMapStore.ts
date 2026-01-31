@@ -30,6 +30,8 @@ interface MapActions {
   removeHexes: (keys: string[]) => void;
   /** Clear all map data */
   clearMap: () => void;
+  /** Load hex data fetched from the server API */
+  loadFromServer: (hexes: Array<{ key: string; terrain: string; terrainVariant: number }>) => void;
 }
 
 export type MapStore = MapState & MapActions;
@@ -98,4 +100,33 @@ export const useMapStore = create<MapStore>((set) => ({
       gridWidth: 15,
       gridHeight: 15,
     }),
+
+  loadFromServer: (serverHexes) => {
+    const hexes = new Map<string, HexData>();
+    let minQ = Infinity, maxQ = -Infinity, minR = Infinity, maxR = -Infinity;
+    for (const h of serverHexes) {
+      const [qStr, rStr] = h.key.split(',');
+      const q = Number(qStr);
+      const r = Number(rStr);
+      hexes.set(h.key, {
+        q,
+        r,
+        terrain: h.terrain as TerrainType,
+        terrainVariant: h.terrainVariant,
+      });
+      if (q < minQ) minQ = q;
+      if (q > maxQ) maxQ = q;
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
+    }
+    if (hexes.size === 0) return;
+    const gridWidth = maxQ - minQ + 1;
+    const gridHeight = maxR - minR + 1;
+    set({
+      hexes,
+      mapName: 'Server Map',
+      gridWidth: Math.max(gridWidth, 1),
+      gridHeight: Math.max(gridHeight, 1),
+    });
+  },
 }));
