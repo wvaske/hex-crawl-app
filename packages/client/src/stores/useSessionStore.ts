@@ -11,6 +11,7 @@ import type {
 } from '@hex-crawl/shared';
 import { useMapStore } from './useMapStore';
 import { useTokenStore } from './useTokenStore';
+import { useImageLayerStore } from './useImageLayerStore';
 import { clearPendingMove } from '../canvas/HexInteraction';
 
 interface SessionState {
@@ -265,6 +266,22 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
       case 'token:state':
         useTokenStore.getState().setTokens(message.tokens);
+        break;
+
+      case 'layer:added':
+        useImageLayerStore.getState().addLayer(message.layer);
+        break;
+
+      case 'layer:updated':
+        useImageLayerStore.getState().updateLayer(message.layerId, message.updates as Record<string, unknown>);
+        break;
+
+      case 'layer:removed':
+        useImageLayerStore.getState().removeLayer(message.layerId);
+        break;
+
+      case 'map:updated':
+        useImageLayerStore.getState().setGridSettings(message.updates as Record<string, unknown>);
         break;
 
       case 'error':

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useSessionStore } from '../stores/useSessionStore';
 import { useMapStore } from '../stores/useMapStore';
 import { useTokenStore } from '../stores/useTokenStore';
+import { useImageLayerStore } from '../stores/useImageLayerStore';
 import type { ClientMessage, ServerMessage, Token } from '@hex-crawl/shared';
 
 const INITIAL_DELAY = 1000;
@@ -92,6 +93,40 @@ export function useWebSocket(campaignId: string | null) {
                   }
                 })
                 .catch((err) => console.warn('[WS] Failed to fetch map data:', err));
+            }
+
+            // Fetch campaign maps and image layers
+            const layerStore = useImageLayerStore.getState();
+            if (!layerStore.currentMapId) {
+              fetch(`/api/campaigns/${campaignId}/maps`, { credentials: 'include' })
+                .then((res) => res.json())
+                .then((data: { maps: Array<{ id: string; gridLineColor: string; gridLineThickness: number; gridLineOpacity: number; terrainOverlayEnabled: boolean; terrainOverlayOpacity: number; gridOffsetX: number; gridOffsetY: number; hexSizeX: number; hexSizeY: number }> }) => {
+                  if (data.maps && data.maps.length > 0) {
+                    const map = data.maps[0]!;
+                    useImageLayerStore.getState().setCurrentMapId(map.id);
+                    useImageLayerStore.getState().setGridSettings({
+                      gridLineColor: map.gridLineColor,
+                      gridLineThickness: map.gridLineThickness,
+                      gridLineOpacity: map.gridLineOpacity,
+                      terrainOverlayEnabled: map.terrainOverlayEnabled,
+                      terrainOverlayOpacity: map.terrainOverlayOpacity,
+                      gridOffsetX: map.gridOffsetX,
+                      gridOffsetY: map.gridOffsetY,
+                      hexSizeX: map.hexSizeX,
+                      hexSizeY: map.hexSizeY,
+                    });
+                    // Fetch image layers for the first map
+                    fetch(`/api/campaigns/${campaignId}/maps/${map.id}/images`, { credentials: 'include' })
+                      .then((res) => res.json())
+                      .then((layerData: { layers: Array<Record<string, unknown>> }) => {
+                        if (layerData.layers) {
+                          useImageLayerStore.getState().setLayers(layerData.layers as never);
+                        }
+                      })
+                      .catch((err) => console.warn('[WS] Failed to fetch image layers:', err));
+                  }
+                })
+                .catch((err) => console.warn('[WS] Failed to fetch maps:', err));
             }
           }
         } catch {

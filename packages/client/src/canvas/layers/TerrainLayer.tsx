@@ -2,6 +2,7 @@ import { useTick } from '@pixi/react';
 import { Container, Sprite } from 'pixi.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { useMapStore } from '../../stores/useMapStore';
+import { useImageLayerStore } from '../../stores/useImageLayerStore';
 import { getTerrainTexture, areTexturesReady } from '../../hex/textures';
 import { createGrid, GameHex } from '../../hex/grid';
 import type { TerrainType } from '@hex-crawl/shared';
@@ -27,6 +28,9 @@ export function TerrainLayer() {
   const hexes = useMapStore((s) => s.hexes);
   const gridWidth = useMapStore((s) => s.gridWidth);
   const gridHeight = useMapStore((s) => s.gridHeight);
+  const terrainOverlayEnabled = useImageLayerStore((s) => s.gridSettings.terrainOverlayEnabled);
+  const terrainOverlayOpacity = useImageLayerStore((s) => s.gridSettings.terrainOverlayOpacity);
+  const hasImageLayers = useImageLayerStore((s) => s.layers.length > 0);
 
   // Create the honeycomb-grid once when dimensions change (Anti-Pattern: don't recreate per render)
   useEffect(() => {
@@ -67,6 +71,13 @@ export function TerrainLayer() {
       sprite.position.set(hex.x - hex.width / 2, hex.y - hex.height / 2);
       sprite.anchor.set(0, 0);
 
+      // Apply terrain overlay alpha when image layers exist
+      const hasImages = useImageLayerStore.getState().layers.length > 0;
+      const overlaySettings = useImageLayerStore.getState().gridSettings;
+      sprite.alpha = hasImages
+        ? (overlaySettings.terrainOverlayEnabled ? overlaySettings.terrainOverlayOpacity : 0)
+        : 1;
+
       // Start invisible; viewport culling will show visible ones
       sprite.visible = false;
 
@@ -77,6 +88,19 @@ export function TerrainLayer() {
     // Force an initial culling pass
     lastBoundsRef.current = { left: -1, right: -1, top: -1, bottom: -1 };
   }, [hexes, gridWidth, gridHeight]);
+
+  // Update sprite alpha when terrain overlay settings change
+  useEffect(() => {
+    const sprites = spritesRef.current;
+    // When there are image layers, terrain is overlay-controlled
+    // When no image layers, terrain renders at full opacity (normal mode)
+    const alpha = hasImageLayers
+      ? (terrainOverlayEnabled ? terrainOverlayOpacity : 0)
+      : 1;
+    sprites.forEach((sprite) => {
+      sprite.alpha = alpha;
+    });
+  }, [terrainOverlayEnabled, terrainOverlayOpacity, hasImageLayers, hexes]);
 
   // Viewport culling callback: show/hide sprites based on viewport bounds
   const cullSprites = useCallback(() => {

@@ -2,12 +2,16 @@ import { useTick } from '@pixi/react';
 import { Container, Graphics } from 'pixi.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { useMapStore } from '../../stores/useMapStore';
+import { useImageLayerStore } from '../../stores/useImageLayerStore';
 import { createGrid, GameHex } from '../../hex/grid';
 
-/** Line style for grid borders: thin, semi-transparent white */
-const GRID_LINE_COLOR = 0xffffff;
-const GRID_LINE_ALPHA = 0.18;
-const GRID_LINE_WIDTH = 1;
+/** Convert CSS hex color (#rrggbb) to numeric color value */
+function cssColorToNumber(color: string): number {
+  if (color.startsWith('#')) {
+    return parseInt(color.slice(1), 16);
+  }
+  return 0xffffff;
+}
 
 /**
  * Renders hex border outlines over the terrain layer.
@@ -28,6 +32,8 @@ export function GridLineLayer() {
   const hexes = useMapStore((s) => s.hexes);
   const gridWidth = useMapStore((s) => s.gridWidth);
   const gridHeight = useMapStore((s) => s.gridHeight);
+  const gridSettings = useImageLayerStore((s) => s.gridSettings);
+  const hasImageLayers = useImageLayerStore((s) => s.layers.length > 0);
 
   // Create grid once when dimensions change
   useEffect(() => {
@@ -37,6 +43,11 @@ export function GridLineLayer() {
       lastBoundsRef.current = { left: -1, right: -1, top: -1, bottom: -1 };
     }
   }, [gridWidth, gridHeight]);
+
+  // Force redraw when grid settings change
+  useEffect(() => {
+    lastBoundsRef.current = { left: -1, right: -1, top: -1, bottom: -1 };
+  }, [gridSettings]);
 
   // Create and attach the Graphics object imperatively
   useEffect(() => {
@@ -131,12 +142,20 @@ export function GridLineLayer() {
       gfx.lineTo(first.x, first.y);
     });
 
+    // Use configured grid style; when image layers exist, default to higher opacity wireframe
+    const settings = useImageLayerStore.getState().gridSettings;
+    const lineColor = cssColorToNumber(settings.gridLineColor);
+    const lineAlpha = hasImageLayers
+      ? settings.gridLineOpacity
+      : settings.gridLineOpacity;
+    const lineWidth = settings.gridLineThickness;
+
     gfx.stroke({
-      width: GRID_LINE_WIDTH,
-      color: GRID_LINE_COLOR,
-      alpha: GRID_LINE_ALPHA,
+      width: lineWidth,
+      color: lineColor,
+      alpha: lineAlpha,
     });
-  }, [hexes, gridWidth, gridHeight]);
+  }, [hexes, gridWidth, gridHeight, hasImageLayers]);
 
   // Draw on each tick (only redraws when viewport bounds change)
   useTick(drawGridLines);

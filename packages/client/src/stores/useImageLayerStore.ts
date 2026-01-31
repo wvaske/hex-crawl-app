@@ -17,6 +17,30 @@ export interface ImageLayerData {
   url: string;
 }
 
+export interface GridSettings {
+  gridLineColor: string;
+  gridLineThickness: number;
+  gridLineOpacity: number;
+  terrainOverlayEnabled: boolean;
+  terrainOverlayOpacity: number;
+  gridOffsetX: number;
+  gridOffsetY: number;
+  hexSizeX: number;
+  hexSizeY: number;
+}
+
+export const DEFAULT_GRID_SETTINGS: GridSettings = {
+  gridLineColor: '#ffffff',
+  gridLineThickness: 1,
+  gridLineOpacity: 0.4,
+  terrainOverlayEnabled: false,
+  terrainOverlayOpacity: 0.3,
+  gridOffsetX: 0,
+  gridOffsetY: 0,
+  hexSizeX: 40,
+  hexSizeY: 40,
+};
+
 interface ImageLayerState {
   /** All image layers sorted by sortOrder */
   layers: ImageLayerData[];
@@ -24,6 +48,10 @@ interface ImageLayerState {
   alignmentMode: boolean;
   /** ID of layer currently being aligned */
   aligningLayerId: string | null;
+  /** Current map's grid/overlay settings */
+  gridSettings: GridSettings;
+  /** Current map ID */
+  currentMapId: string | null;
 }
 
 interface ImageLayerActions {
@@ -41,6 +69,10 @@ interface ImageLayerActions {
   exitAlignmentMode: () => void;
   /** Reorder layers based on new ID ordering */
   reorderLayers: (orderedIds: string[]) => void;
+  /** Update grid settings (from WS map:updated or REST fetch) */
+  setGridSettings: (settings: Partial<GridSettings>) => void;
+  /** Set the current map ID */
+  setCurrentMapId: (mapId: string | null) => void;
 }
 
 export type ImageLayerStore = ImageLayerState & ImageLayerActions;
@@ -53,6 +85,8 @@ export const useImageLayerStore = create<ImageLayerStore>((set) => ({
   layers: [],
   alignmentMode: false,
   aligningLayerId: null,
+  gridSettings: { ...DEFAULT_GRID_SETTINGS },
+  currentMapId: null,
 
   setLayers: (layers) => set({ layers: sortByOrder(layers) }),
 
@@ -91,4 +125,11 @@ export const useImageLayerStore = create<ImageLayerStore>((set) => ({
       }
       return { layers: reordered };
     }),
+
+  setGridSettings: (settings) =>
+    set((state) => ({
+      gridSettings: { ...state.gridSettings, ...settings },
+    })),
+
+  setCurrentMapId: (mapId) => set({ currentMapId: mapId }),
 }));

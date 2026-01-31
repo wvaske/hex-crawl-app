@@ -5,8 +5,32 @@ import { campaignMap, mapImageLayer, campaignMember } from "../db/schema/index.j
 import { requireAuth } from "../middleware/auth.js";
 import type { AppVariables } from "../app.js";
 import { LocalStorageBackend } from "../storage/local.js";
+import { sessionManager } from "../ws/session-manager.js";
 
 const storage = new LocalStorageBackend("./uploads", "/uploads");
+
+/** Broadcast a layer event to all clients in the campaign room, filtering playerVisible for non-DM */
+function broadcastLayerEvent(
+  campaignId: string,
+  type: "layer:added" | "layer:updated" | "layer:removed",
+  payload: Record<string, unknown>,
+  playerVisible?: boolean,
+) {
+  // For layer:added, only send to players if playerVisible is true
+  if (type === "layer:added" && playerVisible === false) {
+    sessionManager.broadcastToDM(campaignId, { type, ...payload } as never);
+  } else {
+    sessionManager.broadcastToAll(campaignId, { type, ...payload } as never);
+  }
+}
+
+function broadcastMapUpdated(campaignId: string, mapId: string, updates: Record<string, unknown>) {
+  sessionManager.broadcastToAll(campaignId, {
+    type: "map:updated",
+    mapId,
+    updates,
+  } as never);
+}
 
 const ALLOWED_EXTENSIONS = new Set(["png", "jpg", "jpeg"]);
 
@@ -130,6 +154,7 @@ const mapImages = new Hono<{ Variables: AppVariables }>()
       .returning();
 
     if (!row) return c.json({ error: "Not found" }, 404);
+    broadcastMapUpdated(campaignId, mapId, updates);
     return c.json(row);
   })
 
@@ -178,7 +203,9 @@ const mapImages = new Hono<{ Variables: AppVariables }>()
       })
       .returning();
 
-    return c.json({ ...layer, url: storage.getUrl(storageKey) }, 201);
+    const layerWithUrl = { ...layer, url: storage.getUrl(storageKey) };
+    broadcastLayerEvent(campaignId, "layer:added", { layer: layerWithUrl }, layer.playerVisible);
+    return c.json(layerWithUrl, 201);
   })
 
   // List image layers for map
@@ -235,6 +262,7 @@ const mapImages = new Hono<{ Variables: AppVariables }>()
       .returning();
 
     if (!row) return c.json({ error: "Not found" }, 404);
+    broadcastLayerEvent(campaignId, "layer:updated", { layerId, updates: { ...updates, url: storage.getUrl(row.storageKey) } }, row.playerVisible);
     return c.json({ ...row, url: storage.getUrl(row.storageKey) });
   })
 
@@ -254,6 +282,7 @@ const mapImages = new Hono<{ Variables: AppVariables }>()
     if (!row) return c.json({ error: "Not found" }, 404);
 
     await storage.delete(row.storageKey);
+    broadcastLayerEvent(campaignId, "layer:removed", { layerId });
     return c.body(null, 204);
   });
 
