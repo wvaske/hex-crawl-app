@@ -18,11 +18,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Fog of War
 
-- [ ] **FOG-01**: DM can reveal or hide individual hexes for players
-- [ ] **FOG-02**: Players see an opaque overlay on unrevealed hexes (no content or terrain detail visible)
-- [ ] **FOG-03**: When DM reveals a hex, all connected players see it update in real time
-- [ ] **FOG-04**: Fog state persists across sessions (previously revealed hexes stay revealed)
-- [ ] **FOG-05**: Server never sends unrevealed hex content to player clients
+- [x] **FOG-01**: DM can reveal or hide individual hexes for players
+- [x] **FOG-02**: Players see an opaque overlay on unrevealed hexes (no content or terrain detail visible)
+- [x] **FOG-03**: When DM reveals a hex, all connected players see it update in real time
+- [x] **FOG-04**: Fog state persists across sessions (previously revealed hexes stay revealed)
+- [x] **FOG-05**: Server never sends unrevealed hex content to player clients
 
 ### Hex Content
 
@@ -122,11 +122,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MAP-04 | Phase 6 | Pending |
 | MAP-05 | Phase 1 | Pending |
 | MAP-06 | Phase 1 | Pending |
-| FOG-01 | Phase 4 | Pending |
-| FOG-02 | Phase 4 | Pending |
-| FOG-03 | Phase 4 | Pending |
-| FOG-04 | Phase 4 | Pending |
-| FOG-05 | Phase 4 | Pending |
+| FOG-01 | Phase 4 | Complete |
+| FOG-02 | Phase 4 | Complete |
+| FOG-03 | Phase 4 | Complete |
+| FOG-04 | Phase 4 | Complete |
+| FOG-05 | Phase 4 | Complete |
 | HEX-01 | Phase 7 | Pending |
 | HEX-02 | Phase 7 | Pending |
 | HEX-03 | Phase 7 | Pending |
