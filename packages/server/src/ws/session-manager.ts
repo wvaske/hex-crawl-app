@@ -27,6 +27,8 @@ export interface SessionRoom {
   connectedClients: Map<string, ConnectedClient>;
   /** hexKey -> Set of userIds who can see that hex */
   revealedHexes: Map<string, Set<string>>;
+  /** hexKey -> terrain data, loaded from campaign_hex */
+  mapData: Map<string, { terrain: string; terrainVariant: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,6 +52,7 @@ export class SessionManager {
         stagedChanges: [],
         connectedClients: new Map(),
         revealedHexes: new Map(),
+        mapData: new Map(),
       };
       this.rooms.set(campaignId, room);
     }
