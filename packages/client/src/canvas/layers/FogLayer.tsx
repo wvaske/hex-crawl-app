@@ -14,9 +14,13 @@ const TIER2_ALPHA = 0.95;
 const TIER1_FILL = 0x2a2a3e;
 const TIER1_ALPHA = 0.55;
 
-/** DM tint: subtle red indicator on unrevealed hexes */
-const DM_TINT_FILL = 0xff4444;
-const DM_TINT_ALPHA = 0.08;
+/** DM tint on unrevealed hexes: semi-transparent dark overlay so DM can tell what's hidden */
+const DM_UNREVEALED_FILL = 0x1a1a2e;
+const DM_UNREVEALED_ALPHA = 0.35;
+
+/** DM indicator on revealed hexes: green border-like highlight so DM sees what players can see */
+const DM_REVEALED_FILL = 0x44ff88;
+const DM_REVEALED_ALPHA = 0.12;
 
 /**
  * Draw a filled hex polygon on a Graphics object.
@@ -188,9 +192,11 @@ export function FogLayer() {
       }
 
       if (role === 'dm') {
-        // DM: subtle tint on unrevealed hexes
-        if (!revealed.has(key)) {
-          drawHexFog(gfx, hex, DM_TINT_FILL, DM_TINT_ALPHA);
+        // DM: dim overlay on unrevealed, green tint on revealed
+        if (revealed.has(key)) {
+          drawHexFog(gfx, hex, DM_REVEALED_FILL, DM_REVEALED_ALPHA);
+        } else {
+          drawHexFog(gfx, hex, DM_UNREVEALED_FILL, DM_UNREVEALED_ALPHA);
         }
       } else {
         // Player (or null role): two-tier fog
