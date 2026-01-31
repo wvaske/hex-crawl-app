@@ -43,17 +43,13 @@ function drawHexFog(
 }
 
 /**
- * Draw diagonal slash lines clipped to a hex polygon.
- * Uses the hex bounding box to generate slash lines, then clips each
- * line segment to the hex polygon using the corners as a convex clip region.
+ * Accumulate diagonal slash line segments clipped to a hex polygon.
+ * Adds clipped segments to the provided array for batched stroke() later.
  */
-function drawHexHatch(
-  gfx: Graphics,
+function collectHexHatchSegments(
   hex: GameHex,
-  color: number,
-  alpha: number,
   spacing: number,
-  lineWidth: number,
+  segments: Array<{ x1: number; y1: number; x2: number; y2: number }>,
 ): void {
   const corners = hex.corners;
   if (corners.length < 6) return;
@@ -77,16 +73,12 @@ function drawHexHatch(
 
   // Generate diagonal lines (bottom-left to top-right, slope = 1)
   const totalSpan = (maxX - minX) + (maxY - minY);
-  gfx.setStrokeStyle({ width: lineWidth, color, alpha });
 
   for (let offset = 0; offset <= totalSpan; offset += spacing) {
-    // Line: y = x - (minX + offset - maxY), i.e. from bottom-left sweeping to top-right
-    // Parametric: start at (minX - 1, minX - 1 - (minX + offset - maxY)) to (maxX+1, ...)
-    // Simpler: line goes from (minX, maxY - offset) to (minX + totalSpan, maxY - offset + totalSpan)
-    let lx1 = minX - 1;
-    let ly1 = maxY - offset;
-    let lx2 = maxX + 1;
-    let ly2 = ly1 + (lx2 - lx1); // slope = 1
+    const lx1 = minX - 1;
+    const ly1 = maxY - offset;
+    const lx2 = maxX + 1;
+    const ly2 = ly1 + (lx2 - lx1); // slope = 1
 
     // Clip line to convex hex polygon using Cyrus-Beck
     let tMin = 0, tMax = 1;
@@ -95,14 +87,12 @@ function drawHexHatch(
     let clipped = true;
 
     for (const e of edges) {
-      // Edge normal (inward for CW polygon)
       const nx = -(e.y2 - e.y1);
       const ny = e.x2 - e.x1;
       const denom = nx * dx + ny * dy;
       const num = nx * (lx1 - e.x1) + ny * (ly1 - e.y1);
 
       if (Math.abs(denom) < 1e-10) {
-        // Parallel — outside if num > 0
         if (num > 0) { clipped = false; break; }
       } else {
         const t = -num / denom;
@@ -116,13 +106,12 @@ function drawHexHatch(
     }
 
     if (clipped && tMin <= tMax) {
-      const cx1 = lx1 + tMin * dx;
-      const cy1 = ly1 + tMin * dy;
-      const cx2 = lx1 + tMax * dx;
-      const cy2 = ly1 + tMax * dy;
-      gfx.moveTo(cx1, cy1);
-      gfx.lineTo(cx2, cy2);
-      gfx.stroke();
+      segments.push({
+        x1: lx1 + tMin * dx,
+        y1: ly1 + tMin * dy,
+        x2: lx1 + tMax * dx,
+        y2: ly1 + tMax * dy,
+      });
     }
   }
 }
@@ -254,6 +243,9 @@ export function FogLayer() {
       visBottom = viewport.bottom + pad;
     }
 
+    // Collect hatch segments for DM (batched stroke at end)
+    const hatchSegments: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+
     // Iterate all hex keys from the map store
     for (const key of allHexes.keys()) {
       const coord = parseHexKey(key);
@@ -277,7 +269,7 @@ export function FogLayer() {
       if (role === 'dm') {
         // DM: diagonal slash pattern on unrevealed hexes, clear on revealed
         if (!revealed.has(key)) {
-          drawHexHatch(gfx, hex, DM_HATCH_COLOR, DM_HATCH_ALPHA, DM_HATCH_SPACING, DM_HATCH_WIDTH);
+          collectHexHatchSegments(hex, DM_HATCH_SPACING, hatchSegments);
         }
       } else {
         // Player (or null role): two-tier fog
@@ -292,6 +284,15 @@ export function FogLayer() {
           drawHexFog(gfx, hex, TIER2_FILL, TIER2_ALPHA);
         }
       }
+    }
+
+    // Batch stroke all DM hatch lines in one call
+    if (hatchSegments.length > 0) {
+      for (const seg of hatchSegments) {
+        gfx.moveTo(seg.x1, seg.y1);
+        gfx.lineTo(seg.x2, seg.y2);
+      }
+      gfx.stroke({ width: DM_HATCH_WIDTH, color: DM_HATCH_COLOR, alpha: DM_HATCH_ALPHA });
     }
   }, []);
 
