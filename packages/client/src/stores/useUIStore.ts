@@ -2,6 +2,13 @@ import { create } from 'zustand';
 
 export type SidePanelTab = 'info' | 'terrain' | 'create' | 'import-export' | 'fog';
 
+export interface DragRect {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
 interface UIState {
   /** Currently selected hex keys */
   selectedHexes: Set<string>;
@@ -11,6 +18,8 @@ interface UIState {
   sidePanel: SidePanelTab;
   /** Whether the map creation dialog is showing */
   showCreationDialog: boolean;
+  /** Current shift+drag selection rectangle in world coords (null when not dragging) */
+  dragRect: DragRect | null;
 }
 
 interface UIActions {
@@ -26,6 +35,8 @@ interface UIActions {
   setSidePanel: (panel: SidePanelTab) => void;
   /** Show or hide the creation dialog */
   setShowCreationDialog: (show: boolean) => void;
+  /** Set the drag selection rectangle (world coords) */
+  setDragRect: (rect: DragRect | null) => void;
 }
 
 export type UIStore = UIState & UIActions;
@@ -36,6 +47,7 @@ export const useUIStore = create<UIStore>((set) => ({
   hoveredHex: null,
   sidePanel: 'info',
   showCreationDialog: false,
+  dragRect: null,
 
   // Actions
   selectHex: (key) =>
@@ -63,4 +75,7 @@ export const useUIStore = create<UIStore>((set) => ({
 
   setShowCreationDialog: (show) =>
     set({ showCreationDialog: show }),
+
+  setDragRect: (rect) =>
+    set({ dragRect: rect }),
 }));

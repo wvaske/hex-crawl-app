@@ -41,6 +41,33 @@ function hexCenterWorld(q: number, r: number, size: number): { x: number; y: num
 }
 
 /**
+ * Find all hex keys whose polygon touches the given world-space rectangle.
+ * Expands rect by the hex inradius (apothem) so edge-touching hexes are included.
+ */
+function hexesInRect(
+  minX: number, maxX: number, minY: number, maxY: number,
+  grid: { w: number; h: number },
+): string[] {
+  const hexSize = useMapStore.getState().hexSize;
+  // Expand by circumradius (full hex size) so any hex whose polygon touches the rect is included
+  const eMinX = minX - hexSize;
+  const eMaxX = maxX + hexSize;
+  const eMinY = minY - hexSize;
+  const eMaxY = maxY + hexSize;
+  const keys: string[] = [];
+  for (let col = 0; col < grid.w; col++) {
+    for (let row = 0; row < grid.h; row++) {
+      const { q, r } = offsetToAxial(col, row);
+      const center = hexCenterWorld(q, r, hexSize);
+      if (center.x >= eMinX && center.x <= eMaxX && center.y >= eMinY && center.y <= eMaxY) {
+        keys.push(hexKey(q, r));
+      }
+    }
+  }
+  return keys;
+}
+
+/**
  * Non-visual component that handles all mouse interaction with the hex canvas.
  *
  * Responsibilities:
@@ -140,6 +167,13 @@ export function HexInteraction() {
           startWorldX: down.worldX,
           startWorldY: down.worldY,
         };
+        // Update live drag rectangle for preview
+        useUIStore.getState().setDragRect({
+          minX: Math.min(down.worldX, worldPos.x),
+          maxX: Math.max(down.worldX, worldPos.x),
+          minY: Math.min(down.worldY, worldPos.y),
+          maxY: Math.max(down.worldY, worldPos.y),
+        });
       } else if (!down.shiftKey && dist > CLICK_THRESHOLD) {
         isDraggingRef.current = true;
       }
@@ -195,35 +229,15 @@ export function HexInteraction() {
         const minY = Math.min(dragSelectRef.current.startWorldY, endWorld.y);
         const maxY = Math.max(dragSelectRef.current.startWorldY, endWorld.y);
 
-        const hexSize = useMapStore.getState().hexSize;
-        const { w: gw, h: gh } = gridRef.current;
-        const keysToSelect: string[] = [];
+        const keysToSelect = hexesInRect(minX, maxX, minY, maxY, gridRef.current);
 
-        // Iterate offset grid positions, convert to axial for world-position math
-        for (let col = 0; col < gw; col++) {
-          for (let row = 0; row < gh; row++) {
-            const { q, r } = offsetToAxial(col, row);
-            const center = hexCenterWorld(q, r, hexSize);
-            if (
-              center.x >= minX &&
-              center.x <= maxX &&
-              center.y >= minY &&
-              center.y <= maxY
-            ) {
-              keysToSelect.push(hexKey(q, r));
-            }
-          }
-        }
-
-        // Add all found hexes to selection
-        const store = useUIStore.getState();
+        // Replace selection with newly selected hexes
+        useUIStore.getState().clearSelection();
         for (const key of keysToSelect) {
-          if (!store.selectedHexes.has(key)) {
-            store.toggleSelectHex(key);
-            // Re-read store since toggleSelectHex creates new Set
-          }
+          useUIStore.getState().toggleSelectHex(key);
         }
 
+        useUIStore.getState().setDragRect(null);
         pointerDownRef.current = null;
         isDraggingRef.current = false;
         dragSelectRef.current = null;
@@ -248,6 +262,7 @@ export function HexInteraction() {
         }
       }
 
+      useUIStore.getState().setDragRect(null);
       pointerDownRef.current = null;
       isDraggingRef.current = false;
       dragSelectRef.current = null;
