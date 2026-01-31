@@ -120,11 +120,13 @@ Plans:
   1. DM can upload a map image file (PNG/JPG) that appears as the background of the hex map
   2. The hex grid renders as a transparent overlay on top of the uploaded map image
   3. DM has alignment controls to adjust how the hex grid sits on top of the image (offset, scale)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md — DB schema, storage abstraction, upload routes, WS message types
+- [ ] 06-02-PLAN.md — Client ImageLayer rendering, Zustand store, Vite proxy
+- [ ] 06-03-PLAN.md — ImageLayerPanel UI, AlignmentControls, alignment mode integration
+- [ ] 06-04-PLAN.md — WS layer sync, configurable grid rendering, terrain overlay, end-to-end verification
 
 ### Phase 7: Hex Content Management
 **Goal**: The DM can attach structured content (encounters, lore, dungeons, towns, points of interest) to any hex, edit it at any time, control what players see, and nearby hexes show proximity effects from content with influence radius
@@ -172,6 +174,6 @@ Note: Phase 6 (Map Image Upload) depends only on Phase 1 and can execute in para
 | 3. Real-Time Infrastructure | 4/4 | Complete | 2026-01-30 |
 | 4. Fog of War | 4/4 | Complete | 2026-01-31 |
 | 5. Tokens & Movement | 4/4 | Complete | 2026-01-31 |
-| 6. Map Image Upload | 0/2 | Not started | - |
+| 6. Map Image Upload | 0/4 | Planning complete | - |
 | 7. Hex Content Management | 0/3 | Not started | - |
 | 8. Skill Checks & Character Data | 0/2 | Not started | - |
