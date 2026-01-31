@@ -86,12 +86,13 @@ Plans:
   3. When the DM reveals a hex, all connected players see the fog lift on that hex within one second
   4. Fog state persists across sessions -- previously revealed hexes remain revealed after browser close/reopen
   5. Server never sends unrevealed hex content to player clients (verified by inspecting network traffic in DevTools)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
-- [ ] 04-03: TBD
+- [ ] 04-01-PLAN.md — DB schemas (hex_visibility, campaign_hex), WS message extensions, map REST endpoints
+- [ ] 04-02-PLAN.md — Server-side fog logic: adjacency computation, persistent reveal/hide, FOG-05 enforcement
+- [ ] 04-03-PLAN.md — FogLayer PixiJS rendering: two-tier fog overlays, session store extensions
+- [ ] 04-04-PLAN.md — DM fog controls UI, map sync, end-to-end integration and verification
 
 ### Phase 5: Tokens & Movement
 **Goal**: Each player controls a character token on the map, moves it by dragging to adjacent hexes, and all connected users see every token position update in real time
@@ -167,7 +168,7 @@ Note: Phase 6 (Map Image Upload) depends only on Phase 1 and can execute in para
 | 1. Hex Grid Foundation | 0/4 | Planning complete | - |
 | 2. Server & Authentication | 4/4 | Complete | 2026-01-27 |
 | 3. Real-Time Infrastructure | 4/4 | Complete | 2026-01-30 |
-| 4. Fog of War | 0/3 | Not started | - |
+| 4. Fog of War | 0/4 | Planning complete | - |
 | 5. Tokens & Movement | 0/2 | Not started | - |
 | 6. Map Image Upload | 0/2 | Not started | - |
 | 7. Hex Content Management | 0/3 | Not started | - |
