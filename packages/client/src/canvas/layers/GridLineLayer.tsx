@@ -59,7 +59,7 @@ export function GridLineLayer() {
     const gfx = graphicsRef.current;
     const grid = gridRef.current;
     const container = containerRef.current;
-    if (!gfx || !grid || !container || hexes.size === 0) return;
+    if (!gfx || !grid || !container) return;
 
     // Get the viewport (parent of container)
     const viewport = container.parent as unknown as {

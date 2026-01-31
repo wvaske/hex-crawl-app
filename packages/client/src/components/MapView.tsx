@@ -24,7 +24,7 @@ import { useMapStore } from '../stores/useMapStore';
  *   HexInteraction (non-visual, handles mouse events)
  */
 export function MapView() {
-  const hasMap = useMapStore((s) => s.hexes.size > 0);
+  const hasMap = useMapStore((s) => s.hexes.size > 0 || s.mapName !== '');
 
   return (
     <div className="flex h-screen bg-gray-900 text-gray-100">

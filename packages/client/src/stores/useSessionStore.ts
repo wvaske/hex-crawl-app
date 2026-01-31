@@ -7,7 +7,9 @@ import type {
   BroadcastMode,
   PlayerPresence,
   StagedChange,
+  TerrainType,
 } from '@hex-crawl/shared';
+import { useMapStore } from './useMapStore';
 
 interface SessionState {
   /** WebSocket connection status */
@@ -157,42 +159,67 @@ export const useSessionStore = create<SessionStore>((set) => ({
         set({ stagedChanges: message.changes });
         break;
 
-      case 'hex:revealed':
+      case 'hex:revealed': {
+        // Update fog state
         set((state) => {
-          // New Set with existing + new keys (PITFALL 6)
           const revealed = new Set(state.revealedHexKeys);
           for (const key of message.hexKeys) {
             revealed.add(key);
           }
-          // Update adjacent hex keys if provided
           const adjacent = message.adjacentHexes
             ? new Set(message.adjacentHexes.map((h) => h.key))
             : new Set(state.adjacentHexKeys);
-          // Remove any hex from adjacent that is now revealed
           for (const key of revealed) {
             adjacent.delete(key);
           }
           return { revealedHexKeys: revealed, adjacentHexKeys: adjacent };
         });
+        // Add revealed terrain data to map store
+        if (message.terrain) {
+          const mapState = useMapStore.getState();
+          const hexes = new Map(mapState.hexes);
+          for (const t of message.terrain) {
+            if (!hexes.has(t.key)) {
+              const [qStr, rStr] = t.key.split(',');
+              hexes.set(t.key, { q: Number(qStr), r: Number(rStr), terrain: t.terrain as TerrainType, terrainVariant: 0 });
+            }
+          }
+          if (message.adjacentHexes) {
+            for (const a of message.adjacentHexes) {
+              if (!hexes.has(a.key)) {
+                const [qStr, rStr] = a.key.split(',');
+                hexes.set(a.key, { q: Number(qStr), r: Number(rStr), terrain: a.terrain as TerrainType, terrainVariant: 0 });
+              }
+            }
+          }
+          useMapStore.setState({ hexes });
+        }
         break;
+      }
 
-      case 'hex:hidden':
+      case 'hex:hidden': {
         set((state) => {
           const revealed = new Set(state.revealedHexKeys);
           for (const key of message.hexKeys) {
             revealed.delete(key);
           }
-          // Use recomputed adjacentHexes from server if provided
           const adjacent = message.adjacentHexes
             ? new Set(message.adjacentHexes.map((h) => h.key))
             : new Set<string>();
-          // Remove any hex from adjacent that is revealed
           for (const key of revealed) {
             adjacent.delete(key);
           }
           return { revealedHexKeys: revealed, adjacentHexKeys: adjacent };
         });
+        // Remove hidden hex terrain from map store (player shouldn't retain it)
+        const mapState = useMapStore.getState();
+        const hexes = new Map(mapState.hexes);
+        for (const key of message.hexKeys) {
+          hexes.delete(key);
+        }
+        useMapStore.setState({ hexes });
         break;
+      }
 
       case 'hex:updated':
         // Phase 4 will handle hex terrain updates on the map store

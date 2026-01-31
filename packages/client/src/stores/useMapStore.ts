@@ -120,7 +120,7 @@ export const useMapStore = create<MapStore>((set) => ({
       if (col > maxCol) maxCol = col;
       if (row > maxRow) maxRow = row;
     }
-    if (hexes.size === 0) return;
+    if (hexes.size === 0 && !serverGridWidth) return;
     set({
       hexes,
       mapName: 'Server Map',
