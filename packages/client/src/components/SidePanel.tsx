@@ -24,6 +24,9 @@ function HexInfoContent() {
   const selectedHexes = useUIStore((s) => s.selectedHexes);
   const hexes = useMapStore((s) => s.hexes);
   const mapName = useMapStore((s) => s.mapName);
+  const userRole = useSessionStore((s) => s.userRole);
+  const revealedHexKeys = useSessionStore((s) => s.revealedHexKeys);
+  const adjacentHexKeys = useSessionStore((s) => s.adjacentHexKeys);
 
   if (selectedHexes.size === 0) {
     return (
@@ -51,7 +54,8 @@ function HexInfoContent() {
     const hex = hexes.get(key);
     const coord = parseHexKey(key);
     const offset = axialToOffset(coord.q, coord.r);
-    if (!hex) {
+    const isVisible = userRole === 'dm' || revealedHexKeys.has(key) || adjacentHexKeys.has(key);
+    if (!hex || !isVisible) {
       return (
         <div className="p-4 space-y-3">
           <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
@@ -80,7 +84,7 @@ function HexInfoContent() {
         <div>
           <span className="text-xs text-gray-500">Coordinates</span>
           <p className="text-gray-200 font-mono">
-            q: {coord.q}, r: {coord.r}
+            {offset.col + 1}, {offset.row + 1}
           </p>
         </div>
 

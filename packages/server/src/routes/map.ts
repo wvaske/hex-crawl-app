@@ -6,6 +6,7 @@ import { db } from "../db/index.js";
 import { campaign, campaignMember, campaignHex } from "../db/schema/index.js";
 import { requireAuth } from "../middleware/auth.js";
 import type { AppVariables } from "../app.js";
+import { loadFogState, computeAdjacentHexes } from "../ws/fog-utils.js";
 
 const mapRoutes = new Hono<{ Variables: AppVariables }>()
   .use("*", requireAuth)
@@ -93,12 +94,50 @@ const mapRoutes = new Hono<{ Variables: AppVariables }>()
       .from(campaignHex)
       .where(eq(campaignHex.campaignId, campaignId));
 
+    const isDM = membership[0].role === "dm";
+
+    if (isDM) {
+      // DM gets all hex data
+      return c.json({
+        hexes: rows.map((r) => ({
+          key: r.hexKey,
+          terrain: r.terrain,
+          terrainVariant: r.terrainVariant,
+        })),
+      });
+    }
+
+    // Players get only revealed + adjacent hex data (FOG-05)
+    const fogState = await loadFogState(campaignId);
+    const revealedKeys = new Set<string>();
+    for (const [hexKey, viewers] of fogState) {
+      if (viewers.has(user.id) || viewers.has("__all__")) {
+        revealedKeys.add(hexKey);
+      }
+    }
+    const allHexKeys = new Set(rows.map((r) => r.hexKey));
+    const adjacentKeys = computeAdjacentHexes(revealedKeys, allHexKeys);
+    const visibleKeys = new Set([...revealedKeys, ...adjacentKeys]);
+
     return c.json({
-      hexes: rows.map((r) => ({
-        key: r.hexKey,
-        terrain: r.terrain,
-        terrainVariant: r.terrainVariant,
-      })),
+      hexes: rows
+        .filter((r) => visibleKeys.has(r.hexKey))
+        .map((r) => ({
+          key: r.hexKey,
+          terrain: r.terrain,
+          terrainVariant: r.terrainVariant,
+        })),
+      // Send total grid dimensions so player renders the full grid
+      gridWidth: rows.length > 0 ? Math.max(...rows.map((r) => {
+        const [qStr] = r.hexKey.split(",");
+        return Number(qStr);
+      })) + 1 : 0,
+      gridHeight: rows.length > 0 ? Math.max(...rows.map((r) => {
+        const parts = r.hexKey.split(",");
+        const q = Number(parts[0]);
+        const rVal = Number(parts[1]);
+        return rVal + Math.floor(q / 2);
+      })) + 1 : 0,
     });
   });
 

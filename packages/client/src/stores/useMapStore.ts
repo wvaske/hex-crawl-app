@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { HexData, TerrainType } from '@hex-crawl/shared';
+import { axialToOffset } from '../hex/coordinates';
 
 interface MapState {
   /** Hex data keyed by "q,r" string */
@@ -31,7 +32,7 @@ interface MapActions {
   /** Clear all map data */
   clearMap: () => void;
   /** Load hex data fetched from the server API */
-  loadFromServer: (hexes: Array<{ key: string; terrain: string; terrainVariant: number }>) => void;
+  loadFromServer: (hexes: Array<{ key: string; terrain: string; terrainVariant: number }>, serverGridWidth?: number, serverGridHeight?: number) => void;
 }
 
 export type MapStore = MapState & MapActions;
@@ -101,9 +102,9 @@ export const useMapStore = create<MapStore>((set) => ({
       gridHeight: 15,
     }),
 
-  loadFromServer: (serverHexes) => {
+  loadFromServer: (serverHexes, serverGridWidth?, serverGridHeight?) => {
     const hexes = new Map<string, HexData>();
-    let minQ = Infinity, maxQ = -Infinity, minR = Infinity, maxR = -Infinity;
+    let maxCol = 0, maxRow = 0;
     for (const h of serverHexes) {
       const [qStr, rStr] = h.key.split(',');
       const q = Number(qStr);
@@ -114,19 +115,18 @@ export const useMapStore = create<MapStore>((set) => ({
         terrain: h.terrain as TerrainType,
         terrainVariant: h.terrainVariant,
       });
-      if (q < minQ) minQ = q;
-      if (q > maxQ) maxQ = q;
-      if (r < minR) minR = r;
-      if (r > maxR) maxR = r;
+      // Convert to offset coords for correct grid dimension calculation
+      const { col, row } = axialToOffset(q, r);
+      if (col > maxCol) maxCol = col;
+      if (row > maxRow) maxRow = row;
     }
     if (hexes.size === 0) return;
-    const gridWidth = maxQ - minQ + 1;
-    const gridHeight = maxR - minR + 1;
     set({
       hexes,
       mapName: 'Server Map',
-      gridWidth: Math.max(gridWidth, 1),
-      gridHeight: Math.max(gridHeight, 1),
+      // Use server-provided grid dims if available (players get full dims even with partial hex data)
+      gridWidth: serverGridWidth ?? maxCol + 1,
+      gridHeight: serverGridHeight ?? maxRow + 1,
     });
   },
 }));

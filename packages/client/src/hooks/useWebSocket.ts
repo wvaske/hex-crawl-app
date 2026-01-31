@@ -82,9 +82,9 @@ export function useWebSocket(campaignId: string | null) {
             if (mapHexes.size === 0) {
               fetch(`/api/campaigns/${campaignId}/map`, { credentials: 'include' })
                 .then((res) => res.json())
-                .then((data: { hexes?: Array<{ key: string; terrain: string; terrainVariant: number }> }) => {
+                .then((data: { hexes?: Array<{ key: string; terrain: string; terrainVariant: number }>; gridWidth?: number; gridHeight?: number }) => {
                   if (data.hexes && data.hexes.length > 0) {
-                    useMapStore.getState().loadFromServer(data.hexes);
+                    useMapStore.getState().loadFromServer(data.hexes, data.gridWidth, data.gridHeight);
                   }
                 })
                 .catch((err) => console.warn('[WS] Failed to fetch map data:', err));
