@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 ## Current Position
 
 Phase: 4 of 8 (Fog of War)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-31 - Completed 04-03-PLAN.md
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-01-31 - Completed 04-04-PLAN.md
 
-Progress: [███████████████░] ~60% (15 of ~25 total plans)
+Progress: [████████████████] ~64% (16 of ~25 total plans)
 
 ## Performance Metrics
 
@@ -30,7 +30,7 @@ Progress: [███████████████░] ~60% (15 of ~25 tot
 | 01-hex-grid-foundation | 4/4 | 33min | 8min |
 | 02-server-authentication | 4/4 | 26min | 7min |
 | 03-real-time-infrastructure | 4/4 | ~15min | ~4min |
-| 04-fog-of-war | 3/4 | 9min | 3min |
+| 04-fog-of-war | 4/4 | 17min | 4min |
 
 **Recent Trend:**
 - Last 5 plans: 5min, 12min, 7min, 2min, 3min
@@ -97,6 +97,8 @@ Recent decisions affecting current work:
 - [03-04]: Pause overlay shown only to players so DM retains access to resume/end controls
 - [03-04]: Sign Out button offset to right-[316px] in map view to clear SidePanel
 - [04-01]: "__all__" sentinel string for hex_visibility.user_id instead of NULL (PostgreSQL NULL uniqueness issue)
+- [04-04]: Map data fetched via GET /api/campaigns/:id/map after session:state in useWebSocket
+- [04-04]: loadFromServer derives gridWidth/gridHeight from hex coordinate bounds
 
 ### Pending Todos
 
@@ -109,6 +111,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 04-03-PLAN.md
+Stopped at: Completed 04-04-PLAN.md (Phase 4 complete)
 Resume file: None
-Next: 04-04-PLAN.md
+Next: Phase 5
