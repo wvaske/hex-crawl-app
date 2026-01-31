@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 5 - Tokens and Movement in progress.
+**Current focus:** Phase 5 complete. Ready for Phase 6.
 
 ## Current Position
 
 Phase: 5 of 8 (Tokens and Movement)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-31 - Completed 05-03-PLAN.md
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-01-31 - Completed 05-04-PLAN.md
 
-Progress: [███████████████████░] ~76% (19 of ~25 total plans)
+Progress: [████████████████████] ~80% (20 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: 5min
-- Total execution time: ~87min
+- Total execution time: ~90min
 
 **By Phase:**
 
@@ -31,10 +31,10 @@ Progress: [███████████████████░] ~76% (1
 | 02-server-authentication | 4/4 | 26min | 7min |
 | 03-real-time-infrastructure | 4/4 | ~15min | ~4min |
 | 04-fog-of-war | 4/4 | 17min | 4min |
-| 05-tokens-and-movement | 3/4 | 7min | 2min |
+| 05-tokens-and-movement | 4/4 | 10min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 1min, 3min, 3min, 3min
+- Last 5 plans: 1min, 3min, 3min, 3min, 3min
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -100,6 +100,9 @@ Recent decisions affecting current work:
 - [04-01]: "__all__" sentinel string for hex_visibility.user_id instead of NULL (PostgreSQL NULL uniqueness issue)
 - [04-04]: Map data fetched via GET /api/campaigns/:id/map after session:state in useWebSocket
 - [04-04]: loadFromServer derives gridWidth/gridHeight from hex coordinate bounds
+- [05-04]: Module-level tokenDisplayMap for cross-component token display access during drag
+- [05-04]: Ticker-based animation with ease-out quad (200ms) for smooth token moves
+- [05-04]: Optimistic moves with pendingMoves guard to prevent double-drag
 
 ### Pending Todos
 
@@ -112,6 +115,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-31
-Stopped at: Completed 05-03-PLAN.md
+Stopped at: Completed 05-04-PLAN.md (Phase 5 complete)
 Resume file: None
-Next: 05-04-PLAN.md
+Next: Phase 6
