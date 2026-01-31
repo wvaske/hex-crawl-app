@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useSessionStore } from '../stores/useSessionStore';
 import { useMapStore } from '../stores/useMapStore';
-import type { ClientMessage, ServerMessage } from '@hex-crawl/shared';
+import { useTokenStore } from '../stores/useTokenStore';
+import type { ClientMessage, ServerMessage, Token } from '@hex-crawl/shared';
 
 const INITIAL_DELAY = 1000;
 const MAX_DELAY = 30000;
@@ -82,9 +83,12 @@ export function useWebSocket(campaignId: string | null) {
             if (mapHexes.size === 0) {
               fetch(`/api/campaigns/${campaignId}/map`, { credentials: 'include' })
                 .then((res) => res.json())
-                .then((data: { hexes?: Array<{ key: string; terrain: string; terrainVariant: number }>; gridWidth?: number; gridHeight?: number }) => {
+                .then((data: { hexes?: Array<{ key: string; terrain: string; terrainVariant: number }>; gridWidth?: number; gridHeight?: number; tokens?: Token[] }) => {
                   if ((data.hexes && data.hexes.length > 0) || (data.gridWidth && data.gridHeight)) {
                     useMapStore.getState().loadFromServer(data.hexes ?? [], data.gridWidth, data.gridHeight);
+                  }
+                  if (data.tokens && data.tokens.length > 0) {
+                    useTokenStore.getState().setTokens(data.tokens);
                   }
                 })
                 .catch((err) => console.warn('[WS] Failed to fetch map data:', err));
