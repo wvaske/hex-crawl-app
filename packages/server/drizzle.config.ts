@@ -9,6 +9,7 @@ export default defineConfig({
     "./src/db/schema/session.ts",
     "./src/db/schema/fog.ts",
     "./src/db/schema/hex-data.ts",
+    "./src/db/schema/token.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",
