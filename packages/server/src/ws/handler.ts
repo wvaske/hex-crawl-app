@@ -1,6 +1,5 @@
 import type { Hono } from "hono";
-import type { UpgradeWebSocket } from "hono/ws";
-import type { WebSocket } from "ws";
+import type { UpgradeWebSocket, WSContext } from "hono/ws";
 import { auth } from "../auth.js";
 import { db } from "../db/index.js";
 import { campaignMember, sessionEvent } from "../db/schema/index.js";
@@ -97,7 +96,7 @@ export function createWsRoute(
       const role = membership[0]!.role as "dm" | "player";
 
       // 5. Return connection handlers
-      let connectedWs: typeof ws | null = null;
+      let connectedWs: WSContext | null = null;
 
       return {
         onOpen(_evt, ws) {

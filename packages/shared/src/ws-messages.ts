@@ -4,6 +4,8 @@ import { z } from "zod";
 // Server -> Client messages
 // ---------------------------------------------------------------------------
 
+const AdjacentHexSchema = z.object({ key: z.string(), terrain: z.string() });
+
 const SessionStateMessage = z.object({
   type: z.literal("session:state"),
   status: z.enum(["waiting", "active", "paused", "ended"]),
@@ -12,6 +14,7 @@ const SessionStateMessage = z.object({
     z.object({ userId: z.string(), name: z.string(), online: z.boolean() })
   ),
   revealedHexes: z.array(z.string()),
+  adjacentHexes: z.array(AdjacentHexSchema).optional(),
 });
 
 const SessionStatusChangedMessage = z.object({
@@ -23,6 +26,12 @@ const HexRevealedMessage = z.object({
   type: z.literal("hex:revealed"),
   hexKeys: z.array(z.string()),
   terrain: z.array(z.object({ key: z.string(), terrain: z.string() })),
+  adjacentHexes: z.array(AdjacentHexSchema).optional(),
+});
+
+const HexHiddenMessage = z.object({
+  type: z.literal("hex:hidden"),
+  hexKeys: z.array(z.string()),
 });
 
 const HexUpdatedMessage = z.object({
@@ -80,6 +89,7 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   SessionStateMessage,
   SessionStatusChangedMessage,
   HexRevealedMessage,
+  HexHiddenMessage,
   HexUpdatedMessage,
   PlayerJoinedMessage,
   PlayerLeftMessage,
@@ -135,6 +145,15 @@ const HexUpdateMessage = z.object({
   changes: z.array(z.object({ key: z.string(), terrain: z.string() })),
 });
 
+const HexHideMessage = z.object({
+  type: z.literal("hex:hide"),
+  hexKeys: z.array(z.string()),
+  targets: z.union([
+    z.literal("all"),
+    z.object({ playerIds: z.array(z.string()) }),
+  ]),
+});
+
 const StagedUndoMessage = z.object({
   type: z.literal("staged:undo"),
   index: z.number(),
@@ -149,6 +168,7 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   BroadcastPublishMessage,
   HexRevealMessage,
   HexUpdateMessage,
+  HexHideMessage,
   StagedUndoMessage,
 ]);
 

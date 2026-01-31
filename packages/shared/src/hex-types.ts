@@ -52,6 +52,9 @@ export const TERRAIN_COLORS: Record<TerrainType, string> = {
   urban: '#8a8a8a',
 };
 
+/** Fog of war visibility tier for a hex */
+export type FogTier = "revealed" | "adjacent" | "hidden";
+
 /** Data stored for each hex tile */
 export interface HexData {
   q: number;
