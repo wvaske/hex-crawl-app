@@ -41,15 +41,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **RT-01**: All map changes (fog reveals, token movement, content updates) propagate to connected users in real time via WebSocket
 - [ ] **RT-02**: DM sees the full map with all content and all hexes visible
 - [ ] **RT-03**: Players see only revealed hexes and their assigned content
-- [ ] **RT-04**: All connected users see all character tokens on the map in real time
+- [x] **RT-04**: All connected users see all character tokens on the map in real time
 - [ ] **RT-05**: Reconnecting clients receive current session state without data loss
 
 ### Tokens
 
-- [ ] **TOK-01**: Each player controls their own character token on the map
-- [ ] **TOK-02**: Players move their tokens by dragging to adjacent hexes
-- [ ] **TOK-03**: Token positions update in real time for all connected users
-- [ ] **TOK-04**: Token positions persist across sessions
+- [x] **TOK-01**: Each player controls their own character token on the map
+- [x] **TOK-02**: Players move their tokens by dragging to adjacent hexes
+- [x] **TOK-03**: Token positions update in real time for all connected users
+- [x] **TOK-04**: Token positions persist across sessions
 
 ### Authentication & Campaigns
 
@@ -139,12 +139,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RT-01 | Phase 3 | Pending |
 | RT-02 | Phase 3 | Pending |
 | RT-03 | Phase 3 | Pending |
-| RT-04 | Phase 5 | Pending |
+| RT-04 | Phase 5 | Complete |
 | RT-05 | Phase 3 | Pending |
-| TOK-01 | Phase 5 | Pending |
-| TOK-02 | Phase 5 | Pending |
-| TOK-03 | Phase 5 | Pending |
-| TOK-04 | Phase 5 | Pending |
+| TOK-01 | Phase 5 | Complete |
+| TOK-02 | Phase 5 | Complete |
+| TOK-03 | Phase 5 | Complete |
+| TOK-04 | Phase 5 | Complete |
 | AUTH-01 | Phase 2 | Complete |
 | AUTH-02 | Phase 2 | Complete |
 | AUTH-03 | Phase 2 | Complete |
