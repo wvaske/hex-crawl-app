@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type SidePanelTab = 'info' | 'terrain' | 'create' | 'import-export' | 'fog' | 'tokens';
+export type SidePanelTab = 'info' | 'terrain' | 'create' | 'import-export' | 'fog' | 'tokens' | 'images';
 
 export interface DragRect {
   minX: number;

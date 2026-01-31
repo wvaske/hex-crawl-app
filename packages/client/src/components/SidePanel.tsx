@@ -9,6 +9,7 @@ import { TerrainPalette } from './TerrainPalette';
 import { CreationDialog } from './CreationDialog';
 import { ImportExportDialog } from './ImportExportDialog';
 import { FogControls } from './FogControls';
+import { ImageLayerPanel } from './ImageLayerPanel';
 import { useSessionStore } from '../stores/useSessionStore';
 import { useTokenStore } from '../stores/useTokenStore';
 
@@ -444,6 +445,7 @@ export function SidePanel() {
         ...BASE_TABS,
         { id: 'fog' as SidePanelTab, label: 'Fog' },
         { id: 'tokens' as SidePanelTab, label: 'Tokens' },
+        { id: 'images' as SidePanelTab, label: 'Images' },
       ]
     : BASE_TABS;
 
@@ -477,6 +479,7 @@ export function SidePanel() {
         {activeTab === 'import-export' && <ImportExportDialog />}
         {activeTab === 'fog' && <FogControls />}
         {activeTab === 'tokens' && <TokenManagement />}
+        {activeTab === 'images' && <ImageLayerPanel />}
       </div>
     </div>
   );
