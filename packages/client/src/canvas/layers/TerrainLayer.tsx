@@ -107,21 +107,32 @@ export function TerrainLayer() {
     const container = containerRef.current;
     if (!container || !container.parent) return;
 
-    // Get the viewport (parent of the container)
-    const viewport = container.parent as unknown as {
+    // Walk up to find the viewport (may be grandparent due to GridContainer)
+    let viewportNode = container.parent;
+    while (viewportNode && typeof (viewportNode as any).left !== 'number') {
+      viewportNode = viewportNode.parent;
+    }
+    const viewport = viewportNode as unknown as {
       left: number;
       right: number;
       top: number;
       bottom: number;
-      scale: { x: number; y: number };
-    };
+    } | null;
+    if (!viewport) return;
 
-    // Check if viewport bounds have significantly changed
+    // Account for GridContainer transform
+    const gridContainer = container.parent;
+    const sx = gridContainer?.scale?.x || 1;
+    const sy = gridContainer?.scale?.y || 1;
+    const ox = gridContainer?.position?.x || 0;
+    const oy = gridContainer?.position?.y || 0;
+
+    // Check if viewport bounds have significantly changed (in local space)
     const bounds = {
-      left: viewport.left,
-      right: viewport.right,
-      top: viewport.top,
-      bottom: viewport.bottom,
+      left: (viewport.left - ox) / sx,
+      right: (viewport.right - ox) / sx,
+      top: (viewport.top - oy) / sy,
+      bottom: (viewport.bottom - oy) / sy,
     };
 
     const last = lastBoundsRef.current;

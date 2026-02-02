@@ -29,7 +29,7 @@ export function createTokenDisplayObject(
   const container = new Container();
   container.label = `token-${token.id}`;
 
-  const radius = hexSize * 0.35;
+  const radius = hexSize * 0.45;
   const colorNum = parseColor(token.color);
 
   // Ring background (filled circle with alpha + solid stroke)
@@ -56,6 +56,8 @@ export function createTokenDisplayObject(
 
 /**
  * Compute layout positions for multiple tokens sharing a single hex.
+ * Uses row-based packing: 1 token centered, 2 side-by-side,
+ * 3 = 1 top + 2 bottom, 4+ uses rows with ceil(sqrt(n)) columns.
  *
  * @param count - Number of tokens in the hex
  * @param hexSize - Hex circumradius in pixels
@@ -72,24 +74,38 @@ export function layoutTokensInHex(
   }
 
   if (count === 2) {
-    const offset = hexSize * 0.22;
+    const offset = hexSize * 0.25;
     return [
-      { x: -offset, y: 0, scale: 0.65 },
-      { x: offset, y: 0, scale: 0.65 },
+      { x: -offset, y: 0, scale: 0.55 },
+      { x: offset, y: 0, scale: 0.55 },
     ];
   }
 
-  // 3+ tokens: circular arrangement
-  const scale = Math.max(0.35, 0.65 - (count - 3) * 0.07);
-  const ringRadius = hexSize * 0.25;
+  // 3+ tokens: row-based packing
+  // Determine grid: cols = ceil(sqrt(count)), rows = ceil(count/cols)
+  const cols = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / cols);
+
+  // Scale tokens to fit within the hex inner area
+  const scale = Math.max(0.25, 0.8 / Math.max(cols, rows));
+  const cellW = hexSize * 0.5 / (cols > 1 ? (cols - 1) / 2 : 1);
+  const cellH = hexSize * 0.45 / (rows > 1 ? (rows - 1) / 2 : 1);
+  const totalW = (cols - 1) * cellW;
+  const totalH = (rows - 1) * cellH;
+
   const result: Array<{ x: number; y: number; scale: number }> = [];
-  for (let i = 0; i < count; i++) {
-    const angle = (2 * Math.PI * i) / count - Math.PI / 2;
-    result.push({
-      x: Math.cos(angle) * ringRadius,
-      y: Math.sin(angle) * ringRadius,
-      scale,
-    });
+  let idx = 0;
+  for (let row = 0; row < rows && idx < count; row++) {
+    // How many tokens in this row (last row may have fewer)
+    const itemsInRow = Math.min(cols, count - idx);
+    const rowW = (itemsInRow - 1) * cellW;
+    const rowY = -totalH / 2 + row * cellH;
+
+    for (let col = 0; col < itemsInRow; col++) {
+      const colX = -rowW / 2 + col * cellW;
+      result.push({ x: colX, y: rowY, scale });
+      idx++;
+    }
   }
   return result;
 }
@@ -106,7 +122,7 @@ export function updateTokenDisplayObject(
   token: Token,
   hexSize: number,
 ): void {
-  const radius = hexSize * 0.35;
+  const radius = hexSize * 0.45;
   const colorNum = parseColor(token.color);
 
   // Update ring

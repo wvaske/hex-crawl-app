@@ -272,10 +272,10 @@ export function ImageLayerPanel() {
               {/* Align button */}
               <button
                 onClick={() => enterAlignmentMode(layer.id)}
-                className="text-xs px-1 text-blue-400 hover:text-blue-300"
+                className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-300 hover:bg-blue-600/50"
                 title="Align grid to image"
               >
-                A
+                Align
               </button>
 
               {/* Delete button */}

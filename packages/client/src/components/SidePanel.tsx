@@ -451,14 +451,14 @@ export function SidePanel() {
 
   return (
     <div className="w-[300px] h-full bg-gray-800 border-l border-gray-700 flex flex-col shrink-0">
-      {/* Tab buttons */}
-      <div className="flex border-b border-gray-700">
+      {/* Tab buttons — wrap to multiple rows when needed */}
+      <div className="flex flex-wrap border-b border-gray-700">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setSidePanel(tab.id)}
             className={`
-              flex-1 px-2 py-2.5 text-xs font-medium transition-colors
+              px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap
               ${
                 activeTab === tab.id
                   ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-750'

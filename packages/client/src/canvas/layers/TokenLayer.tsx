@@ -14,12 +14,15 @@ import { registerTokenDisplay, unregisterTokenDisplay } from '../HexInteraction'
 
 /**
  * Compute the world-space center of a hex from axial coords.
- * Flat-top hex math matching HexInteraction / HighlightLayer.
+ * Flat-top hex: the axial formula gives the top-left (origin: 'topLeft'),
+ * so we offset by half the bounding box to get the true center.
  */
 function hexCenterWorld(q: number, r: number, size: number): { x: number; y: number } {
+  const w = size * 2;            // flat-top hex width = 2 * circumradius
+  const h = Math.sqrt(3) * size; // flat-top hex height = sqrt(3) * circumradius
   return {
-    x: size * (3 / 2) * q,
-    y: size * Math.sqrt(3) * (r + q / 2),
+    x: size * (3 / 2) * q + w / 2,
+    y: size * Math.sqrt(3) * (r + q / 2) + h / 2,
   };
 }
 

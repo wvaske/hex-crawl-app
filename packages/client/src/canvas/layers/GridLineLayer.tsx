@@ -72,8 +72,12 @@ export function GridLineLayer() {
     const container = containerRef.current;
     if (!gfx || !grid || !container) return;
 
-    // Get the viewport (parent of container)
-    const viewport = container.parent as unknown as {
+    // Walk up to find the viewport (may be grandparent due to GridContainer)
+    let viewportNode = container.parent;
+    while (viewportNode && typeof (viewportNode as any).left !== 'number') {
+      viewportNode = viewportNode.parent;
+    }
+    const viewport = viewportNode as unknown as {
       left: number;
       right: number;
       top: number;
@@ -81,12 +85,18 @@ export function GridLineLayer() {
     } | null;
     if (!viewport || typeof viewport.left !== 'number') return;
 
-    // Check if viewport bounds have significantly changed
+    // Account for GridContainer transform when computing visible bounds
+    const gridContainer = container.parent;
+    const sx = gridContainer?.scale?.x || 1;
+    const sy = gridContainer?.scale?.y || 1;
+    const ox = gridContainer?.position?.x || 0;
+    const oy = gridContainer?.position?.y || 0;
+
     const bounds = {
-      left: viewport.left,
-      right: viewport.right,
-      top: viewport.top,
-      bottom: viewport.bottom,
+      left: (viewport.left - ox) / sx,
+      right: (viewport.right - ox) / sx,
+      top: (viewport.top - oy) / sy,
+      bottom: (viewport.bottom - oy) / sy,
     };
 
     const last = lastBoundsRef.current;
@@ -114,7 +124,6 @@ export function GridLineLayer() {
     // Draw hex outlines for visible hexes
     grid.forEach((hex: GameHex) => {
       // Quick AABB check using hex position.
-      // hex.x/hex.y is the CENTER, so compute bounding-box edges.
       const hw = hex.width;
       const hh = hex.height;
       const hx = hex.x - hw / 2;
@@ -142,12 +151,10 @@ export function GridLineLayer() {
       gfx.lineTo(first.x, first.y);
     });
 
-    // Use configured grid style; when image layers exist, default to higher opacity wireframe
+    // Use configured grid style
     const settings = useImageLayerStore.getState().gridSettings;
     const lineColor = cssColorToNumber(settings.gridLineColor);
-    const lineAlpha = hasImageLayers
-      ? settings.gridLineOpacity
-      : settings.gridLineOpacity;
+    const lineAlpha = settings.gridLineOpacity;
     const lineWidth = settings.gridLineThickness;
 
     gfx.stroke({

@@ -8,6 +8,7 @@ import { TokenLayer } from '../canvas/layers/TokenLayer';
 import { HighlightLayer } from '../canvas/layers/HighlightLayer';
 import { UIOverlayLayer } from '../canvas/layers/UIOverlayLayer';
 import { HexInteraction } from '../canvas/HexInteraction';
+import { GridContainer } from '../canvas/GridContainer';
 import { AlignmentControls } from './AlignmentControls';
 import { useMapStore } from '../stores/useMapStore';
 
@@ -39,12 +40,14 @@ export function MapView() {
         {hasMap ? (
           <HexMapCanvas>
             <ImageLayer />
-            <TerrainLayer />
-            <GridLineLayer />
-            <FogLayer />
-            <TokenLayer />
-            <HighlightLayer />
-            <UIOverlayLayer />
+            <GridContainer>
+              <TerrainLayer />
+              <GridLineLayer />
+              <FogLayer />
+              <TokenLayer />
+              <HighlightLayer />
+              <UIOverlayLayer />
+            </GridContainer>
             <HexInteraction />
           </HexMapCanvas>
         ) : (

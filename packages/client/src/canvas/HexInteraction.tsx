@@ -39,11 +39,41 @@ function eventToScreen(
  * Uses flat-top hex math: x = size * 3/2 * q, y = size * sqrt(3) * (r + q/2)
  * This matches honeycomb-grid's output for flat-top hexes.
  */
-function hexCenterWorld(q: number, r: number, size: number): { x: number; y: number } {
+/**
+ * Get grid alignment transform from the image layer store.
+ * Returns offset and scale that GridContainer applies.
+ */
+function getGridTransform(): { ox: number; oy: number; sx: number; sy: number } {
+  const gs = useImageLayerStore.getState().gridSettings;
   return {
-    x: size * (3 / 2) * q,
-    y: size * Math.sqrt(3) * (r + q / 2),
+    ox: gs.gridOffsetX,
+    oy: gs.gridOffsetY,
+    sx: gs.hexSizeX / 40,
+    sy: gs.hexSizeY / 40,
   };
+}
+
+/** Convert world coordinates to grid-local coordinates */
+function worldToGridLocal(wx: number, wy: number): { x: number; y: number } {
+  const { ox, oy, sx, sy } = getGridTransform();
+  return { x: (wx - ox) / sx, y: (wy - oy) / sy };
+}
+
+/** Convert grid-local coordinates to world coordinates */
+function gridLocalToWorld(lx: number, ly: number): { x: number; y: number } {
+  const { ox, oy, sx, sy } = getGridTransform();
+  return { x: lx * sx + ox, y: ly * sy + oy };
+}
+
+/**
+ * Get the world-space center of a hex, accounting for GridContainer transform.
+ */
+function hexCenterWorld(q: number, r: number, size: number): { x: number; y: number } {
+  const w = size * 2;
+  const h = Math.sqrt(3) * size;
+  const localX = size * (3 / 2) * q + w / 2;
+  const localY = size * Math.sqrt(3) * (r + q / 2) + h / 2;
+  return gridLocalToWorld(localX, localY);
 }
 
 /**
@@ -224,7 +254,8 @@ export function HexInteraction() {
     }
     lastMoveTimeRef.current = now;
 
-    const { q, r } = pixelToHex(pos.x, pos.y);
+    const local = worldToGridLocal(pos.x, pos.y);
+    const { q, r } = pixelToHex(local.x, local.y);
     const key = hexKey(q, r);
 
     // Only update store if the hovered hex changed
@@ -408,7 +439,8 @@ export function HexInteraction() {
       if (tokenDrag) {
         const screen = eventToScreen(e, htmlCanvas);
         const worldPos = viewport.toWorld(screen.x, screen.y);
-        const { q, r } = pixelToHex(worldPos.x, worldPos.y);
+        const gridLocal = worldToGridLocal(worldPos.x, worldPos.y);
+        const { q, r } = pixelToHex(gridLocal.x, gridLocal.y);
         const targetKey = hexKey(q, r);
 
         const hexSize = useMapStore.getState().hexSize;
@@ -534,7 +566,8 @@ export function HexInteraction() {
       if (!isDraggingRef.current) {
         const screen = eventToScreen(e, htmlCanvas);
         const worldPos = viewport.toWorld(screen.x, screen.y);
-        const { q, r } = pixelToHex(worldPos.x, worldPos.y);
+        const gridLocal = worldToGridLocal(worldPos.x, worldPos.y);
+        const { q, r } = pixelToHex(gridLocal.x, gridLocal.y);
         const key = hexKey(q, r);
         if (isInBounds(q, r)) {
           if (e.shiftKey) {

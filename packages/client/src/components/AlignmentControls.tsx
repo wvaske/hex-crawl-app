@@ -38,6 +38,8 @@ export function AlignmentControls() {
   const exitAlignmentMode = useImageLayerStore((s) => s.exitAlignmentMode);
   const campaignId = useSessionStore((s) => s.campaignId);
 
+  const setGridSettings = useImageLayerStore((s) => s.setGridSettings);
+
   const [settings, setSettings] = useState<GridSettings>(DEFAULTS);
   const [mapId, setMapId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,10 @@ export function AlignmentControls() {
   useEffect(() => {
     if (!alignmentMode || !campaignId) return;
     let cancelled = false;
+
+    // Start from current Zustand store settings as baseline
+    const storeSettings = useImageLayerStore.getState().gridSettings;
+    setSettings({ ...storeSettings });
 
     (async () => {
       try {
@@ -57,7 +63,7 @@ export function AlignmentControls() {
         if (data.maps.length > 0 && !cancelled) {
           const map = data.maps[0]!;
           setMapId(map.id);
-          setSettings({
+          const serverSettings: GridSettings = {
             gridOffsetX: map.gridOffsetX ?? DEFAULTS.gridOffsetX,
             gridOffsetY: map.gridOffsetY ?? DEFAULTS.gridOffsetY,
             hexSizeX: map.hexSizeX ?? DEFAULTS.hexSizeX,
@@ -67,7 +73,9 @@ export function AlignmentControls() {
             gridLineOpacity: map.gridLineOpacity ?? DEFAULTS.gridLineOpacity,
             terrainOverlayEnabled: map.terrainOverlayEnabled ?? DEFAULTS.terrainOverlayEnabled,
             terrainOverlayOpacity: map.terrainOverlayOpacity ?? DEFAULTS.terrainOverlayOpacity,
-          });
+          };
+          setSettings(serverSettings);
+          setGridSettings(serverSettings);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -75,11 +83,13 @@ export function AlignmentControls() {
     })();
 
     return () => { cancelled = true; };
-  }, [alignmentMode, campaignId]);
+  }, [alignmentMode, campaignId, setGridSettings]);
 
   const updateField = useCallback(<K extends keyof GridSettings>(key: K, value: GridSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
-  }, []);
+    // Push to Zustand store so GridLineLayer/TerrainLayer see changes live
+    setGridSettings({ [key]: value });
+  }, [setGridSettings]);
 
   const handleDone = useCallback(async () => {
     if (campaignId && mapId) {
