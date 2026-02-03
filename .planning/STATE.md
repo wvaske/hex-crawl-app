@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Real-time hex crawl exploration with fog of war -- the DM controls what players see, and when hexes are revealed, every connected player sees it instantly.
-**Current focus:** Phase 6 in progress - Map Image Upload.
+**Current focus:** Phase 6 complete - Map Image Upload. Ready for Phase 7.
 
 ## Current Position
 
 Phase: 6 of 8 (Map Image Upload)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-31 - Completed 06-03-PLAN.md
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-02-03 - Completed 06-04-PLAN.md
 
-Progress: [██████████████████████] ~88% (22 of ~25 total plans)
+Progress: [████████████████████████] ~96% (24 of ~25 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
-- Average duration: 4min
-- Total execution time: ~95min
+- Total plans completed: 24
+- Average duration: 5min
+- Total execution time: ~125min
 
 **By Phase:**
 
@@ -32,10 +32,11 @@ Progress: [██████████████████████] ~
 | 03-real-time-infrastructure | 4/4 | ~15min | ~4min |
 | 04-fog-of-war | 4/4 | 17min | 4min |
 | 05-tokens-and-movement | 4/4 | 10min | 3min |
+| 06-map-image-upload | 4/4 | ~30min | ~8min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 3min, 3min, 1min, 4min
-- Trend: consistent
+- Last 5 plans: 3min, 1min, 4min, ~8min, ~30min
+- Trend: phase 6 plans larger due to manual verification checkpoints
 
 *Updated after each plan completion*
 
@@ -108,6 +109,9 @@ Recent decisions affecting current work:
 - [06-03]: Auto-resolve mapId by listing campaign maps and creating 'Default' if none exist
 - [06-03]: AlignmentControls as absolute-positioned overlay (z-50) in MapView
 - [06-03]: Alignment mode check via getState() at top of HexInteraction pointer handlers
+- [06-04]: GridContainer wrapper centralizes alignment transform for grid, terrain, fog, highlights, and interaction layers
+- [06-04]: World-to-grid-local coordinate helpers for hex picking under alignment offsets
+- [06-04]: Row-based token packing layout for multi-token hex display
 
 ### Pending Todos
 
@@ -119,7 +123,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-31
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-02-03
+Stopped at: Completed 06-04-PLAN.md (Phase 6 complete)
 Resume file: None
-Next: 06-04-PLAN.md
+Next: Phase 7
