@@ -12,12 +12,12 @@ HexCrawl delivers a real-time hex crawl exploration tool for tabletop RPGs where
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Hex Grid Foundation** - Interactive hex grid renders in the browser with pan, zoom, terrain display, and correct coordinate math
+- [x] **Phase 1: Hex Grid Foundation** - Interactive hex grid renders in the browser with pan, zoom, terrain display, and correct coordinate math
 - [x] **Phase 2: Server & Authentication** - Users create accounts, DMs create campaigns and invite players, all data persists in PostgreSQL
 - [x] **Phase 3: Real-Time Infrastructure** - Connected users receive live updates via WebSocket with role-based filtering and reconnection support
 - [x] **Phase 4: Fog of War** - DM reveals and hides hexes; players see only what the DM allows, enforced server-side, synced in real time
 - [x] **Phase 5: Tokens & Movement** - Players move character tokens on the map; all connected users see token positions update in real time
-- [ ] **Phase 6: Map Image Upload** - DM uploads custom map images that display as background layers beneath the hex grid overlay
+- [x] **Phase 6: Map Image Upload** - DM uploads custom map images that display as background layers beneath the hex grid overlay
 - [ ] **Phase 7: Hex Content Management** - DM attaches structured content to hexes (encounters, lore, dungeons, towns, POIs) with selective reveal and influence radius
 - [ ] **Phase 8: Skill Checks & Character Data** - Players set skill modifiers; hex content can require skill checks that roll automatically with DM-only results
 
@@ -169,11 +169,11 @@ Note: Phase 6 (Map Image Upload) depends only on Phase 1 and can execute in para
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
-| 1. Hex Grid Foundation | 0/4 | Planning complete | - |
+| 1. Hex Grid Foundation | 4/4 | Complete | 2026-01-27 |
 | 2. Server & Authentication | 4/4 | Complete | 2026-01-27 |
 | 3. Real-Time Infrastructure | 4/4 | Complete | 2026-01-30 |
 | 4. Fog of War | 4/4 | Complete | 2026-01-31 |
 | 5. Tokens & Movement | 4/4 | Complete | 2026-01-31 |
-| 6. Map Image Upload | 0/4 | Planning complete | - |
+| 6. Map Image Upload | 4/4 | Complete | 2026-02-03 |
 | 7. Hex Content Management | 0/3 | Not started | - |
 | 8. Skill Checks & Character Data | 0/2 | Not started | - |

@@ -11,8 +11,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **MAP-01**: Hex grid renders on a canvas with configurable hex sizes
 - [ ] **MAP-02**: Each hex displays a terrain type visually (forest, desert, grassland, mountain, water, swamp)
-- [ ] **MAP-03**: DM can upload a map image that displays as a background layer beneath the hex grid
-- [ ] **MAP-04**: Hex grid overlays transparently on uploaded map images with alignment controls
+- [x] **MAP-03**: DM can upload a map image that displays as a background layer beneath the hex grid
+- [x] **MAP-04**: Hex grid overlays transparently on uploaded map images with alignment controls
 - [ ] **MAP-05**: User can pan the map by dragging and zoom with scroll wheel
 - [ ] **MAP-06**: Hex grid uses axial/cube coordinate system for consistent math
 
@@ -118,8 +118,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | MAP-01 | Phase 1 | Pending |
 | MAP-02 | Phase 1 | Pending |
-| MAP-03 | Phase 6 | Pending |
-| MAP-04 | Phase 6 | Pending |
+| MAP-03 | Phase 6 | Complete |
+| MAP-04 | Phase 6 | Complete |
 | MAP-05 | Phase 1 | Pending |
 | MAP-06 | Phase 1 | Pending |
 | FOG-01 | Phase 4 | Complete |
