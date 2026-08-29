@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "server",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@hexcrawl/server", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "client",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@hexcrawl/client", "dev"],
+      "port": 5173
+    }
+  ]
+}
