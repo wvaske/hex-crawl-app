@@ -73,6 +73,7 @@ hidden content never crosses the wire (`filterStateForViewer` in
 | `M` | Marker |
 | `C` | Content |
 | `R` | Measure |
+| hold `Space` | Pan with left-drag in any tool |
 | `Esc` | Clear selection / close dialog |
 
 ## Workspace

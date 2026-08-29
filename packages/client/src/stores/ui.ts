@@ -28,6 +28,8 @@ interface UiStore {
   panelTab: PanelTab;
   panelOpen: boolean;
   measureStart: HexCoord | null;
+  /** Held spacebar: pan with left-drag regardless of the active tool. */
+  spacePan: boolean;
 
   set<K extends keyof UiStore>(key: K, value: UiStore[K]): void;
   setTool(tool: Tool): void;
@@ -49,6 +51,7 @@ export const useUi = create<UiStore>((set) => ({
   panelTab: 'inspect',
   panelOpen: true,
   measureStart: null,
+  spacePan: false,
 
   set: (key, value) => set({ [key]: value } as Partial<UiStore>),
   setTool: (tool) => set({ tool, measureStart: null }),

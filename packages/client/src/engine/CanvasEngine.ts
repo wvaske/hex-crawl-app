@@ -1,4 +1,4 @@
-import { Application, Assets, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { AlphaFilter, Application, Assets, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import type {
   CampaignState,
@@ -54,7 +54,17 @@ export class CanvasEngine {
   private imageLayerC = new Container();
   private terrainG = new Graphics();
   private gridG = new Graphics();
-  private fogG = new Graphics();
+  // Fog is a dark sheet with the non-hidden hexes erased out of it. The erase
+  // happens inside a filtered container (its own offscreen pass), so holes are
+  // pixel-perfect — no polygon-with-holes triangulation, which produced sliver
+  // artifacts between adjacent hexes.
+  private fogC = new Container();
+  private fogSheetG = new Graphics();
+  private fogEraseG = new Graphics();
+  private fogAlpha = new AlphaFilter({ alpha: 1 });
+  private exploredC = new Container();
+  private exploredG = new Graphics();
+  private exploredAlpha = new AlphaFilter({ alpha: 0.55 });
   private pinsC = new Container();
   private tokensC = new Container();
   private highlightG = new Graphics();
@@ -112,12 +122,19 @@ export class CanvasEngine {
       .clampZoom({ minScale: 0.05, maxScale: 6 });
     this.app.stage.addChild(this.viewport);
 
+    this.fogEraseG.blendMode = 'erase';
+    this.fogC.addChild(this.fogSheetG, this.fogEraseG);
+    this.fogC.filters = [this.fogAlpha];
+    this.exploredC.addChild(this.exploredG);
+    this.exploredC.filters = [this.exploredAlpha];
+
     this.viewport.addChild(this.imageLayerC);
     this.viewport.addChild(this.terrainG);
     this.viewport.addChild(this.gridG);
     this.viewport.addChild(this.pinsC);
     this.viewport.addChild(this.tokensC);
-    this.viewport.addChild(this.fogG);
+    this.viewport.addChild(this.exploredC);
+    this.viewport.addChild(this.fogC);
     this.viewport.addChild(this.highlightG);
 
     this.viewport.on('moved', () => {
@@ -149,6 +166,10 @@ export class CanvasEngine {
       if (s.version !== prev.version) this.applyState();
     });
     const uiUnsub = useUi.subscribe((u, prev) => {
+      if (u.spacePan !== prev.spacePan) {
+        this.updateDragMode();
+        this.viewport.cursor = u.spacePan ? 'grab' : 'default';
+      }
       if (
         u.tool !== prev.tool ||
         u.selectedHex !== prev.selectedHex ||
@@ -254,7 +275,9 @@ export class CanvasEngine {
   private clearAll(): void {
     this.terrainG.clear();
     this.gridG.clear();
-    this.fogG.clear();
+    this.fogSheetG.clear();
+    this.fogEraseG.clear();
+    this.exploredG.clear();
     this.highlightG.clear();
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.tokensReset();
@@ -362,7 +385,9 @@ export class CanvasEngine {
   private drawViewDependent(): void {
     if (!this.layout || !this.lastMap) {
       this.gridG.clear();
-      this.fogG.clear();
+      this.fogSheetG.clear();
+      this.fogEraseG.clear();
+      this.exploredG.clear();
       return;
     }
     const bounds = this.viewport.getVisibleBounds();
@@ -396,39 +421,41 @@ export class CanvasEngine {
       });
     }
 
-    // Fog cover: dark sheet with holes over non-hidden hexes.
-    const fog = this.fogG;
-    fog.clear();
-    const fogByKey = new Map<string, FogCell['state']>();
-    for (const f of this.lastFog) fogByKey.set(hexKey(f.q, f.r), f.state);
-
+    // Fog cover: an opaque dark sheet; non-hidden hexes are erased out of it
+    // (the container's filter isolates the erase to the fog layer). Erasing is
+    // idempotent, so slightly-enlarged hexes overlap cleanly with no seams.
     const isDm = this.role === 'dm';
-    const coverAlpha = isDm ? 0.5 : 1;
+    this.fogAlpha.alpha = isDm ? 0.55 : 1;
+    this.exploredAlpha.alpha = isDm ? 0.25 : 0.55;
+
+    this.fogSheetG.clear();
+    this.fogEraseG.clear();
+    this.exploredG.clear();
+
     const margin = Math.max(bounds.width, bounds.height);
-    fog.rect(
+    this.fogSheetG.rect(
       bounds.x - margin,
       bounds.y - margin,
       bounds.width + margin * 2,
       bounds.height + margin * 2,
     );
-    fog.fill({ color: 0x07080c, alpha: coverAlpha });
-    if (!tooMany) {
-      for (const cell of cells) {
-        const state = fogByKey.get(hexKey(cell.q, cell.r)) ?? 'hidden';
-        if (state === 'hidden') continue;
-        const center = hexToPixel(this.layout, cell);
-        fog.poly(this.polyPoints(center, corners));
-        fog.cut();
+    this.fogSheetG.fill({ color: 0x07080c });
+
+    const holeCorners = corners.map((c) => ({ x: c.x * 1.03, y: c.y * 1.03 }));
+    const minX = bounds.x - pad;
+    const minY = bounds.y - pad;
+    const maxX = bounds.x + bounds.width + pad;
+    const maxY = bounds.y + bounds.height + pad;
+    for (const f of this.lastFog) {
+      const center = hexToPixel(this.layout, f);
+      if (center.x < minX || center.x > maxX || center.y < minY || center.y > maxY) continue;
+      this.fogEraseG.poly(this.polyPoints(center, holeCorners));
+      if (f.state === 'explored') {
+        this.exploredG.poly(this.polyPoints(center, holeCorners));
       }
-      // Dim explored hexes.
-      for (const cell of cells) {
-        const state = fogByKey.get(hexKey(cell.q, cell.r)) ?? 'hidden';
-        if (state !== 'explored') continue;
-        const center = hexToPixel(this.layout, cell);
-        fog.poly(this.polyPoints(center, corners));
-      }
-      fog.fill({ color: 0x0b0d12, alpha: isDm ? 0.25 : 0.55 });
     }
+    this.fogEraseG.fill({ color: 0xffffff });
+    this.exploredG.fill({ color: 0x0b0d12 });
   }
 
   private drawHighlight(): void {
@@ -620,6 +647,7 @@ export class CanvasEngine {
     root.on('pointerdown', (e) => {
       if (e.button !== 0) return;
       const ui = useUi.getState();
+      if (ui.spacePan) return; // space held: pan instead of dragging the token
       if (ui.tool !== 'select') return;
       if (!this.canMove(view.token)) {
         // Still allow selecting it.
@@ -644,8 +672,8 @@ export class CanvasEngine {
   // -- interaction -----------------------------------------------------------
 
   private updateDragMode(): void {
-    const tool = useUi.getState().tool;
-    const panWithLeft = tool === 'select' || this.role !== 'dm';
+    const ui = useUi.getState();
+    const panWithLeft = ui.spacePan || ui.tool === 'select' || this.role !== 'dm';
     this.viewport.plugins.remove('drag');
     this.viewport.drag({ mouseButtons: panWithLeft ? 'all' : 'middle-right' });
   }
@@ -665,6 +693,11 @@ export class CanvasEngine {
         return;
       }
       const ui = useUi.getState();
+      if (ui.spacePan) {
+        // Space held: this drag pans, no tool action.
+        this.panning = true;
+        return;
+      }
       const hex = this.worldHex(e);
       if (!hex) return;
       const isDm = this.role === 'dm';

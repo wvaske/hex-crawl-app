@@ -24,7 +24,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
     return () => disconnectWs();
   }, [campaignId]);
 
-  // DM tool keyboard shortcuts.
+  // DM tool keyboard shortcuts + hold-space to pan.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -32,6 +32,11 @@ export function TableView({ campaignId }: { campaignId: string }) {
         return;
       }
       const ui = useUi.getState();
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault(); // keep the page from scrolling / buttons from firing
+        if (!ui.spacePan) ui.set('spacePan', true);
+        return;
+      }
       if (e.key === 'Escape') {
         ui.set('contentDialogHex', null);
         ui.set('editingContentId', null);
@@ -44,8 +49,18 @@ export function TableView({ campaignId }: { campaignId: string }) {
       const tool = tools[e.key.toLowerCase() as keyof typeof tools];
       if (tool && !e.metaKey && !e.ctrlKey && !e.altKey) ui.setTool(tool);
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ' || e.code === 'Space') useUi.getState().set('spacePan', false);
+    };
+    const onBlur = () => useUi.getState().set('spacePan', false);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
   }, []);
 
   useEffect(() => {
