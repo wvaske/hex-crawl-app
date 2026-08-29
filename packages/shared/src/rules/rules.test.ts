@@ -78,8 +78,8 @@ function fullState(): CampaignState {
     maps: [],
     mapState: {
       imageLayers: [
-        { id: 'il1', mapId: 'm1', path: '/uploads/a.png', name: 'a', x: 0, y: 0, scale: 1, opacity: 1, z: 0, dmOnly: false },
-        { id: 'il2', mapId: 'm1', path: '/uploads/b.png', name: 'b', x: 0, y: 0, scale: 1, opacity: 1, z: 1, dmOnly: true },
+        { id: 'il1', mapId: 'm1', path: '/uploads/a.png', name: 'a', x: 0, y: 0, scale: 1, opacity: 1, z: 0, dmOnly: false, visible: true },
+        { id: 'il2', mapId: 'm1', path: '/uploads/b.png', name: 'b', x: 0, y: 0, scale: 1, opacity: 1, z: 1, dmOnly: true, visible: true },
       ],
       hexes: [
         { q: 0, r: 0, terrain: 'forest' },
@@ -103,14 +103,14 @@ function fullState(): CampaignState {
       ],
       contents: [
         {
-          id: 'ct1', mapId: 'm1', q: 1, r: 0, type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉',
+          id: 'ct1', mapId: 'm1', q: 1, r: 0, type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false,
           clues: [
             { id: 'cl1', contentId: 'ct1', text: 'Dead vegetation', gate: { kind: 'auto' }, sortOrder: 0 },
             { id: 'cl2', contentId: 'ct1', text: 'Acid scars', gate: { kind: 'manual' }, sortOrder: 1 },
           ],
         },
         {
-          id: 'ct2', mapId: 'm1', q: 2, r: 0, type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '',
+          id: 'ct2', mapId: 'm1', q: 2, r: 0, type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false,
           clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0 }],
         },
       ],

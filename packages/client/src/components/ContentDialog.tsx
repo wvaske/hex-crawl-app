@@ -38,6 +38,7 @@ export function ContentDialog() {
   const [type, setType] = useState<ContentType>(existing?.type ?? 'landmark');
   const [glyph, setGlyph] = useState(existing?.glyph ?? '');
   const [dmNotes, setDmNotes] = useState(existing?.dmNotes ?? '');
+  const [showLabel, setShowLabel] = useState(existing?.showLabel ?? false);
   const [clues, setClues] = useState<ClueDraft[]>(
     existing?.clues.map((c) => ({ id: c.id, text: c.text, gate: c.gate })) ?? [],
   );
@@ -62,6 +63,7 @@ export function ContentDialog() {
         title: title.trim(),
         dmNotes,
         glyph,
+        showLabel,
         clues: clues
           .filter((c) => c.text.trim())
           .map((c, i) => ({ id: c.id, text: c.text.trim(), gate: c.gate, sortOrder: i })),
@@ -97,6 +99,10 @@ export function ContentDialog() {
         <Field label="DM notes (never shown to players)">
           <TextArea rows={3} value={dmNotes} onChange={(e) => setDmNotes(e.target.value)} placeholder="Stat blocks, secrets, plans…" />
         </Field>
+        <label className="flex items-center gap-2 text-sm text-ink-200 cursor-pointer">
+          <input type="checkbox" checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />
+          Always show the name on the map (major towns and the like)
+        </label>
 
         <div>
           <div className="flex items-center justify-between mb-1.5">

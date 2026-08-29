@@ -320,7 +320,16 @@ function ImageLayerCard({ layer }: { layer: ImageLayer }) {
   return (
     <div className="bg-ink-850 border border-ink-700 rounded-lg p-2.5 space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-sm text-ink-100 truncate flex-1">{layer.name}</span>
+        <button
+          className={`text-xs cursor-pointer ${layer.visible ? '' : 'opacity-40'}`}
+          title={layer.visible ? 'Shown — click to hide this overlay for everyone' : 'Hidden — click to show'}
+          onClick={() => patch({ visible: !layer.visible })}
+        >
+          {layer.visible ? '🟢' : '⚫'}
+        </button>
+        <span className={`text-sm truncate flex-1 ${layer.visible ? 'text-ink-100' : 'text-ink-400'}`}>
+          {layer.name}
+        </span>
         <button
           className="text-xs cursor-pointer"
           title={layer.dmOnly ? 'DM-only — click to share' : 'Players see this — click to hide'}

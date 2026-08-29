@@ -275,6 +275,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       title: cmd.content.title,
       dmNotes: cmd.content.dmNotes,
       glyph: cmd.content.glyph,
+      showLabel: cmd.content.showLabel,
       clues: cmd.content.clues.map((c, i) => ({
         id: c.id ?? nanoid(10),
         contentId: id,

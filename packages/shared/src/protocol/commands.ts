@@ -95,6 +95,7 @@ export const ImageLayerUpdateCommand = z.object({
       opacity: z.number().min(0).max(1),
       z: z.number().int(),
       dmOnly: z.boolean(),
+      visible: z.boolean(),
     })
     .partial(),
 });
@@ -247,6 +248,7 @@ export const ContentUpsertCommand = z.object({
     title: z.string().min(1).max(120),
     dmNotes: z.string().max(10000).default(''),
     glyph: z.string().max(8).default(''),
+    showLabel: z.boolean().default(false),
     clues: z.array(
       ClueSchema.omit({ id: true, contentId: true }).extend({
         id: z.string().nullable().default(null),

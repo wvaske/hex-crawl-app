@@ -160,6 +160,7 @@ export function createApp(store: Store, hub: Hub): Hono {
       opacity: 1,
       z: existing.length,
       dmOnly: false,
+      visible: true,
     };
     runtime.addImageLayer(layer);
     hub.scheduleSync(runtime);
@@ -187,5 +188,48 @@ export function createApp(store: Store, hub: Hub): Hono {
 
   app.get('/api/health', (c) => c.json({ ok: true }));
 
+  // -- production: serve the built client ------------------------------------
+  // CLIENT_DIST points at packages/client/dist; any non-API GET falls back to
+  // index.html so /c/:id deep links work.
+  const clientDist = process.env.CLIENT_DIST ?? '';
+  if (clientDist && fs.existsSync(path.join(clientDist, 'index.html'))) {
+    const indexHtml = fs.readFileSync(path.join(clientDist, 'index.html'));
+    app.get('*', (c) => {
+      const url = new URL(c.req.url);
+      const rel = url.pathname.replace(/^\/+/, '');
+      const filePath = path.join(clientDist, rel);
+      if (
+        rel &&
+        !rel.includes('..') &&
+        filePath.startsWith(clientDist) &&
+        fs.existsSync(filePath) &&
+        fs.statSync(filePath).isFile()
+      ) {
+        return c.body(fs.readFileSync(filePath), 200, {
+          'Content-Type': mimeFor(path.extname(filePath)),
+          'Cache-Control': rel.startsWith('assets/')
+            ? 'public, max-age=31536000, immutable'
+            : 'no-cache',
+        });
+      }
+      return c.body(indexHtml, 200, { 'Content-Type': 'text/html; charset=utf-8' });
+    });
+  }
+
   return app;
+}
+
+function mimeFor(ext: string): string {
+  switch (ext) {
+    case '.html': return 'text/html; charset=utf-8';
+    case '.js': return 'text/javascript';
+    case '.css': return 'text/css';
+    case '.svg': return 'image/svg+xml';
+    case '.png': return 'image/png';
+    case '.jpg': case '.jpeg': return 'image/jpeg';
+    case '.webp': return 'image/webp';
+    case '.woff2': return 'font/woff2';
+    case '.json': return 'application/json';
+    default: return 'application/octet-stream';
+  }
 }

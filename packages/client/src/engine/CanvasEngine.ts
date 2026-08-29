@@ -520,11 +520,31 @@ export class CanvasEngine {
     for (const content of this.lastContents) {
       const glyph = content.glyph || CONTENT_TYPE_GLYPHS[content.type];
       const center = hexToPixel(this.layout, { q: content.q, r: content.r });
-      const pin = new Text({
-        text: glyph,
-        style: { fontSize: size * 0.5, align: 'center' },
-      });
-      pin.anchor.set(0.5);
+      const pin = new Container();
+      const fontSize = size * 0.5;
+      // Dark chip behind the glyph keeps pins bright and readable on map art.
+      const chip = new Graphics();
+      chip.circle(0, 0, fontSize * 0.72);
+      chip.fill({ color: 0x12151d, alpha: 0.88 });
+      chip.stroke({ width: fontSize * 0.07, color: 0xdcb968, alpha: 0.95 });
+      const text = new Text({ text: glyph, style: { fontSize, align: 'center' } });
+      text.anchor.set(0.5);
+      pin.addChild(chip, text);
+      if (content.showLabel) {
+        const label = new Text({
+          text: content.title,
+          style: {
+            fontSize: fontSize * 0.62,
+            fill: 0xffffff,
+            fontWeight: '600',
+            stroke: { color: 0x000000, width: fontSize * 0.16 },
+            align: 'center',
+          },
+        });
+        label.anchor.set(0.5, 0);
+        label.position.set(0, fontSize * 0.82);
+        pin.addChild(label);
+      }
       pin.position.set(center.x, center.y - size * 0.42);
       this.pinsC.addChild(pin);
     }
@@ -543,7 +563,11 @@ export class CanvasEngine {
         const spread = (i - (markers.length - 1) / 2) * size * 0.45;
         const pin = new Text({
           text: m.glyph,
-          style: { fontSize: size * 0.42, align: 'center' },
+          style: {
+            fontSize: size * 0.42,
+            align: 'center',
+            dropShadow: { color: 0x000000, alpha: 0.8, blur: 2, distance: 1, angle: Math.PI / 3 },
+          },
         });
         pin.anchor.set(0.5);
         pin.position.set(center.x + spread, center.y + size * 0.45);
@@ -586,6 +610,7 @@ export class CanvasEngine {
       sprite.position.set(layer.x, layer.y);
       sprite.scale.set(layer.scale);
       sprite.alpha = layer.dmOnly && this.role === 'dm' ? layer.opacity * 0.6 : layer.opacity;
+      sprite.visible = layer.visible;
       sprite.zIndex = layer.z;
     }
     this.imageLayerC.sortableChildren = true;
@@ -935,7 +960,15 @@ function contentsEqual(
   if (a.length !== b.length) return false;
   return a.every((c, i) => {
     const o = b[i]!;
-    return c.id === o.id && c.q === o.q && c.r === o.r && c.glyph === o.glyph && c.type === o.type;
+    return (
+      c.id === o.id &&
+      c.q === o.q &&
+      c.r === o.r &&
+      c.glyph === o.glyph &&
+      c.type === o.type &&
+      c.title === o.title &&
+      c.showLabel === o.showLabel
+    );
   });
 }
 

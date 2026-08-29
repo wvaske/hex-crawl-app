@@ -32,7 +32,7 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
         const fogAt = (q: number, r: number): FogState => fogByKey.get(hexKey(q, r)) ?? 'hidden';
 
         return {
-          imageLayers: mapState.imageLayers.filter((l) => !l.dmOnly),
+          imageLayers: mapState.imageLayers.filter((l) => !l.dmOnly && l.visible),
           hexes: mapState.hexes.filter((h) => fogAt(h.q, h.r) !== 'hidden'),
           fog: mapState.fog.filter((f) => f.state !== 'hidden'),
           tokens: mapState.tokens.filter((t) => tokenVisibleToPlayers(t, fogAt(t.q, t.r))),
@@ -89,6 +89,7 @@ export function contentPlayerView(
     type: content.type,
     title: content.title,
     glyph: content.glyph,
+    showLabel: content.showLabel,
     discoveredClues: mine
       .sort((a, b) => a.at - b.at)
       .map((d) => ({ clueId: d.clueId, text: clueText.get(d.clueId) ?? '', at: d.at })),

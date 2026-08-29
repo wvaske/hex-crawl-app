@@ -249,6 +249,7 @@ export class CampaignRuntime {
         title: c.title as string,
         dmNotes: c.dm_notes as string,
         glyph: c.glyph as string,
+        showLabel: Boolean(c.show_label),
         clues,
       });
     }
@@ -297,6 +298,7 @@ export class CampaignRuntime {
       opacity: l.opacity as number,
       z: l.z as number,
       dmOnly: Boolean(l.dm_only),
+      visible: Boolean(l.visible),
     }));
   }
 
@@ -485,7 +487,7 @@ export class CampaignRuntime {
   addImageLayer(layer: ImageLayer): void {
     this.db
       .prepare(
-        'INSERT INTO image_layer (id, map_id, path, name, x, y, scale, opacity, z, dm_only) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO image_layer (id, map_id, path, name, x, y, scale, opacity, z, dm_only, visible) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         layer.id,
@@ -498,6 +500,7 @@ export class CampaignRuntime {
         layer.opacity,
         layer.z,
         layer.dmOnly ? 1 : 0,
+        layer.visible ? 1 : 0,
       );
   }
 
@@ -517,11 +520,12 @@ export class CampaignRuntime {
       opacity: row.opacity as number,
       z: row.z as number,
       dmOnly: Boolean(row.dm_only),
+      visible: Boolean(row.visible),
     };
     const updated = { ...current, ...patch, id: current.id, mapId: current.mapId, path: current.path };
     this.db
-      .prepare('UPDATE image_layer SET name=?, x=?, y=?, scale=?, opacity=?, z=?, dm_only=? WHERE id=?')
-      .run(updated.name, updated.x, updated.y, updated.scale, updated.opacity, updated.z, updated.dmOnly ? 1 : 0, layerId)
+      .prepare('UPDATE image_layer SET name=?, x=?, y=?, scale=?, opacity=?, z=?, dm_only=?, visible=? WHERE id=?')
+      .run(updated.name, updated.x, updated.y, updated.scale, updated.opacity, updated.z, updated.dmOnly ? 1 : 0, updated.visible ? 1 : 0, layerId)
     return updated;
   }
 
@@ -550,6 +554,7 @@ export class CampaignRuntime {
       opacity: row.opacity as number,
       z: row.z as number,
       dmOnly: Boolean(row.dm_only),
+      visible: Boolean(row.visible),
     };
   }
 
@@ -711,10 +716,10 @@ export class CampaignRuntime {
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph) VALUES (?,?,?,?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph`,
+          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label) VALUES (?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label`,
         )
-        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph);
+        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0);
       const keep = new Set(content.clues.map((c) => c.id));
       if (existing) {
         for (const old of existing.clues) {

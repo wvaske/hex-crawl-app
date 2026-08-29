@@ -176,6 +176,8 @@ export const ImageLayerSchema = z.object({
   opacity: z.number().min(0).max(1).default(1),
   z: z.number().int().default(0),
   dmOnly: z.boolean().default(false),
+  /** Overlay toggle: hidden for everyone when false. */
+  visible: z.boolean().default(true),
 });
 export type ImageLayer = z.infer<typeof ImageLayerSchema>;
 
@@ -338,6 +340,8 @@ export const ContentSchema = z.object({
   title: z.string().min(1).max(120),
   dmNotes: z.string().max(10000).default(''),
   glyph: z.string().max(8).default(''),
+  /** Render the title as an always-on map label (major towns and the like). */
+  showLabel: z.boolean().default(false),
   clues: z.array(ClueSchema),
 });
 export type Content = z.infer<typeof ContentSchema>;
@@ -381,6 +385,7 @@ export const ContentPlayerViewSchema = z.object({
   type: ContentTypeSchema,
   title: z.string(),
   glyph: z.string(),
+  showLabel: z.boolean().default(false),
   discoveredClues: z.array(
     z.object({ clueId: z.string(), text: z.string(), at: z.number() }),
   ),

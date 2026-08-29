@@ -187,4 +187,14 @@ function migrate(d: DB): void {
     );
     CREATE INDEX IF NOT EXISTS log_campaign_at ON log(campaign_id, at);
   `);
+  // Additive migrations for columns introduced after first release.
+  ensureColumn(d, 'content', 'show_label', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'image_layer', 'visible', 'INTEGER NOT NULL DEFAULT 1');
+}
+
+function ensureColumn(d: DB, table: string, column: string, decl: string): void {
+  const cols = d.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) {
+    d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  }
 }
