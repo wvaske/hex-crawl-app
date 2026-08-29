@@ -356,3 +356,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
 
 export type ClientCommand = z.infer<typeof ClientCommandSchema>;
 export type ClientCommandKind = ClientCommand['kind'];
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+/** A command as built by the client, before the envelope id is attached. */
+export type CommandInput = DistributiveOmit<ClientCommand, 'id'>;

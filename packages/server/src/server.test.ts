@@ -46,10 +46,11 @@ function activeMapId(): string {
 }
 
 describe('campaign + seats', () => {
-  it('creates campaign with dm seat and activates first map', () => {
+  it('creates campaign with dm seat, default map, and our test map', () => {
     expect(runtime.campaign.name).toBe('Test Campaign');
     expect(dmSeat.role).toBe('dm');
-    expect(runtime.maps.size).toBe(1);
+    // One default "Overland" map plus the map created in beforeEach.
+    expect(runtime.maps.size).toBe(2);
     expect(runtime.campaign.activeMapId).not.toBeNull();
   });
 

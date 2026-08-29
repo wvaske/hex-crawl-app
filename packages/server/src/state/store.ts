@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid';
+import { EncounterCheckConfigSchema, GridStyleSchema } from '@hexcrawl/shared';
 import type { DB } from '../db/index.js';
 import { CampaignRuntime, type SeatRecord } from './runtime.js';
 
@@ -38,6 +39,25 @@ export class Store {
       .run(id, name, dmSecret, playerSecret, null, '{}', Date.now());
     const runtime = this.getCampaign(id)!;
     const dmSeat = runtime.createSeat('dm', dmName);
+    // Start with one ready-to-use map so the DM lands on a working canvas.
+    const mapId = nanoid(10);
+    runtime.createMap({
+      id: mapId,
+      name: 'Overland',
+      orientation: 'flat',
+      hexSize: 48,
+      originX: 0,
+      originY: 0,
+      gridStyle: GridStyleSchema.parse({}),
+      sightRadius: 1,
+      fogMode: 'auto',
+      fogDecay: false,
+      moveMode: 'free',
+      milesPerHex: 6,
+      encounterCheck: EncounterCheckConfigSchema.parse({}),
+      sortOrder: 0,
+    });
+    runtime.setActiveMap(mapId);
     return { runtime, dmSeat };
   }
 

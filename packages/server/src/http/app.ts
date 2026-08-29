@@ -104,6 +104,18 @@ export function createApp(store: Store, hub: Hub): Hono {
     return c.json({ seatId: seat.id, role: seat.role });
   });
 
+  /** DM key holders can retrieve the player invite key. */
+  app.get('/api/campaigns/:id/keys', (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const key = c.req.query('key');
+    const seat = getSeat(c, runtime);
+    if (key !== runtime.dmSecret && seat?.role !== 'dm') {
+      return c.json({ error: 'DM only' }, 403);
+    }
+    return c.json({ dmKey: runtime.dmSecret, playerKey: runtime.playerSecret });
+  });
+
   app.get('/api/campaigns/:id/me', (c) => {
     const runtime = store.getCampaign(c.req.param('id'));
     if (!runtime) return c.json({ error: 'Campaign not found' }, 404);

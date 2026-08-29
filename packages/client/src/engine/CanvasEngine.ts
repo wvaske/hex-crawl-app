@@ -1,0 +1,895 @@
+import { Application, Assets, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Viewport } from 'pixi-viewport';
+import type {
+  CampaignState,
+  Content,
+  ContentPlayerView,
+  FogCell,
+  HexCell,
+  HexCoord,
+  HexLayout,
+  ImageLayer,
+  MapInfo,
+  Marker,
+  SeatRole,
+  Token,
+} from '@hexcrawl/shared';
+import {
+  CONTENT_TYPE_GLYPHS,
+  TERRAINS,
+  hexCornerOffsets,
+  hexDistance,
+  hexKey,
+  hexRange,
+  hexToPixel,
+  hexesInPixelRect,
+  pixelToHex,
+} from '@hexcrawl/shared';
+import { activeMap, useSession } from '../stores/session.js';
+import { useUi } from '../stores/ui.js';
+import { send } from '../ws.js';
+
+const STROKE_FLUSH_MS = 180;
+
+interface TokenView {
+  root: Container;
+  body: Graphics;
+  glyph: Text;
+  label: Text;
+  token: Token;
+  targetX: number;
+  targetY: number;
+  dragging: boolean;
+}
+
+/**
+ * Owns the PixiJS scene. React never touches Pixi: the engine subscribes to
+ * the session/ui stores and reconciles the display list imperatively.
+ */
+export class CanvasEngine {
+  private app = new Application();
+  private viewport!: Viewport;
+  private host!: HTMLElement;
+
+  private imageLayerC = new Container();
+  private terrainG = new Graphics();
+  private gridG = new Graphics();
+  private fogG = new Graphics();
+  private pinsC = new Container();
+  private tokensC = new Container();
+  private highlightG = new Graphics();
+
+  private tokens = new Map<string, TokenView>();
+  private images = new Map<string, Sprite>();
+
+  private layout: HexLayout | null = null;
+  private layoutKey = '';
+  private lastMap: MapInfo | null = null;
+  private lastHexes: HexCell[] = [];
+  private lastFog: FogCell[] = [];
+  private lastMarkers: Marker[] = [];
+  private lastContents: (Content | ContentPlayerView)[] = [];
+  private lastImages: ImageLayer[] = [];
+  private role: SeatRole = 'player';
+  private myCharacterId: string | null = null;
+
+  private viewDirty = true;
+  private destroyed = false;
+  private unsubs: (() => void)[] = [];
+
+  private stroke: { mode: 'paint' | 'fog'; pending: Map<string, HexCoord>; timer: number } | null =
+    null;
+  private drag: { view: TokenView } | null = null;
+  private panning = false;
+
+  async init(host: HTMLElement): Promise<void> {
+    this.host = host;
+    await this.app.init({
+      background: 0x0b0d12,
+      resizeTo: host,
+      antialias: true,
+      resolution: Math.min(window.devicePixelRatio, 2),
+      autoDensity: true,
+    });
+    if (this.destroyed) {
+      this.app.destroy(true);
+      return;
+    }
+    host.appendChild(this.app.canvas);
+
+    this.viewport = new Viewport({
+      events: this.app.renderer.events,
+      screenWidth: host.clientWidth,
+      screenHeight: host.clientHeight,
+    });
+    this.viewport
+      .drag({ mouseButtons: 'all' })
+      .wheel({ smooth: 4 })
+      .pinch()
+      .decelerate({ friction: 0.9 })
+      .clampZoom({ minScale: 0.05, maxScale: 6 });
+    this.app.stage.addChild(this.viewport);
+
+    this.viewport.addChild(this.imageLayerC);
+    this.viewport.addChild(this.terrainG);
+    this.viewport.addChild(this.gridG);
+    this.viewport.addChild(this.pinsC);
+    this.viewport.addChild(this.tokensC);
+    this.viewport.addChild(this.fogG);
+    this.viewport.addChild(this.highlightG);
+
+    this.viewport.on('moved', () => {
+      this.viewDirty = true;
+    });
+    this.app.renderer.on('resize', (w: number, h: number) => {
+      this.viewport.resize(w, h);
+      this.viewDirty = true;
+    });
+
+    this.wireInteraction();
+
+    this.app.ticker.add(() => this.tick());
+
+    const sessionUnsub = useSession.subscribe((s, prev) => {
+      if (s.version !== prev.version) this.applyState();
+    });
+    const uiUnsub = useUi.subscribe((u, prev) => {
+      if (
+        u.tool !== prev.tool ||
+        u.selectedHex !== prev.selectedHex ||
+        u.hoverHex !== prev.hoverHex ||
+        u.brushRadius !== prev.brushRadius ||
+        u.measureStart !== prev.measureStart ||
+        u.selectedTokenId !== prev.selectedTokenId
+      ) {
+        if (u.tool !== prev.tool) this.updateDragMode();
+        this.drawHighlight();
+      }
+    });
+    this.unsubs.push(sessionUnsub, uiUnsub);
+
+    this.applyState();
+    this.recenter();
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    for (const u of this.unsubs) u();
+    if (this.app.renderer) {
+      this.app.destroy(true, { children: true });
+    }
+  }
+
+  // -- state application -----------------------------------------------------
+
+  private applyState(): void {
+    const session = useSession.getState();
+    const state = session.state;
+    this.role = session.role ?? 'player';
+    this.myCharacterId =
+      state?.seats.find((seat) => seat.id === session.seatId)?.characterId ?? null;
+    const map = activeMap(state);
+
+    if (!state || !map || !state.mapState) {
+      this.clearAll();
+      return;
+    }
+
+    const layoutKey = `${map.id}|${map.orientation}|${map.hexSize}|${map.originX}|${map.originY}`;
+    const layoutChanged = layoutKey !== this.layoutKey;
+    if (layoutChanged) {
+      const isNewMap = this.lastMap?.id !== map.id;
+      this.layoutKey = layoutKey;
+      this.layout = {
+        orientation: map.orientation,
+        size: map.hexSize,
+        origin: { x: map.originX, y: map.originY },
+      };
+      if (isNewMap) {
+        this.tokensReset();
+      }
+    }
+    const styleChanged =
+      layoutChanged || JSON.stringify(map.gridStyle) !== JSON.stringify(this.lastMap?.gridStyle);
+    this.lastMap = map;
+
+    const ms = state.mapState;
+
+    if (layoutChanged || !hexCellsEqual(ms.hexes, this.lastHexes) || styleChanged) {
+      this.lastHexes = ms.hexes;
+      this.drawTerrain();
+    }
+    if (layoutChanged || !fogCellsEqual(ms.fog, this.lastFog)) {
+      this.lastFog = ms.fog;
+      this.viewDirty = true; // fog drawn with view-dependent cover
+    }
+    if (styleChanged) this.viewDirty = true;
+
+    if (layoutChanged || !imagesEqual(ms.imageLayers, this.lastImages)) {
+      this.lastImages = ms.imageLayers;
+      void this.reconcileImages(ms.imageLayers);
+    }
+
+    this.reconcileTokens(ms.tokens, layoutChanged);
+
+    if (
+      layoutChanged ||
+      !markersEqual(ms.markers, this.lastMarkers) ||
+      !contentsEqual(ms.contents, this.lastContents)
+    ) {
+      this.lastMarkers = ms.markers;
+      this.lastContents = ms.contents;
+      this.drawPins();
+    }
+
+    this.drawHighlight();
+
+    if (layoutChanged && this.lastMapIdForCenter !== map.id) {
+      this.lastMapIdForCenter = map.id;
+      this.recenter();
+    }
+  }
+
+  private lastMapIdForCenter = '';
+
+  private clearAll(): void {
+    this.terrainG.clear();
+    this.gridG.clear();
+    this.fogG.clear();
+    this.highlightG.clear();
+    this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
+    this.tokensReset();
+    for (const sprite of this.images.values()) sprite.destroy();
+    this.images.clear();
+    this.imageLayerC.removeChildren();
+    this.layout = null;
+    this.layoutKey = '';
+    this.lastMap = null;
+    this.lastHexes = [];
+    this.lastFog = [];
+    this.lastMarkers = [];
+    this.lastContents = [];
+    this.lastImages = [];
+  }
+
+  private tokensReset(): void {
+    for (const view of this.tokens.values()) view.root.destroy({ children: true });
+    this.tokens.clear();
+    this.tokensC.removeChildren();
+  }
+
+  /** Center the viewport on the map's content. */
+  recenter(): void {
+    if (!this.layout) return;
+    const cells = this.lastHexes;
+    if (cells.length > 0) {
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+      for (const c of cells) {
+        const p = hexToPixel(this.layout, c);
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const w = maxX - minX + this.layout.size * 4;
+      const h = maxY - minY + this.layout.size * 4;
+      const scale = Math.min(
+        this.viewport.screenWidth / w,
+        this.viewport.screenHeight / h,
+        1.5,
+      );
+      this.viewport.setZoom(Math.max(scale, 0.05), true);
+      this.viewport.moveCenter(cx, cy);
+    } else if (this.images.size > 0) {
+      const sprite = [...this.images.values()][0]!;
+      this.viewport.moveCenter(sprite.x + sprite.width / 2, sprite.y + sprite.height / 2);
+    } else {
+      this.viewport.setZoom(1, true);
+      this.viewport.moveCenter(this.layout.origin.x, this.layout.origin.y);
+    }
+    this.viewDirty = true;
+  }
+
+  // -- drawing ---------------------------------------------------------------
+
+  private corners(): { x: number; y: number }[] {
+    return hexCornerOffsets(this.layout!);
+  }
+
+  private polyPoints(center: { x: number; y: number }, corners: { x: number; y: number }[]): number[] {
+    const pts: number[] = [];
+    for (const c of corners) {
+      pts.push(center.x + c.x, center.y + c.y);
+    }
+    return pts;
+  }
+
+  private drawTerrain(): void {
+    const g = this.terrainG;
+    g.clear();
+    if (!this.layout || !this.lastMap) return;
+    const alpha = this.lastMap.gridStyle.terrainOpacity;
+    if (alpha <= 0) return;
+    const corners = this.corners();
+    // Group by terrain to minimize fill switches.
+    const byTerrain = new Map<string, HexCell[]>();
+    for (const cell of this.lastHexes) {
+      const list = byTerrain.get(cell.terrain) ?? [];
+      list.push(cell);
+      byTerrain.set(cell.terrain, list);
+    }
+    for (const [terrain, cells] of byTerrain) {
+      const color = TERRAINS[terrain as keyof typeof TERRAINS]?.color ?? '#888888';
+      for (const cell of cells) {
+        const center = hexToPixel(this.layout, cell);
+        g.poly(this.polyPoints(center, corners));
+      }
+      g.fill({ color, alpha });
+    }
+  }
+
+  /** Grid lines + fog cover are viewport-dependent; redrawn when the view moves. */
+  private drawViewDependent(): void {
+    if (!this.layout || !this.lastMap) {
+      this.gridG.clear();
+      this.fogG.clear();
+      return;
+    }
+    const bounds = this.viewport.getVisibleBounds();
+    const pad = this.layout.size * 2;
+    const cells = hexesInPixelRect(
+      this.layout,
+      bounds.x - pad,
+      bounds.y - pad,
+      bounds.x + bounds.width + pad,
+      bounds.y + bounds.height + pad,
+    );
+    const tooMany = cells.length > 12000;
+    const corners = this.corners();
+
+    // Grid lines
+    const grid = this.gridG;
+    grid.clear();
+    const style = this.lastMap.gridStyle;
+    if (!tooMany && style.lineOpacity > 0) {
+      for (const cell of cells) {
+        const center = hexToPixel(this.layout, cell);
+        const pts = this.polyPoints(center, corners);
+        grid.moveTo(pts[0]!, pts[1]!);
+        for (let i = 2; i < pts.length; i += 2) grid.lineTo(pts[i]!, pts[i + 1]!);
+        grid.closePath();
+      }
+      grid.stroke({
+        width: style.lineWidth / this.viewport.scale.x,
+        color: style.lineColor,
+        alpha: style.lineOpacity,
+      });
+    }
+
+    // Fog cover: dark sheet with holes over non-hidden hexes.
+    const fog = this.fogG;
+    fog.clear();
+    const fogByKey = new Map<string, FogCell['state']>();
+    for (const f of this.lastFog) fogByKey.set(hexKey(f.q, f.r), f.state);
+
+    const isDm = this.role === 'dm';
+    const coverAlpha = isDm ? 0.5 : 1;
+    const margin = Math.max(bounds.width, bounds.height);
+    fog.rect(
+      bounds.x - margin,
+      bounds.y - margin,
+      bounds.width + margin * 2,
+      bounds.height + margin * 2,
+    );
+    fog.fill({ color: 0x07080c, alpha: coverAlpha });
+    if (!tooMany) {
+      for (const cell of cells) {
+        const state = fogByKey.get(hexKey(cell.q, cell.r)) ?? 'hidden';
+        if (state === 'hidden') continue;
+        const center = hexToPixel(this.layout, cell);
+        fog.poly(this.polyPoints(center, corners));
+        fog.cut();
+      }
+      // Dim explored hexes.
+      for (const cell of cells) {
+        const state = fogByKey.get(hexKey(cell.q, cell.r)) ?? 'hidden';
+        if (state !== 'explored') continue;
+        const center = hexToPixel(this.layout, cell);
+        fog.poly(this.polyPoints(center, corners));
+      }
+      fog.fill({ color: 0x0b0d12, alpha: isDm ? 0.25 : 0.55 });
+    }
+  }
+
+  private drawHighlight(): void {
+    const g = this.highlightG;
+    g.clear();
+    if (!this.layout) return;
+    const ui = useUi.getState();
+    const corners = this.corners();
+    const lineW = 2 / this.viewport.scale.x;
+
+    if (ui.selectedHex) {
+      const center = hexToPixel(this.layout, ui.selectedHex);
+      g.poly(this.polyPoints(center, corners));
+      g.stroke({ width: lineW * 1.5, color: 0xc9a24b, alpha: 1 });
+    }
+    if (ui.hoverHex) {
+      const isBrush = (ui.tool === 'paint' || ui.tool === 'fog') && this.role === 'dm';
+      const cells = isBrush ? hexRange(ui.hoverHex, ui.brushRadius) : [ui.hoverHex];
+      for (const cell of cells) {
+        const center = hexToPixel(this.layout, cell);
+        g.poly(this.polyPoints(center, corners));
+      }
+      g.stroke({ width: lineW, color: 0xffffff, alpha: 0.6 });
+      if (isBrush) {
+        for (const cell of cells) {
+          const center = hexToPixel(this.layout, cell);
+          g.poly(this.polyPoints(center, corners));
+        }
+        g.fill({ color: 0xffffff, alpha: 0.08 });
+      }
+    }
+    if (ui.tool === 'measure' && ui.measureStart && ui.hoverHex) {
+      const a = hexToPixel(this.layout, ui.measureStart);
+      const b = hexToPixel(this.layout, ui.hoverHex);
+      g.moveTo(a.x, a.y);
+      g.lineTo(b.x, b.y);
+      g.stroke({ width: lineW * 1.5, color: 0x8b7fd4, alpha: 0.9 });
+    }
+  }
+
+  private drawPins(): void {
+    this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
+    if (!this.layout) return;
+    const size = this.layout.size;
+
+    for (const content of this.lastContents) {
+      const glyph = content.glyph || CONTENT_TYPE_GLYPHS[content.type];
+      const center = hexToPixel(this.layout, { q: content.q, r: content.r });
+      const pin = new Text({
+        text: glyph,
+        style: { fontSize: size * 0.5, align: 'center' },
+      });
+      pin.anchor.set(0.5);
+      pin.position.set(center.x, center.y - size * 0.42);
+      this.pinsC.addChild(pin);
+    }
+
+    // Markers per hex, spread along the bottom.
+    const byHex = new Map<string, Marker[]>();
+    for (const m of this.lastMarkers) {
+      const key = hexKey(m.q, m.r);
+      const list = byHex.get(key) ?? [];
+      list.push(m);
+      byHex.set(key, list);
+    }
+    for (const markers of byHex.values()) {
+      markers.forEach((m, i) => {
+        const center = hexToPixel(this.layout!, { q: m.q, r: m.r });
+        const spread = (i - (markers.length - 1) / 2) * size * 0.45;
+        const pin = new Text({
+          text: m.glyph,
+          style: { fontSize: size * 0.42, align: 'center' },
+        });
+        pin.anchor.set(0.5);
+        pin.position.set(center.x + spread, center.y + size * 0.45);
+        pin.alpha = m.dmOnly ? 0.65 : 1;
+        this.pinsC.addChild(pin);
+        if (m.dmOnly) {
+          const badge = new Text({ text: '🚫', style: { fontSize: size * 0.16 } });
+          badge.anchor.set(0.5);
+          badge.position.set(center.x + spread + size * 0.16, center.y + size * 0.32);
+          this.pinsC.addChild(badge);
+        }
+      });
+    }
+  }
+
+  // -- images ----------------------------------------------------------------
+
+  private async reconcileImages(layers: ImageLayer[]): Promise<void> {
+    const wanted = new Set(layers.map((l) => l.id));
+    for (const [id, sprite] of this.images) {
+      if (!wanted.has(id)) {
+        sprite.destroy();
+        this.images.delete(id);
+      }
+    }
+    for (const layer of layers) {
+      let sprite = this.images.get(layer.id);
+      if (!sprite) {
+        try {
+          const texture = await Assets.load(layer.path);
+          if (this.destroyed) return;
+          sprite = new Sprite(texture);
+          this.images.set(layer.id, sprite);
+          this.imageLayerC.addChild(sprite);
+        } catch {
+          continue;
+        }
+      }
+      sprite.position.set(layer.x, layer.y);
+      sprite.scale.set(layer.scale);
+      sprite.alpha = layer.dmOnly && this.role === 'dm' ? layer.opacity * 0.6 : layer.opacity;
+      sprite.zIndex = layer.z;
+    }
+    this.imageLayerC.sortableChildren = true;
+  }
+
+  // -- tokens ----------------------------------------------------------------
+
+  private reconcileTokens(tokens: Token[], jump: boolean): void {
+    if (!this.layout) return;
+    const wanted = new Map(tokens.map((t) => [t.id, t]));
+    for (const [id, view] of this.tokens) {
+      if (!wanted.has(id)) {
+        view.root.destroy({ children: true });
+        this.tokens.delete(id);
+      }
+    }
+    for (const token of tokens) {
+      let view = this.tokens.get(token.id);
+      const target = hexToPixel(this.layout, token);
+      if (!view) {
+        view = this.createTokenView(token);
+        this.tokens.set(token.id, view);
+        view.root.position.set(target.x, target.y);
+      } else if (visualChanged(view.token, token)) {
+        this.styleTokenView(view, token);
+      }
+      view.token = token;
+      view.targetX = target.x;
+      view.targetY = target.y;
+      if (jump && !view.dragging) view.root.position.set(target.x, target.y);
+    }
+  }
+
+  private createTokenView(token: Token): TokenView {
+    const root = new Container();
+    const body = new Graphics();
+    const glyph = new Text({ text: '', style: { fontSize: 10 } });
+    glyph.anchor.set(0.5);
+    const label = new Text({
+      text: '',
+      style: { fontSize: 10, fill: 0xffffff, stroke: { color: 0x000000, width: 3 } },
+    });
+    label.anchor.set(0.5, 0);
+    root.addChild(body, glyph, label);
+    this.tokensC.addChild(root);
+    const view: TokenView = { root, body, glyph, label, token, targetX: 0, targetY: 0, dragging: false };
+    this.styleTokenView(view, token);
+    this.wireTokenDrag(view);
+    return view;
+  }
+
+  private styleTokenView(view: TokenView, token: Token): void {
+    const size = (this.layout?.size ?? 40) * 0.55;
+    view.body.clear();
+    view.body.circle(0, 0, size);
+    view.body.fill({ color: token.color });
+    view.body.stroke({ width: size * 0.09, color: token.kind === 'pc' ? 0xffffff : 0x22252e });
+    if (token.kind === 'npc' && !token.playerVisible) {
+      view.body.circle(0, 0, size);
+      view.body.stroke({ width: size * 0.09, color: 0xd96c4f, alpha: 0.9 });
+    }
+    const text = token.glyph || initials(token.label);
+    view.glyph.text = text;
+    view.glyph.style.fontSize = size * (token.glyph ? 1.0 : 0.75);
+    view.glyph.style.fill = 0xffffff;
+    view.label.text = token.label;
+    view.label.style.fontSize = size * 0.42;
+    view.label.position.set(0, size * 1.12);
+    view.root.alpha = token.kind === 'npc' && !token.playerVisible ? 0.75 : 1;
+  }
+
+  private wireTokenDrag(view: TokenView): void {
+    const root = view.root;
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.on('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const ui = useUi.getState();
+      if (ui.tool !== 'select') return;
+      if (!this.canMove(view.token)) {
+        // Still allow selecting it.
+        e.stopPropagation();
+        useUi.getState().set('selectedTokenId', view.token.id);
+        useUi.getState().set('selectedHex', { q: view.token.q, r: view.token.r });
+        return;
+      }
+      e.stopPropagation();
+      view.dragging = true;
+      this.drag = { view };
+      this.viewport.plugins.pause('drag');
+      useUi.getState().set('selectedTokenId', view.token.id);
+    });
+  }
+
+  private canMove(token: Token): boolean {
+    if (this.role === 'dm') return true;
+    return token.kind === 'pc' && !!token.characterId && token.characterId === this.myCharacterId;
+  }
+
+  // -- interaction -----------------------------------------------------------
+
+  private updateDragMode(): void {
+    const tool = useUi.getState().tool;
+    const panWithLeft = tool === 'select' || this.role !== 'dm';
+    this.viewport.plugins.remove('drag');
+    this.viewport.drag({ mouseButtons: panWithLeft ? 'all' : 'middle-right' });
+  }
+
+  private worldHex(e: { global: { x: number; y: number } }): HexCoord | null {
+    if (!this.layout) return null;
+    const world = this.viewport.toWorld(e.global.x, e.global.y);
+    return pixelToHex(this.layout, world);
+  }
+
+  private wireInteraction(): void {
+    this.viewport.eventMode = 'static';
+
+    this.viewport.on('pointerdown', (e) => {
+      if (e.button !== 0) {
+        this.panning = true;
+        return;
+      }
+      const ui = useUi.getState();
+      const hex = this.worldHex(e);
+      if (!hex) return;
+      const isDm = this.role === 'dm';
+
+      switch (ui.tool) {
+        case 'select':
+          this.panning = true;
+          useUi.getState().selectHex(hex);
+          break;
+        case 'paint':
+          if (!isDm) return;
+          this.beginStroke('paint', hex);
+          break;
+        case 'fog':
+          if (!isDm) return;
+          this.beginStroke('fog', hex);
+          break;
+        case 'marker': {
+          if (!isDm || !this.lastMap) return;
+          send({
+            kind: 'marker.place',
+            marker: {
+              mapId: this.lastMap.id,
+              q: hex.q,
+              r: hex.r,
+              glyph: ui.markerGlyph,
+              label: '',
+              dmOnly: ui.markerDmOnly,
+            },
+          });
+          break;
+        }
+        case 'content':
+          if (!isDm) return;
+          useUi.getState().set('contentDialogHex', hex);
+          useUi.getState().set('editingContentId', null);
+          break;
+        case 'measure':
+          if (ui.measureStart && hexDistance(ui.measureStart, hex) > 0) {
+            useUi.getState().set('measureStart', null);
+          } else {
+            useUi.getState().set('measureStart', hex);
+          }
+          break;
+      }
+    });
+
+    this.viewport.on('pointermove', (e) => {
+      const hex = this.worldHex(e);
+      const ui = useUi.getState();
+      if (
+        hex &&
+        (!ui.hoverHex || ui.hoverHex.q !== hex.q || ui.hoverHex.r !== hex.r)
+      ) {
+        useUi.getState().set('hoverHex', hex);
+        if (this.stroke && hex) this.strokeApply(hex);
+      }
+      if (this.drag) {
+        const world = this.viewport.toWorld(e.global.x, e.global.y);
+        this.drag.view.root.position.set(world.x, world.y);
+      }
+    });
+
+    const finish = () => {
+      this.panning = false;
+      if (this.stroke) this.endStroke();
+      if (this.drag) this.endTokenDrag();
+    };
+    this.viewport.on('pointerup', finish);
+    this.viewport.on('pointerupoutside', finish);
+  }
+
+  private beginStroke(mode: 'paint' | 'fog', hex: HexCoord): void {
+    this.viewport.plugins.pause('drag');
+    this.stroke = { mode, pending: new Map(), timer: 0 };
+    this.strokeApply(hex);
+  }
+
+  private strokeApply(hex: HexCoord): void {
+    if (!this.stroke || !this.lastMap) return;
+    const ui = useUi.getState();
+    const cells = hexRange(hex, ui.brushRadius);
+    const fresh: HexCoord[] = [];
+    for (const cell of cells) {
+      const key = hexKey(cell.q, cell.r);
+      if (!this.stroke.pending.has(key)) {
+        this.stroke.pending.set(key, cell);
+        fresh.push(cell);
+      }
+    }
+    if (!fresh.length) return;
+    const session = useSession.getState();
+    if (this.stroke.mode === 'paint') {
+      session.optimisticPaint(this.lastMap.id, fresh, ui.paintTerrain);
+    } else {
+      session.optimisticFog(this.lastMap.id, fresh, ui.fogTarget);
+    }
+    const now = performance.now();
+    if (now - this.stroke.timer > STROKE_FLUSH_MS) {
+      this.flushStroke(false);
+      this.stroke.timer = now;
+    }
+  }
+
+  private flushStroke(final: boolean): void {
+    if (!this.stroke || !this.lastMap) return;
+    const cells = [...this.stroke.pending.values()];
+    if (cells.length) {
+      const ui = useUi.getState();
+      if (this.stroke.mode === 'paint') {
+        send({ kind: 'terrain.paint', mapId: this.lastMap.id, cells, terrain: ui.paintTerrain });
+      } else {
+        send({ kind: 'fog.set', mapId: this.lastMap.id, cells, state: ui.fogTarget });
+      }
+    }
+    if (final) this.stroke = null;
+    else if (this.stroke) this.stroke.pending.clear();
+  }
+
+  private endStroke(): void {
+    this.flushStroke(true);
+    this.updateDragMode();
+  }
+
+  private endTokenDrag(): void {
+    const drag = this.drag;
+    this.drag = null;
+    this.updateDragMode();
+    if (!drag || !this.layout) return;
+    drag.view.dragging = false;
+    const dropHex = pixelToHex(this.layout, {
+      x: drag.view.root.position.x,
+      y: drag.view.root.position.y,
+    });
+    const token = drag.view.token;
+    if (dropHex.q === token.q && dropHex.r === token.r) {
+      const p = hexToPixel(this.layout, token);
+      drag.view.targetX = p.x;
+      drag.view.targetY = p.y;
+      return;
+    }
+    // Step-mode limit for players (server validates too).
+    const map = this.lastMap;
+    if (
+      this.role !== 'dm' &&
+      map?.moveMode === 'step' &&
+      hexDistance(token, dropHex) > 1
+    ) {
+      const p = hexToPixel(this.layout, token);
+      drag.view.targetX = p.x;
+      drag.view.targetY = p.y;
+      useSession.getState().pushToast({
+        kind: 'info',
+        title: 'One hex at a time',
+        text: 'This map only allows single-hex steps.',
+      });
+      return;
+    }
+    useSession.getState().optimisticTokenMove(token.id, dropHex.q, dropHex.r);
+    send({ kind: 'token.move', tokenId: token.id, q: dropHex.q, r: dropHex.r });
+  }
+
+  // -- ticker ----------------------------------------------------------------
+
+  private tick(): void {
+    if (this.viewDirty) {
+      this.viewDirty = false;
+      this.drawViewDependent();
+      this.drawHighlight();
+    }
+    // Ease tokens toward their targets.
+    for (const view of this.tokens.values()) {
+      if (view.dragging) continue;
+      const dx = view.targetX - view.root.position.x;
+      const dy = view.targetY - view.root.position.y;
+      if (Math.abs(dx) + Math.abs(dy) < 0.5) {
+        view.root.position.set(view.targetX, view.targetY);
+      } else {
+        view.root.position.set(
+          view.root.position.x + dx * 0.25,
+          view.root.position.y + dy * 0.25,
+        );
+      }
+    }
+  }
+}
+
+// -- diff helpers ------------------------------------------------------------
+
+function hexCellsEqual(a: HexCell[], b: HexCell[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!,
+      y = b[i]!;
+    if (x.q !== y.q || x.r !== y.r || x.terrain !== y.terrain) return false;
+  }
+  return true;
+}
+
+function fogCellsEqual(a: FogCell[], b: FogCell[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!,
+      y = b[i]!;
+    if (x.q !== y.q || x.r !== y.r || x.state !== y.state) return false;
+  }
+  return true;
+}
+
+function markersEqual(a: Marker[], b: Marker[]): boolean {
+  return a.length === b.length && a.every((m, i) => shallowEqual(m, b[i]!));
+}
+
+function contentsEqual(
+  a: (Content | ContentPlayerView)[],
+  b: (Content | ContentPlayerView)[],
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((c, i) => {
+    const o = b[i]!;
+    return c.id === o.id && c.q === o.q && c.r === o.r && c.glyph === o.glyph && c.type === o.type;
+  });
+}
+
+function imagesEqual(a: ImageLayer[], b: ImageLayer[]): boolean {
+  return a.length === b.length && a.every((l, i) => shallowEqual(l, b[i]!));
+}
+
+function shallowEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  for (const key of Object.keys(a)) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+function visualChanged(a: Token, b: Token): boolean {
+  return (
+    a.label !== b.label ||
+    a.color !== b.color ||
+    a.glyph !== b.glyph ||
+    a.kind !== b.kind ||
+    a.playerVisible !== b.playerVisible
+  );
+}
+
+function initials(label: string): string {
+  return label
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
+}
