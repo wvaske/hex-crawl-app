@@ -1,19 +1,17 @@
 {
-  "name": "@hex-crawl/client",
+  "name": "@hexcrawl/client",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hex-crawl/shared": "workspace:*",
-    "@pixi/react": "^8.0.5",
-    "better-auth": "^1.4.17",
-    "honeycomb-grid": "^4.1.5",
+    "@hexcrawl/shared": "workspace:*",
     "pixi-viewport": "^6.0.3",
     "pixi.js": "^8.15.0",
     "react": "^19.0.0",
@@ -24,12 +22,9 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.0.0",
-    "jsdom": "^27.4.0",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.8.0",
     "vite": "^7.0.0",

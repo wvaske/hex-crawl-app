@@ -1,10 +1,20 @@
 {
-  "name": "hex-crawl",
+  "name": "hexcrawl-vtt",
   "private": true,
+  "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @hex-crawl/client dev",
-    "build": "pnpm --filter @hex-crawl/client build",
-    "dev:server": "pnpm --filter @hex-crawl/server dev",
-    "dev:all": "pnpm --parallel --filter './packages/*' dev"
+    "dev": "pnpm --parallel --filter @hexcrawl/server --filter @hexcrawl/client dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r --no-bail test",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx,css}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.5.0",
+    "typescript": "~5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
