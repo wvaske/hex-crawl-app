@@ -1,0 +1,27 @@
+# Traefik dynamic config for hex-crawl.deeznuts.wiki
+# Drop this into the Traefik file-provider dir on alder01:
+#   /var/lib/docker/volumes/deeznuts_deeznuts/_data/traefik/dynamic/hex-crawl.yml
+# Traefik hot-reloads on content change. If ACME issuance was previously blocked,
+# `docker restart traefik` to force a fresh order.
+#
+# Mirrors the existing wiki.yml pattern (file provider only; the container's
+# docker labels are NOT read on this Traefik instance).
+
+http:
+  routers:
+    hex-crawl:
+      rule: "Host(`hex-crawl.deeznuts.wiki`)"
+      entryPoints:
+        - websecure
+      service: hex-crawl
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    hex-crawl:
+      loadBalancer:
+        servers:
+          # Point at the container's macvlan IP (matches HEXCRAWL_IP in the stack).
+          - url: "http://172.16.2.40:3000"
+        # WebSocket upgrade passes through Traefik unchanged; no sticky needed
+        # (single replica), but the app tolerates reconnects if scaled later.

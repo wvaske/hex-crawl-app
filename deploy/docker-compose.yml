@@ -1,0 +1,39 @@
+# HexCrawl VTT — Portainer stack for alder01.vaske.us
+# Deploy via Portainer (lp-01 server → alder01 endpoint) as stack "hex-crawl".
+#
+# Prereqs (see deploy/RUNBOOK.md):
+#  1. iSCSI LUN from blocks.vaske.us formatted XFS; local docker volume
+#     "hexcrawl_data" created with device=/dev/disk/by-uuid/<UUID>,type=xfs.
+#     Docker mounts/unmounts it itself — do NOT add an fstab entry.
+#  2. Image built and pushed to a registry alder01 can pull, OR built on alder01.
+#  3. A free 172.16.2.x address on the homenet macvlan (verify unused first).
+#  4. Traefik dynamic route for hex-crawl.deeznuts.wiki (deploy/traefik-hex-crawl.yml).
+
+services:
+  hex-crawl:
+    image: ${HEXCRAWL_IMAGE:-hex-crawl:latest}
+    container_name: hex-crawl
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      DATA_DIR: "/data"
+      CLIENT_DIST: "/app/client-dist"
+    volumes:
+      - hexcrawl_data:/data
+    networks:
+      homenet:
+        ipv4_address: ${HEXCRAWL_IP:-172.16.2.40}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  hexcrawl_data:
+    external: true   # created out-of-band on the iSCSI LUN (see RUNBOOK)
+
+networks:
+  homenet:
+    external: true   # existing macvlan shared by the other alder01 stacks
