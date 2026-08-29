@@ -1,6 +1,16 @@
-import React from 'react';
-import { MARKER_LIBRARY, TERRAINS, TERRAIN_IDS, type FogState } from '@hexcrawl/shared';
+import React, { useState } from 'react';
+import {
+  MARKER_LIBRARY,
+  TERRAINS,
+  TERRAIN_IDS,
+  hexKey,
+  hexesInPixelRect,
+  type FogState,
+  type HexCoord,
+} from '@hexcrawl/shared';
+import { activeMap, useSession } from '../stores/session.js';
 import { useUi, type Tool } from '../stores/ui.js';
+import { send } from '../ws.js';
 import { cx } from '../ui/kit.js';
 
 const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
@@ -99,6 +109,7 @@ export function Toolbar() {
                   </button>
                 ))}
               </div>
+              <ApplyFogToAll />
             </>
           )}
           <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
@@ -165,4 +176,106 @@ export function Toolbar() {
       )}
     </div>
   );
+}
+
+/**
+ * Apply the selected fog state to every hex on the map: painted terrain,
+ * cells that already have a fog state, and the full footprint of any map
+ * images. Commands are chunked to respect the per-command cell limit.
+ */
+function ApplyFogToAll() {
+  const fogTarget = useUi((s) => s.fogTarget);
+  const [busy, setBusy] = useState(false);
+
+  const apply = async () => {
+    const session = useSession.getState();
+    const state = session.state;
+    const map = activeMap(state);
+    if (!state?.mapState || !map || busy) return;
+    setBusy(true);
+    try {
+      const layout = {
+        orientation: map.orientation,
+        size: map.hexSize,
+        origin: { x: map.originX, y: map.originY },
+      };
+      const cells = new Map<string, HexCoord>();
+      const add = (c: HexCoord) => cells.set(hexKey(c.q, c.r), { q: c.q, r: c.r });
+      for (const h of state.mapState.hexes) add(h);
+      for (const f of state.mapState.fog) add(f);
+      for (const layer of state.mapState.imageLayers) {
+        try {
+          const size = await imageNaturalSize(layer.path);
+          for (const c of hexesInPixelRect(
+            layout,
+            layer.x,
+            layer.y,
+            layer.x + size.width * layer.scale,
+            layer.y + size.height * layer.scale,
+          )) {
+            add(c);
+            if (cells.size > 60000) throw new Error('too-large');
+          }
+        } catch (err) {
+          if (err instanceof Error && err.message === 'too-large') {
+            session.pushToast({
+              kind: 'error',
+              title: 'Map too large',
+              text: 'That image spans over 60,000 hexes — fog the areas you need with the brush instead.',
+            });
+            return;
+          }
+          // Image failed to load; skip its footprint.
+        }
+      }
+      if (cells.size === 0) {
+        session.pushToast({
+          kind: 'info',
+          title: 'Nothing to fog',
+          text: 'Paint terrain or upload a map image first.',
+        });
+        return;
+      }
+      const all = [...cells.values()];
+      session.optimisticFog(map.id, all, fogTarget);
+      for (let i = 0; i < all.length; i += 5000) {
+        send({ kind: 'fog.set', mapId: map.id, cells: all.slice(i, i + 5000), state: fogTarget });
+      }
+      session.pushToast({
+        kind: 'info',
+        title: 'Fog updated',
+        text: `Set ${all.length.toLocaleString()} hex${all.length === 1 ? '' : 'es'} to ${fogTarget}.`,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={() => void apply()}
+      disabled={busy}
+      className="w-full mb-2 px-2 py-1.5 rounded text-xs cursor-pointer border border-ink-600 bg-ink-800 hover:bg-ink-700 text-ink-100 disabled:opacity-50"
+      title="Set every hex on this map (terrain, fogged cells, and map-image area) to the selected state"
+    >
+      {busy ? 'Applying…' : '⬢ Apply to entire map'}
+    </button>
+  );
+}
+
+const imageSizeCache = new Map<string, { width: number; height: number }>();
+
+function imageNaturalSize(path: string): Promise<{ width: number; height: number }> {
+  const cached = imageSizeCache.get(path);
+  if (cached) return Promise.resolve(cached);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const size = { width: img.naturalWidth, height: img.naturalHeight };
+      imageSizeCache.set(path, size);
+      resolve(size);
+    };
+    img.onerror = () => reject(new Error(`Failed to load ${path}`));
+    img.src = path;
+  });
 }
