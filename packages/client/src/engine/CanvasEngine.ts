@@ -456,6 +456,22 @@ export class CanvasEngine {
     }
     this.fogEraseG.fill({ color: 0xffffff });
     this.exploredG.fill({ color: 0x0b0d12 });
+
+    this.updatePinScales();
+  }
+
+  /**
+   * Content/marker pins keep a minimum on-screen size (like map-app pins) so
+   * they stay legible on maps with tiny hexes or when zoomed far out.
+   */
+  private updatePinScales(): void {
+    if (!this.layout) return;
+    const minScreenPx = 16;
+    const baseWorldPx = this.layout.size * 0.5;
+    const scale = Math.max(1, minScreenPx / (baseWorldPx * this.viewport.scale.x));
+    for (const child of this.pinsC.children) {
+      child.scale.set(scale);
+    }
   }
 
   private drawHighlight(): void {
@@ -541,6 +557,7 @@ export class CanvasEngine {
         }
       });
     }
+    this.updatePinScales();
   }
 
   // -- images ----------------------------------------------------------------
