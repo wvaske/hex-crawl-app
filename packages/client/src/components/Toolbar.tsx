@@ -4,12 +4,12 @@ import { useUi, type Tool } from '../stores/ui.js';
 import { cx } from '../ui/kit.js';
 
 const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
-  { tool: 'select', icon: '➤', name: 'Select', hint: 'Click hexes, drag tokens, pan' },
-  { tool: 'paint', icon: '🖌️', name: 'Terrain', hint: 'Paint terrain (drag)' },
-  { tool: 'fog', icon: '🌫️', name: 'Fog', hint: 'Reveal / hide hexes' },
-  { tool: 'marker', icon: '📍', name: 'Marker', hint: 'Place effect markers' },
-  { tool: 'content', icon: '📖', name: 'Content', hint: 'Add hex content' },
-  { tool: 'measure', icon: '📏', name: 'Measure', hint: 'Measure distances' },
+  { tool: 'select', icon: '➤', name: 'Select (V)', hint: 'Click hexes, drag tokens, pan' },
+  { tool: 'paint', icon: '🖌️', name: 'Terrain (B)', hint: 'Paint terrain (drag)' },
+  { tool: 'fog', icon: '🌫️', name: 'Fog (F)', hint: 'Reveal / hide hexes' },
+  { tool: 'marker', icon: '📍', name: 'Marker (M)', hint: 'Place effect markers' },
+  { tool: 'content', icon: '📖', name: 'Content (C)', hint: 'Add hex content' },
+  { tool: 'measure', icon: '📏', name: 'Measure (R)', hint: 'Measure distances' },
 ];
 
 export function Toolbar() {

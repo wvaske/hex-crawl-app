@@ -70,23 +70,42 @@ export function LogTab() {
 
 function NarrateBox() {
   const [text, setText] = useState('');
+  const [target, setTarget] = useState('all');
+  const seats = useSession((s) => s.state?.seats);
+  const playerSeats = (seats ?? []).filter((seat) => seat.role === 'player');
   const submit = () => {
     if (!text.trim()) return;
-    send({ kind: 'narrate', text: text.trim(), seatIds: [] });
+    send({ kind: 'narrate', text: text.trim(), seatIds: target === 'all' ? [] : [target] });
     setText('');
   };
   return (
-    <div className="pt-2 mt-2 border-t border-ink-700 flex gap-1.5 shrink-0">
-      <Input
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Narrate to all players…"
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-        maxLength={4000}
-      />
-      <Button size="sm" variant="primary" onClick={submit} disabled={!text.trim()}>
-        ➤
-      </Button>
+    <div className="pt-2 mt-2 border-t border-ink-700 space-y-1.5 shrink-0">
+      <div className="flex gap-1.5">
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={target === 'all' ? 'Narrate to all players…' : 'Whisper privately…'}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          maxLength={4000}
+        />
+        <Button size="sm" variant="primary" onClick={submit} disabled={!text.trim()}>
+          ➤
+        </Button>
+      </div>
+      {playerSeats.length > 0 && (
+        <select
+          className="w-full bg-ink-900 border border-ink-700 rounded px-1.5 py-1 text-[11px] text-ink-300 cursor-pointer focus:outline-none"
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+        >
+          <option value="all">To: everyone</option>
+          {playerSeats.map((seat) => (
+            <option key={seat.id} value={seat.id}>
+              To: {seat.name} (private)
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

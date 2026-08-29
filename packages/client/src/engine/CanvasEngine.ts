@@ -75,6 +75,8 @@ export class CanvasEngine {
 
   private viewDirty = true;
   private destroyed = false;
+  private needsRecenter = false;
+  private resizeObserver: ResizeObserver | null = null;
   private unsubs: (() => void)[] = [];
 
   private stroke: { mode: 'paint' | 'fog'; pending: Map<string, HexCoord>; timer: number } | null =
@@ -125,6 +127,19 @@ export class CanvasEngine {
       this.viewport.resize(w, h);
       this.viewDirty = true;
     });
+    // Pixi's resizeTo only reacts to window resizes; track the host element
+    // directly so a 0-sized mount (layout not settled yet) recovers.
+    this.resizeObserver = new ResizeObserver(() => {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      if (w > 0 && h > 0 && (this.viewport.screenWidth !== w || this.viewport.screenHeight !== h)) {
+        this.app.renderer.resize(w, h);
+        this.viewport.resize(w, h);
+        this.viewDirty = true;
+        if (this.needsRecenter) this.recenter();
+      }
+    });
+    this.resizeObserver.observe(host);
 
     this.wireInteraction();
 
@@ -150,10 +165,14 @@ export class CanvasEngine {
 
     this.applyState();
     this.recenter();
+    if (import.meta.env.DEV) {
+      (window as unknown as { __engine?: CanvasEngine }).__engine = this;
+    }
   }
 
   destroy(): void {
     this.destroyed = true;
+    this.resizeObserver?.disconnect();
     for (const u of this.unsubs) u();
     if (this.app.renderer) {
       this.app.destroy(true, { children: true });
@@ -261,6 +280,12 @@ export class CanvasEngine {
   /** Center the viewport on the map's content. */
   recenter(): void {
     if (!this.layout) return;
+    if (this.viewport.screenWidth <= 0 || this.viewport.screenHeight <= 0) {
+      // Layout hasn't settled; the resize observer re-runs this.
+      this.needsRecenter = true;
+      return;
+    }
+    this.needsRecenter = false;
     const cells = this.lastHexes;
     if (cells.length > 0) {
       let minX = Infinity,

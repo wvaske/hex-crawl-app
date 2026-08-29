@@ -8,6 +8,7 @@ import { Toolbar } from '../components/Toolbar.js';
 import { SidePanel } from '../components/SidePanel.js';
 import { Toasts } from '../components/Toasts.js';
 import { ContentDialog } from '../components/ContentDialog.js';
+import { EmptyMapHint, HexReadout } from '../components/StatusOverlays.js';
 
 export function TableView({ campaignId }: { campaignId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -22,6 +23,30 @@ export function TableView({ campaignId }: { campaignId: string }) {
     connectWs(campaignId);
     return () => disconnectWs();
   }, [campaignId]);
+
+  // DM tool keyboard shortcuts.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+        return;
+      }
+      const ui = useUi.getState();
+      if (e.key === 'Escape') {
+        ui.set('contentDialogHex', null);
+        ui.set('editingContentId', null);
+        ui.selectHex(null);
+        ui.set('measureStart', null);
+        return;
+      }
+      if (useSession.getState().role !== 'dm') return;
+      const tools = { v: 'select', b: 'paint', f: 'fog', m: 'marker', c: 'content', r: 'measure' } as const;
+      const tool = tools[e.key.toLowerCase() as keyof typeof tools];
+      if (tool && !e.metaKey && !e.ctrlKey && !e.altKey) ui.setTool(tool);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -41,6 +66,8 @@ export function TableView({ campaignId }: { campaignId: string }) {
       <TopBar campaignId={campaignId} onRecenter={() => engineRef.current?.recenter()} />
       <div className="flex-1 flex min-h-0 relative">
         <div ref={hostRef} className="canvas-host flex-1 min-w-0 relative" />
+        <EmptyMapHint />
+        <HexReadout />
         {role === 'dm' && <Toolbar />}
         {panelOpen && <SidePanel campaignId={campaignId} />}
         {!hasState && (

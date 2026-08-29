@@ -233,13 +233,28 @@ function DmContentCard({ content }: { content: Content }) {
                         key={d.id}
                         className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-ink-950 cursor-pointer"
                         style={{ background: ch?.color ?? '#888' }}
-                        title={`Discovered — click to revoke`}
+                        title="Knows this — click to revoke"
                         onClick={() => send({ kind: 'discovery.revoke', discoveryId: d.id })}
                       >
-                        {ch?.name ?? '?'}
+                        {ch?.name ?? '?'} ✓
                       </span>
                     );
                   })}
+                  {characters
+                    .filter((ch) => !known.some((d) => d.characterId === ch.id))
+                    .map((ch) => (
+                      <span
+                        key={ch.id}
+                        className="px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-dashed cursor-pointer text-ink-300 hover:text-ink-100"
+                        style={{ borderColor: ch.color }}
+                        title={`Doesn't know yet — click to reveal to ${ch.name}`}
+                        onClick={() =>
+                          send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [ch.id] })
+                        }
+                      >
+                        {ch.name}
+                      </span>
+                    ))}
                   <button
                     className="text-[10px] text-brass-400 hover:text-brass-300 cursor-pointer px-1"
                     onClick={() => send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [] })}
