@@ -14,7 +14,6 @@
     "@hexcrawl/shared": "workspace:*",
     "@hono/node-server": "^1.14.0",
     "better-sqlite3": "^12.4.0",
-    "drizzle-orm": "^0.45.0",
     "hono": "^4.11.0",
     "nanoid": "^5.0.9",
     "ws": "^8.18.0",
@@ -24,7 +23,6 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
-    "drizzle-kit": "^0.31.0",
     "tsx": "^4.19.0",
     "typescript": "~5.8.0",
     "vitest": "^4.0.18"
