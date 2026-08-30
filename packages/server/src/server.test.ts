@@ -271,6 +271,49 @@ describe('seat recovery', () => {
   });
 });
 
+describe('move approval + explored trail', () => {
+  it('trail: traversed path becomes explored, destination visible', () => {
+    const { mapId, tokenId, playerSeat } = setupPartyWithScout();
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 4, r: 0 } as never);
+    const rt = runtime.requireMap(mapId);
+    expect(rt.fog.get(hexKey(0, 0))).toBe('explored'); // origin traversed
+    expect(rt.fog.get(hexKey(2, 0))).toBe('explored'); // path traversed
+    expect(rt.fog.get(hexKey(4, 0))).toBe('visible'); // standing here
+  });
+
+  it('approval mode: player moves become requests the DM resolves', () => {
+    const { mapId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({ kind: 'map.update', mapId, patch: { moveApproval: true } } as never);
+    // Direct move now rejected for players…
+    expect(() => asSeat(playerSeat, { kind: 'token.move', tokenId, q: 3, r: 0 } as never)).toThrow(
+      /approval|request/i,
+    );
+    // …request instead.
+    asSeat(playerSeat, { kind: 'move.request', tokenId, q: 3, r: 0 } as never);
+    const rt = runtime.requireMap(mapId);
+    expect(rt.pendingMoves.get(tokenId)).toMatchObject({ toQ: 3, toR: 0 });
+    expect(runtime.findToken(tokenId)).toMatchObject({ q: 0, r: 0 }); // not moved yet
+
+    // Deny: token stays, pending cleared.
+    dm({ kind: 'move.resolve', tokenId, approve: false } as never);
+    expect(rt.pendingMoves.has(tokenId)).toBe(false);
+    expect(runtime.findToken(tokenId)).toMatchObject({ q: 0, r: 0 });
+
+    // Approve: move executes with trail + sight.
+    asSeat(playerSeat, { kind: 'move.request', tokenId, q: 3, r: 0 } as never);
+    dm({ kind: 'move.resolve', tokenId, approve: true } as never);
+    expect(runtime.findToken(tokenId)).toMatchObject({ q: 3, r: 0 });
+    expect(rt.fog.get(hexKey(1, 0))).toBe('explored');
+    expect(rt.fog.get(hexKey(3, 0))).toBe('visible');
+    // Players cannot resolve.
+    asSeat(playerSeat, { kind: 'move.request', tokenId, q: 5, r: 0 } as never);
+    expect(() => asSeat(playerSeat, { kind: 'move.resolve', tokenId, approve: true } as never)).toThrow(/DM/);
+    // DM's own direct moves bypass approval.
+    dm({ kind: 'token.move', tokenId, q: 4, r: 0 } as never);
+    expect(runtime.findToken(tokenId)).toMatchObject({ q: 4, r: 0 });
+  });
+});
+
 describe('undo', () => {
   it('one undo reverts an entire bulk fog change (the apply-to-all disaster case)', () => {
     const mapId = activeMapId();

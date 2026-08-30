@@ -86,7 +86,7 @@ export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
   description: z.string().max(2000).default(''),
   /** Base URL for wiki links on content (page titles are appended). */
-  wikiBaseUrl: z.string().max(300).default('https://wiki.deeznuts.wiki/wiki/'),
+  wikiBaseUrl: z.string().max(300).default('https://wiki.deeznuts.wiki/index.php/'),
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 
@@ -159,6 +159,8 @@ export const MapInfoSchema = z.object({
   /** Whether previously-visible hexes decay to explored when unobserved. */
   fogDecay: z.boolean().default(true),
   moveMode: MoveModeSchema.default('free'),
+  /** Player moves become requests the DM approves (turn-based travel). */
+  moveApproval: z.boolean().default(false),
   /** Real-world miles per hex, for display. */
   milesPerHex: z.number().min(0).max(1000).default(6),
   encounterCheck: EncounterCheckConfigSchema,
@@ -190,6 +192,20 @@ export const HexCellSchema = z.object({
   terrain: TerrainIdSchema,
 });
 export type HexCell = z.infer<typeof HexCellSchema>;
+
+/** A player's declared move awaiting DM approval (in-memory, per map). */
+export const PendingMoveSchema = z.object({
+  tokenId: z.string(),
+  fromQ: z.number().int(),
+  fromR: z.number().int(),
+  toQ: z.number().int(),
+  toR: z.number().int(),
+  seatId: z.string(),
+  label: z.string(),
+  color: z.string(),
+  at: z.number(),
+});
+export type PendingMove = z.infer<typeof PendingMoveSchema>;
 
 export const FogCellSchema = z.object({
   q: z.number().int(),
@@ -459,6 +475,7 @@ export const MapStateSchema = z.object({
   markers: z.array(MarkerSchema),
   /** DM: full Content[]; players: ContentPlayerView[] */
   contents: z.array(z.union([ContentSchema, ContentPlayerViewSchema])),
+  pendingMoves: z.array(PendingMoveSchema).default([]),
 });
 export type MapState = z.infer<typeof MapStateSchema>;
 

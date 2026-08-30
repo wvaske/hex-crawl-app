@@ -88,6 +88,7 @@ export const MapUpdateCommand = z.object({
       fogMode: z.enum(['manual', 'auto']),
       fogDecay: z.boolean(),
       moveMode: z.enum(['step', 'free']),
+      moveApproval: z.boolean(),
       milesPerHex: z.number().min(0).max(1000),
       encounterCheck: EncounterCheckPatchSchema,
       sortOrder: z.number().int(),
@@ -191,6 +192,23 @@ export const TokenMoveCommand = z.object({
   tokenId: z.string(),
   q: z.number().int(),
   r: z.number().int(),
+});
+
+/** Player: request a move for DM approval (when the map requires it). */
+export const MoveRequestCommand = z.object({
+  ...base,
+  kind: z.literal('move.request'),
+  tokenId: z.string(),
+  q: z.number().int(),
+  r: z.number().int(),
+});
+
+/** DM: approve or deny a pending move. */
+export const MoveResolveCommand = z.object({
+  ...base,
+  kind: z.literal('move.resolve'),
+  tokenId: z.string(),
+  approve: z.boolean(),
 });
 
 export const TokenDeleteCommand = z.object({
@@ -401,6 +419,8 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   TokenCreateCommand,
   TokenUpdateCommand,
   TokenMoveCommand,
+  MoveRequestCommand,
+  MoveResolveCommand,
   TokenDeleteCommand,
   MarkerPlaceCommand,
   MarkerUpdateCommand,

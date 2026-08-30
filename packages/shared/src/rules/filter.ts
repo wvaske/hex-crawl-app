@@ -41,6 +41,7 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
             .filter(isFullContent)
             .map((c) => contentPlayerView(c, viewer.characterId, full))
             .filter((v): v is ContentPlayerView => v !== null),
+          pendingMoves: mapState.pendingMoves,
         };
       })()
     : null;

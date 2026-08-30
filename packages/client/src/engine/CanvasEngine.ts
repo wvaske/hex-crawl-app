@@ -84,6 +84,7 @@ export class CanvasEngine {
   private exploredAlpha = new AlphaFilter({ alpha: 0.3 });
   private pinsC = new Container();
   private tokensC = new Container();
+  private pendingC = new Container();
   private highlightG = new Graphics();
 
   private tokens = new Map<string, TokenView>();
@@ -153,6 +154,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.gridG);
     this.viewport.addChild(this.pinsC);
     this.viewport.addChild(this.tokensC);
+    this.viewport.addChild(this.pendingC);
     this.viewport.addChild(this.exploredC);
     this.viewport.addChild(this.fogC);
     this.viewport.addChild(this.highlightG);
@@ -285,6 +287,7 @@ export class CanvasEngine {
     }
 
     this.reconcileTokens(ms.tokens, layoutChanged);
+    this.drawPendingMoves(ms.pendingMoves);
 
     if (
       layoutChanged ||
@@ -307,6 +310,7 @@ export class CanvasEngine {
   private lastMapIdForCenter = '';
 
   private clearAll(): void {
+    this.pendingC.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.terrainG.clear();
     this.gridG.clear();
     this.fogSheetG.clear();
@@ -877,6 +881,49 @@ export class CanvasEngine {
     this.updatePinScales();
   }
 
+  /** Dashed declared-travel paths with a ghost token at the destination. */
+  private drawPendingMoves(pending: { fromQ: number; fromR: number; toQ: number; toR: number; color: string; label: string }[]): void {
+    this.pendingC.removeChildren().forEach((c) => c.destroy({ children: true }));
+    if (!this.layout || !pending.length) return;
+    const size = this.layout.size;
+    for (const pm of pending) {
+      const a = hexToPixel(this.layout, { q: pm.fromQ, r: pm.fromR });
+      const b = hexToPixel(this.layout, { q: pm.toQ, r: pm.toR });
+      const g = new Graphics();
+      // dashed line
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const dash = Math.max(6, size * 0.6);
+      const n = Math.floor(dist / (dash * 1.6));
+      for (let i = 0; i <= n; i++) {
+        const t0 = (i * dash * 1.6) / dist;
+        const t1 = Math.min(1, t0 + dash / dist);
+        g.moveTo(a.x + dx * t0, a.y + dy * t0);
+        g.lineTo(a.x + dx * t1, a.y + dy * t1);
+      }
+      g.stroke({ width: Math.max(2, size * 0.12), color: pm.color, alpha: 0.9 });
+      g.circle(b.x, b.y, size * 0.55);
+      g.fill({ color: pm.color, alpha: 0.35 });
+      g.circle(b.x, b.y, size * 0.55);
+      g.stroke({ width: Math.max(1.5, size * 0.08), color: 0xffffff, alpha: 0.8 });
+      this.pendingC.addChild(g);
+      const label = new Text({
+        text: `${pm.label}?`,
+        style: {
+          fontSize: 13,
+          fill: 0xffffff,
+          fontWeight: '700',
+          stroke: { color: 0x000000, width: 3 },
+        },
+        resolution: 3,
+      });
+      label.anchor.set(0.5, 0);
+      label.position.set(b.x, b.y + size * 0.7);
+      (label as unknown as PinContainer).__pin = { worldSize: size, minScreen: 14 };
+      this.pendingC.addChild(label);
+    }
+  }
+
   private createTokenView(token: Token): TokenView {
     const root = new Container();
     const body = new Graphics();
@@ -1130,8 +1177,22 @@ export class CanvasEngine {
       drag.view.targetY = p.y;
       return;
     }
-    // Step-mode limit for players (server validates too).
     const map = this.lastMap;
+    // DM-approved travel: the drag becomes a request; the token snaps home
+    // and a ghost shows the declared destination until the DM resolves it.
+    if (this.role !== 'dm' && map?.moveApproval) {
+      const p = hexToPixel(this.layout, token);
+      drag.view.targetX = p.x;
+      drag.view.targetY = p.y;
+      send({ kind: 'move.request', tokenId: token.id, q: dropHex.q, r: dropHex.r });
+      useSession.getState().pushToast({
+        kind: 'info',
+        title: 'Travel declared',
+        text: 'Waiting for the DM to resolve your move.',
+      });
+      return;
+    }
+    // Step-mode limit for players (server validates too).
     if (
       this.role !== 'dm' &&
       map?.moveMode === 'step' &&

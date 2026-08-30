@@ -28,7 +28,8 @@ export function applyAutoReveal(
 
   const toVisible: { q: number; r: number }[] = [];
   for (const key of inSight) {
-    if ((rt.fog.get(key) ?? 'hidden') !== 'visible') toVisible.push(parseHexKey(key));
+    // Only lift hidden cells; the explored trail keeps its state.
+    if ((rt.fog.get(key) ?? 'hidden') === 'hidden') toVisible.push(parseHexKey(key));
   }
 
   const toExplored: { q: number; r: number }[] = [];
