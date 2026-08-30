@@ -153,7 +153,13 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   // -- campaign --------------------------------------------------------------
   'campaign.update': ((cmd: Extract<ClientCommand, { kind: 'campaign.update' }>, ctx: Ctx) => {
     requireDm(ctx);
+    const wasPaused = ctx.runtime.campaign.settings.pausePlayerMapSync;
     ctx.runtime.updateCampaign({ name: cmd.name, settings: cmd.settings });
+    const nowPaused = ctx.runtime.campaign.settings.pausePlayerMapSync;
+    // Entering prep mode freezes what players currently see; leaving it
+    // releases the snapshot so the next sync shows everything at once.
+    if (nowPaused && !wasPaused) ctx.runtime.capturePlayerFreeze();
+    if (!nowPaused && wasPaused) ctx.runtime.clearPlayerFreeze();
   }) as Handler,
 
   // -- maps ------------------------------------------------------------------
@@ -275,7 +281,9 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     const label = token.label || 'token';
     const fromQ = token.q;
     const fromR = token.r;
-    const fogDelta = executePartyMove(ctx, token, cmd.q, cmd.r, cmd.teleport && ctx.seat.role === 'dm');
+    const teleport = cmd.teleport && ctx.seat.role === 'dm';
+    const fogDelta = executePartyMove(ctx, token, cmd.q, cmd.r, teleport);
+    autoEncounterChecks(ctx, map, token, { q: fromQ, r: fromR }, { q: cmd.q, r: cmd.r }, teleport);
     if (ctx.seat.role === 'dm') {
       ctx.runtime.pushUndo({
         at: Date.now(),
@@ -329,7 +337,12 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     rt.pendingMoves.delete(cmd.tokenId);
     if (cmd.approve) {
       const prior = partyMembers(ctx, token).map((m) => ({ id: m.id, q: m.q, r: m.r }));
+      const from = { q: token.q, r: token.r };
       const fogDelta = executePartyMove(ctx, token, pending.toQ, pending.toR, cmd.teleport);
+      const map = ctx.runtime.maps.get(token.mapId);
+      if (map) {
+        autoEncounterChecks(ctx, map, token, from, { q: pending.toQ, r: pending.toR }, cmd.teleport);
+      }
       ctx.runtime.pushUndo({
         at: Date.now(),
         kind: 'token.move',
@@ -625,6 +638,41 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     ctx.runtime.revokeDiscovery(cmd.discoveryId);
   }) as Handler,
 
+  'clue.share': ((cmd: Extract<ClientCommand, { kind: 'clue.share' }>, ctx: Ctx) => {
+    const characterId = ctx.seat.characterId;
+    if (!characterId) throw new Error('Claim a character first');
+    const content = ctx.runtime.findContentByClue(cmd.clueId);
+    if (!content) throw new Error('Clue not found');
+    const clue = content.clues.find((c) => c.id === cmd.clueId)!;
+    const mine = [...ctx.runtime.discoveries.values()].find(
+      (d) => d.clueId === cmd.clueId && d.characterId === characterId,
+    );
+    if (!mine) throw new Error('You can only share clues your character has discovered');
+    const sharer = ctx.runtime.characters.get(characterId);
+    let shared = 0;
+    for (const other of ctx.runtime.characters.values()) {
+      if (other.id === characterId) continue;
+      const added = ctx.runtime.addDiscovery({
+        id: nanoid(12),
+        clueId: cmd.clueId,
+        characterId: other.id,
+        at: Date.now(),
+        how: { kind: 'shared', fromCharacterId: characterId },
+        // Passing on the knowledge passes on what the sharer knew of it.
+        direction: mine.direction,
+        locates: mine.locates,
+      });
+      if (added) shared++;
+    }
+    const entry = ctx.runtime.appendLog(
+      'share',
+      `${sharer?.name ?? 'Someone'} shared with the party: ${clue.text}`,
+      'all',
+      { clueId: cmd.clueId, contentId: content.id, fromCharacterId: characterId, newlyShared: shared },
+    );
+    notifyLog(ctx, entry);
+  }) as Handler,
+
   // -- checks ----------------------------------------------------------------
   'check.roll': ((cmd: Extract<ClientCommand, { kind: 'check.roll' }>, ctx: Ctx) => {
     let targets = cmd.characterIds;
@@ -775,7 +823,21 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       ctx.seat.role === 'dm' ? 'dm' : 'all',
       { skill: cmd.skill, dc: cmd.dc, results },
     );
-    notifyLog(ctx, entry);
+    if (entry.visibility === 'all') {
+      // A character's rolls are theirs alone: notify only the seats owning a
+      // character that rolled (the snapshot filter applies the same rule).
+      const rolled = new Set(results.map((r) => r.characterId));
+      const ownerSeats = [...ctx.runtime.seats.values()]
+        .filter((s) => s.characterId && rolled.has(s.characterId))
+        .map((s) => s.id);
+      ctx.hub.sendTo(
+        ctx.runtime,
+        { type: 'event', kind: 'log.appended', entry },
+        { dm: true, seatIds: ownerSeats },
+      );
+    } else {
+      notifyLog(ctx, entry);
+    }
   }) as Handler,
 
   // -- encounters ------------------------------------------------------------
@@ -942,6 +1004,60 @@ function executeTokenMove(ctx: Ctx, token: Token, q: number, r: number, teleport
   }
   delta.push(...afterPartyMoved(ctx, token.mapId, moved));
   return delta;
+}
+
+/**
+ * Auto wandering-encounter checks: when the map's encounterCheck.autoEvery is
+ * set, every N hexes of PC travel rolls the trigger die. The counter carries
+ * across moves (persisted in the map's encounterCheck config) and a long drag
+ * can roll more than once, at the hexes actually crossed. Teleports don't
+ * count as travel.
+ */
+function autoEncounterChecks(
+  ctx: Ctx,
+  map: MapInfo,
+  token: Token,
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+  teleport: boolean,
+): void {
+  if (teleport || token.kind !== 'pc') return;
+  const every = map.encounterCheck.autoEvery;
+  if (!every) return;
+  const steps = hexLine(from, to).slice(1);
+  if (!steps.length) return;
+  let count = map.encounterCheck.hexesSinceCheck;
+  for (const hex of steps) {
+    count += 1;
+    if (count < every) continue;
+    count = 0;
+    const result = rollEncounter(
+      ctx.runtime,
+      { mapId: map.id, q: hex.q, r: hex.r, tableId: null, skipCheck: false },
+      ctx.rng,
+    );
+    const entry = ctx.runtime.appendLog(
+      'encounter',
+      `Auto check at hex ${hex.q},${hex.r} — ${result.summary}`,
+      'dm',
+      {
+        triggered: result.triggered,
+        terrain: result.terrain,
+        tableId: result.table?.id ?? null,
+        entryText: result.entryText,
+        checkRoll: result.checkRoll as unknown as Record<string, unknown> | null,
+        tableRoll: result.tableRoll as unknown as Record<string, unknown> | null,
+        quantityRoll: result.quantityRoll as unknown as Record<string, unknown> | null,
+        auto: true,
+        q: hex.q,
+        r: hex.r,
+      },
+    );
+    notifyLog(ctx, entry);
+  }
+  ctx.runtime.updateMap(map.id, {
+    encounterCheck: { hexesSinceCheck: count },
+  } as unknown as Partial<MapInfo>);
 }
 
 function capitalize(s: string): string {

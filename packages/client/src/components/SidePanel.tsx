@@ -1,6 +1,12 @@
 import React from 'react';
 import { useSession } from '../stores/session.js';
-import { useUi, type PanelTab } from '../stores/ui.js';
+import {
+  PANEL_WIDTH_MAX,
+  PANEL_WIDTH_MIN,
+  persistPanelWidth,
+  useUi,
+  type PanelTab,
+} from '../stores/ui.js';
 import { cx } from '../ui/kit.js';
 import { InspectTab } from './panels/InspectTab.js';
 import { MapsTab } from './panels/MapsTab.js';
@@ -33,13 +39,55 @@ const PLAYER_TABS: { tab: PanelTab; icon: string; name: string }[] = [
 export function SidePanel({ campaignId }: { campaignId: string }) {
   const role = useSession((s) => s.role);
   const tab = useUi((s) => s.panelTab);
+  const width = useUi((s) => s.panelWidth);
   const setUi = useUi((s) => s.set);
   const tabs = role === 'dm' ? DM_TABS : PLAYER_TABS;
   const active = tabs.some((t) => t.tab === tab) ? tab : 'inspect';
+  // When the panel is too narrow for one row of tabs, wrap into two rows
+  // instead of scrolling horizontally.
+  const twoRows = width < tabs.length * 64;
+
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = useUi.getState().panelWidth;
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(
+        PANEL_WIDTH_MAX,
+        Math.max(PANEL_WIDTH_MIN, startWidth + (startX - ev.clientX)),
+      );
+      useUi.getState().set('panelWidth', next);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      persistPanelWidth(useUi.getState().panelWidth);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
 
   return (
-    <aside className="w-80 shrink-0 bg-ink-900 border-l border-ink-700 flex flex-col z-20">
-      <nav className="flex border-b border-ink-700 shrink-0 overflow-x-auto">
+    <aside
+      style={{ width }}
+      className="relative shrink-0 bg-ink-900 border-l border-ink-700 flex flex-col z-20"
+    >
+      <div
+        onPointerDown={startResize}
+        className="absolute left-0 top-0 bottom-0 w-1.5 -translate-x-0.5 cursor-col-resize z-30 hover:bg-brass-500/40 active:bg-brass-500/60"
+        title="Drag to resize the panel"
+      />
+      <nav
+        className={cx(
+          'border-b border-ink-700 shrink-0',
+          twoRows ? 'grid' : 'flex overflow-x-auto',
+        )}
+        style={
+          twoRows
+            ? { gridTemplateColumns: `repeat(${Math.ceil(tabs.length / 2)}, minmax(0, 1fr))` }
+            : undefined
+        }
+      >
         {tabs.map((t) => (
           <button
             key={t.tab}

@@ -56,6 +56,15 @@ export interface MapRuntime {
 const LOG_MEMORY_LIMIT = 500;
 const UNDO_STACK_LIMIT = 100;
 
+/** The DM-editable map layers held stable for players during prep mode. */
+interface FrozenMapLayers {
+  imageLayers: ImageLayer[];
+  hexes: HexCell[];
+  markers: Marker[];
+  contents: Content[];
+  trails: Trail[];
+}
+
 /** One undoable change. Held in memory only (drops on server restart). */
 export interface UndoEntry {
   at: number;
@@ -91,6 +100,12 @@ export class CampaignRuntime {
   online = new Set<string>();
   /** DM undo history (in-memory; newest last). */
   undoStack: UndoEntry[] = [];
+  /**
+   * Prep mode (settings.pausePlayerMapSync): per-map snapshot of the editable
+   * layers as players last saw them. In-memory; recaptured at boot when the
+   * pause survived a restart.
+   */
+  private frozenPlayerMaps = new Map<string, FrozenMapLayers>();
 
   constructor(
     private db: DB,
@@ -106,6 +121,7 @@ export class CampaignRuntime {
       settings: CampaignSettingsSchema.parse(safeJson(row.settings)),
     };
     this.load();
+    if (this.campaign.settings.pausePlayerMapSync) this.capturePlayerFreeze();
   }
 
   // -- loading ---------------------------------------------------------------
@@ -386,6 +402,53 @@ export class CampaignRuntime {
       senses: [],
       encounterTables: [...this.encounterTables.values()],
       log: this.log,
+    };
+  }
+
+  // -- prep-mode freeze ------------------------------------------------------
+
+  /** Snapshot every map's editable layers as the player-visible baseline. */
+  capturePlayerFreeze(): void {
+    this.frozenPlayerMaps.clear();
+    for (const mapId of this.maps.keys()) {
+      const ms = this.mapState(mapId);
+      if (!ms) continue;
+      this.frozenPlayerMaps.set(mapId, {
+        imageLayers: ms.imageLayers,
+        hexes: ms.hexes,
+        markers: ms.markers,
+        contents: ms.contents as Content[],
+        trails: ms.trails,
+      });
+    }
+  }
+
+  clearPlayerFreeze(): void {
+    this.frozenPlayerMaps.clear();
+  }
+
+  /**
+   * While prep mode is on, substitute the frozen editable layers into a
+   * player's full state. Tokens, fog, pending moves, discoveries and the log
+   * stay live; terrain, markers, content, images and trails hold at the
+   * pause-time snapshot.
+   */
+  applyPlayerFreeze(full: CampaignState): CampaignState {
+    if (!this.campaign.settings.pausePlayerMapSync) return full;
+    const mapId = full.campaign.activeMapId;
+    if (!mapId || !full.mapState) return full;
+    const frozen = this.frozenPlayerMaps.get(mapId);
+    if (!frozen) return full;
+    return {
+      ...full,
+      mapState: {
+        ...full.mapState,
+        imageLayers: frozen.imageLayers,
+        hexes: frozen.hexes,
+        markers: frozen.markers,
+        contents: frozen.contents,
+        trails: frozen.trails,
+      },
     };
   }
 

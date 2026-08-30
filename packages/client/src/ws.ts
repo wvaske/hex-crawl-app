@@ -89,6 +89,8 @@ function handleMessage(msg: ServerMessage): void {
         });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'narration') {
         session.pushToast({ kind: 'narration', title: 'The DM narrates', text: msg.entry.text });
+      } else if (msg.kind === 'log.appended' && msg.entry.kind === 'share') {
+        session.pushToast({ kind: 'discovery', title: 'Clue shared', text: msg.entry.text });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'check') {
         session.pushToast({ kind: 'info', title: 'Skill check', text: msg.entry.text });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'encounter') {

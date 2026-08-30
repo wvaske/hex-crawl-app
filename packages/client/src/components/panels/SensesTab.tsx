@@ -2,6 +2,7 @@ import React from 'react';
 import type { Sense } from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
+import { send } from '../../ws.js';
 import { EmptyNote, Section, cx } from '../../ui/kit.js';
 
 /**
@@ -81,6 +82,17 @@ function SenseRow({ sense }: { sense: Sense }) {
           'Observed earlier'
         )}
         {highlighted && ' · highlighted on map'}
+        <span
+          role="button"
+          className="float-right text-brass-400 hover:text-brass-300"
+          title="Tell the party — everyone learns this clue"
+          onClick={(e) => {
+            e.stopPropagation();
+            send({ kind: 'clue.share', clueId: sense.clueId });
+          }}
+        >
+          🤝 Share
+        </span>
       </span>
     </button>
   );

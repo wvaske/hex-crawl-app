@@ -87,6 +87,13 @@ export const CampaignSettingsSchema = z.object({
   description: z.string().max(2000).default(''),
   /** Base URL for wiki links on content (page titles are appended). */
   wikiBaseUrl: z.string().max(300).default('https://wiki.deeznuts.wiki/index.php/'),
+  /**
+   * Prep mode: while true, players keep seeing the map layers (terrain,
+   * markers, content, images, trails) as they were when the pause began;
+   * DM edits stay invisible until the pause is lifted. Tokens, fog and the
+   * log stay live throughout.
+   */
+  pausePlayerMapSync: z.boolean().default(false),
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 
@@ -143,6 +150,10 @@ export const EncounterCheckConfigSchema = z.object({
   die: z.string().default('1d20'),
   /** An encounter occurs when the roll is >= this threshold. */
   threshold: z.number().int().default(18),
+  /** Auto-roll a check every N hexes of party travel (0 = off). */
+  autoEvery: z.number().int().min(0).max(99).default(0),
+  /** Server-managed: hexes travelled since the last auto check. */
+  hexesSinceCheck: z.number().int().min(0).default(0),
 });
 export type EncounterCheckConfig = z.infer<typeof EncounterCheckConfigSchema>;
 
@@ -415,6 +426,8 @@ export const DiscoveryHowSchema = z.discriminatedUnion('kind', [
     dc: z.number(),
   }),
   z.object({ kind: z.literal('manual') }),
+  /** Another character shared what they knew. */
+  z.object({ kind: z.literal('shared'), fromCharacterId: z.string() }),
 ]);
 export type DiscoveryHow = z.infer<typeof DiscoveryHowSchema>;
 

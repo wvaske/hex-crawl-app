@@ -51,7 +51,8 @@ export class Hub {
   }
 
   sendSnapshot(conn: Conn): void {
-    const full = conn.runtime.buildFullState(conn.viewedMapId);
+    let full = conn.runtime.buildFullState(conn.viewedMapId);
+    if (conn.seat.role !== 'dm') full = conn.runtime.applyPlayerFreeze(full);
     const state = filterStateForViewer(full, this.viewerFor(conn.seat));
     this.send(conn, { type: 'snapshot', seatId: conn.seat.id, role: conn.seat.role, state });
   }
@@ -113,7 +114,8 @@ export class Hub {
             full = runtime.buildFullState(conn.viewedMapId);
             fullByMap.set(key, full);
           }
-          const state = filterStateForViewer(full, this.viewerFor(conn.seat));
+          const base = conn.seat.role === 'dm' ? full : runtime.applyPlayerFreeze(full);
+          const state = filterStateForViewer(base, this.viewerFor(conn.seat));
           this.send(conn, { type: 'snapshot', seatId: conn.seat.id, role: conn.seat.role, state });
         }
       }, SYNC_COALESCE_MS),

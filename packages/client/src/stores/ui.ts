@@ -28,6 +28,8 @@ interface UiStore {
   editingContentId: string | null;
   panelTab: PanelTab;
   panelOpen: boolean;
+  /** Right sidebar width in px (drag the left edge to resize). */
+  panelWidth: number;
   measureStart: HexCoord | null;
   /** Held spacebar: pan with left-drag regardless of the active tool. */
   spacePan: boolean;
@@ -61,6 +63,30 @@ interface UiStore {
   selectHex(hex: HexCoord | null): void;
 }
 
+export const PANEL_WIDTH_MIN = 240;
+export const PANEL_WIDTH_MAX = 640;
+const PANEL_WIDTH_KEY = 'hexcrawl.panelWidth';
+
+function initialPanelWidth(): number {
+  try {
+    const stored = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    if (Number.isFinite(stored) && stored >= PANEL_WIDTH_MIN && stored <= PANEL_WIDTH_MAX) {
+      return stored;
+    }
+  } catch {
+    // Storage unavailable (private mode etc.) — fall through to the default.
+  }
+  return 320;
+}
+
+export function persistPanelWidth(width: number): void {
+  try {
+    localStorage.setItem(PANEL_WIDTH_KEY, String(Math.round(width)));
+  } catch {
+    // Best-effort convenience only.
+  }
+}
+
 export const useUi = create<UiStore>((set) => ({
   tool: 'select',
   paintTerrain: 'plains',
@@ -75,6 +101,7 @@ export const useUi = create<UiStore>((set) => ({
   editingContentId: null,
   panelTab: 'inspect',
   panelOpen: true,
+  panelWidth: initialPanelWidth(),
   measureStart: null,
   spacePan: false,
   scaleLock: 'auto',

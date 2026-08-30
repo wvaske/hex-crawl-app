@@ -428,8 +428,15 @@ function PlayerContentCard({ content }: { content: ContentPlayerView }) {
       </div>
       <ul className="mt-1.5 space-y-1">
         {content.discoveredClues.map((c) => (
-          <li key={c.clueId} className="text-xs text-ink-200">
-            {c.text}
+          <li key={c.clueId} className="text-xs text-ink-200 flex items-start gap-2">
+            <span className="flex-1">{c.text}</span>
+            <button
+              className="shrink-0 text-[10px] text-brass-400 hover:text-brass-300 cursor-pointer"
+              title="Tell the party — everyone learns this clue"
+              onClick={() => send({ kind: 'clue.share', clueId: c.clueId })}
+            >
+              🤝 Share
+            </button>
           </li>
         ))}
       </ul>

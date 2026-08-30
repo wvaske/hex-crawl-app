@@ -4,6 +4,7 @@ import type {
   ContentPlayerView,
   Discovery,
   FogState,
+  LogEntry,
   SeatRole,
   Sense,
   Token,
@@ -68,8 +69,30 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
       : [],
     senses: computeSenses(full, viewer.characterId),
     encounterTables: [],
-    log: full.log.filter((e) => e.visibility === 'all' || e.visibility === viewer.seatId),
+    log: full.log.filter((e) => logEntryVisibleToPlayer(e, viewer)),
   };
+}
+
+/**
+ * A player's log shows their own character's actions, not the whole party's:
+ * 'all'-visibility roll entries reach only viewers whose character rolled.
+ * Other 'all' entries (narration, shares) reach everyone.
+ */
+export function logEntryVisibleToPlayer(e: LogEntry, viewer: Viewer): boolean {
+  if (e.visibility === viewer.seatId) return true;
+  if (e.visibility !== 'all') return false;
+  if (e.kind === 'check') {
+    const results = (e.data as { results?: unknown }).results;
+    if (Array.isArray(results)) {
+      return (
+        viewer.characterId !== null &&
+        results.some(
+          (r) => (r as { characterId?: string } | null)?.characterId === viewer.characterId,
+        )
+      );
+    }
+  }
+  return true;
 }
 
 /**

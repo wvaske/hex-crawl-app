@@ -799,3 +799,169 @@ describe('known-location content', () => {
     expect((bridgeAfter as { discoveredClues: { text: string }[] }).discoveredClues[0]!.text).toContain('smugglers');
   });
 });
+
+describe('clue sharing', () => {
+  function setupSharedClue() {
+    const { mapId, charId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'character.create',
+      character: { name: 'Bard', color: '#0000aa', glyph: '🎻', speed: 30, skills: {} },
+    } as never);
+    const bardId = [...runtime.characters.keys()].find((id) => id !== charId)!;
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 3, r: 0, type: 'ruin', title: 'Old Ruin', dmNotes: '', glyph: '',
+        clues: [{ id: null, text: 'Crumbled stones whisper', gate: { kind: 'auto' }, sortOrder: 0 }],
+      },
+    } as never);
+    // Walking onto the hex opens the auto gate for the scout only.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 3, r: 0 } as never);
+    const clueId = [...runtime.requireMap(mapId).contents.values()][0]!.clues[0]!.id;
+    return { charId, bardId, clueId, playerSeat };
+  }
+
+  it('a player shares a discovered clue with every other character', () => {
+    const { charId, bardId, clueId, playerSeat } = setupSharedClue();
+    expect(runtime.hasDiscovery(clueId, charId)).toBe(true);
+    expect(runtime.hasDiscovery(clueId, bardId)).toBe(false);
+
+    asSeat(playerSeat, { kind: 'clue.share', clueId } as never);
+    expect(runtime.hasDiscovery(clueId, bardId)).toBe(true);
+    const bardDisc = [...runtime.discoveries.values()].find((d) => d.characterId === bardId)!;
+    expect(bardDisc.how).toEqual({ kind: 'shared', fromCharacterId: charId });
+    expect(bardDisc.locates).toBe(true); // sharer had located it
+
+    const entry = runtime.log[runtime.log.length - 1]!;
+    expect(entry.kind).toBe('share');
+    expect(entry.visibility).toBe('all');
+    expect(entry.text).toContain('Scout shared with the party');
+  });
+
+  it('cannot share a clue the character has not discovered', () => {
+    const { mapId } = setupPartyWithScout();
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 9, r: 9, type: 'ruin', title: 'Far Ruin', dmNotes: '', glyph: '',
+        clues: [{ id: null, text: 'Unknown secret', gate: { kind: 'manual' }, sortOrder: 0 }],
+      },
+    } as never);
+    const clueId = [...runtime.requireMap(mapId).contents.values()][0]!.clues[0]!.id;
+    const playerSeat = [...runtime.seats.values()].find((s) => s.role === 'player')!;
+    expect(() => asSeat(playerSeat, { kind: 'clue.share', clueId } as never)).toThrow(/discovered/);
+  });
+});
+
+describe('per-character log filtering', () => {
+  it("a player's roll entries reach only seats owning a rolling character", () => {
+    const { mapId, charId, playerSeat } = setupPartyWithScout();
+    // Second player with their own character.
+    dm({
+      kind: 'character.create',
+      character: { name: 'Bard', color: '#0000aa', glyph: '🎻', speed: 30, skills: {} },
+    } as never);
+    const bardId = [...runtime.characters.keys()].find((id) => id !== charId)!;
+    const bardSeat = runtime.createSeat('player', 'Bob');
+    asSeat(bardSeat, { kind: 'seat.claimCharacter', characterId: bardId } as never);
+    bardSeat.characterId = bardId;
+
+    asSeat(playerSeat, {
+      kind: 'check.roll', skill: 'perception', dc: null, characterIds: [], mapId, hex: { q: 0, r: 0 },
+    } as never);
+    const entry = runtime.log[runtime.log.length - 1]!;
+    expect(entry.kind).toBe('check');
+    expect(entry.visibility).toBe('all');
+
+    const scoutView = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    expect(scoutView.log.some((e) => e.id === entry.id)).toBe(true);
+
+    const bardView = filterStateForViewer(runtime.buildFullState(), {
+      seatId: bardSeat.id, role: 'player', characterId: bardId,
+    });
+    expect(bardView.log.some((e) => e.id === entry.id)).toBe(false);
+
+    // Narration to all still reaches everyone.
+    dm({ kind: 'narrate', text: 'The wind howls.', seatIds: [] } as never);
+    const narration = runtime.log[runtime.log.length - 1]!;
+    const bardView2 = filterStateForViewer(runtime.buildFullState(), {
+      seatId: bardSeat.id, role: 'player', characterId: bardId,
+    });
+    expect(bardView2.log.some((e) => e.id === narration.id)).toBe(true);
+  });
+});
+
+describe('auto encounter checks (every N hexes)', () => {
+  it('rolls once per N hexes travelled, carries the counter, skips teleports', () => {
+    const { mapId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({ kind: 'map.update', mapId, patch: { encounterCheck: { autoEvery: 2 } } } as never);
+
+    const countEncounters = () => runtime.log.filter((e) => e.kind === 'encounter').length;
+    expect(countEncounters()).toBe(0);
+
+    // 5 hexes of travel with autoEvery=2 → checks at steps 2 and 4, counter 1.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 5, r: 0 } as never);
+    expect(countEncounters()).toBe(2);
+    expect(runtime.maps.get(mapId)!.encounterCheck.hexesSinceCheck).toBe(1);
+
+    // One more hex completes the next window.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 6, r: 0 } as never);
+    expect(countEncounters()).toBe(3);
+    expect(runtime.maps.get(mapId)!.encounterCheck.hexesSinceCheck).toBe(0);
+
+    // DM teleport does not count as travel.
+    dm({ kind: 'token.move', tokenId, q: 20, r: 0, teleport: true } as never);
+    expect(countEncounters()).toBe(3);
+
+    // All auto entries are DM-only.
+    expect(runtime.log.filter((e) => e.kind === 'encounter').every((e) => e.visibility === 'dm')).toBe(true);
+  });
+
+  it('does nothing when autoEvery is 0', () => {
+    const { tokenId, playerSeat } = setupPartyWithScout();
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 8, r: 0 } as never);
+    expect(runtime.log.filter((e) => e.kind === 'encounter')).toHaveLength(0);
+  });
+});
+
+describe('prep mode (pause player map sync)', () => {
+  it('freezes editable layers for players until the pause is lifted', () => {
+    const { mapId, charId, playerSeat } = setupPartyWithScout();
+    dm({ kind: 'terrain.paint', mapId, cells: [{ q: 0, r: 0 }], terrain: 'forest' } as never);
+
+    dm({ kind: 'campaign.update', settings: { pausePlayerMapSync: true } } as never);
+    dm({ kind: 'terrain.paint', mapId, cells: [{ q: 1, r: 0 }], terrain: 'swamp' } as never);
+    dm({
+      kind: 'marker.place',
+      marker: { mapId, q: 0, r: 0, glyph: '⭐', label: 'New', dmOnly: false },
+    } as never);
+
+    const playerFull = runtime.applyPlayerFreeze(runtime.buildFullState());
+    const playerView = filterStateForViewer(playerFull, {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    // Pre-pause terrain visible; paused-in edits are not.
+    expect(playerView.mapState!.hexes.some((h) => h.q === 0 && h.terrain === 'forest')).toBe(true);
+    expect(playerView.mapState!.hexes.some((h) => h.q === 1 && h.terrain === 'swamp')).toBe(false);
+    expect(playerView.mapState!.markers).toHaveLength(0);
+
+    // The DM keeps seeing live state.
+    const dmView = filterStateForViewer(runtime.buildFullState(), {
+      seatId: dmSeat.id, role: 'dm', characterId: null,
+    });
+    expect(dmView.mapState!.hexes.some((h) => h.q === 1 && h.terrain === 'swamp')).toBe(true);
+
+    // Tokens stay live during the pause.
+    const rtTokens = [...runtime.requireMap(mapId).tokens.values()];
+    expect(playerFull.mapState!.tokens).toHaveLength(rtTokens.length);
+
+    dm({ kind: 'campaign.update', settings: { pausePlayerMapSync: false } } as never);
+    const resumed = filterStateForViewer(runtime.applyPlayerFreeze(runtime.buildFullState()), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    expect(resumed.mapState!.hexes.some((h) => h.q === 1 && h.terrain === 'swamp')).toBe(true);
+    expect(resumed.mapState!.markers).toHaveLength(1);
+  });
+});
