@@ -192,6 +192,8 @@ export const TokenMoveCommand = z.object({
   tokenId: z.string(),
   q: z.number().int(),
   r: z.number().int(),
+  /** Teleport: no traversal — the explored trail is not drawn. */
+  teleport: z.boolean().default(false),
 });
 
 /** Player: request a move for DM approval (when the map requires it). */
@@ -209,6 +211,8 @@ export const MoveResolveCommand = z.object({
   kind: z.literal('move.resolve'),
   tokenId: z.string(),
   approve: z.boolean(),
+  /** Approve as a teleport (no explored trail along the path). */
+  teleport: z.boolean().default(false),
 });
 
 export const TokenDeleteCommand = z.object({

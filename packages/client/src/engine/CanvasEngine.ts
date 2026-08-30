@@ -1,4 +1,4 @@
-import { AlphaFilter, Application, Assets, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { AlphaFilter, Application, Assets, Circle, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import type {
   CampaignState,
@@ -56,6 +56,8 @@ interface TokenView {
   targetX: number;
   targetY: number;
   dragging: boolean;
+  /** Shrink factor when sharing a hex with other tokens. */
+  crowdScale: number;
 }
 
 /**
@@ -129,6 +131,9 @@ export class CanvasEngine {
       return;
     }
     host.appendChild(this.app.canvas);
+    if (import.meta.env.DEV) {
+      (window as unknown as { __engine: CanvasEngine }).__engine = this;
+    }
 
     this.viewport = new Viewport({
       events: this.app.renderer.events,
@@ -158,6 +163,23 @@ export class CanvasEngine {
     this.viewport.addChild(this.exploredC);
     this.viewport.addChild(this.fogC);
     this.viewport.addChild(this.highlightG);
+
+    // Every layer except tokensC must be event-transparent: Pixi treats any
+    // Graphics whose geometry covers the pointer as a hit-search terminator
+    // even when non-interactive, which would steal pointerdown from tokens
+    // under the fog/highlight overlays.
+    for (const layer of [
+      this.imageLayerC,
+      this.terrainG,
+      this.gridG,
+      this.pinsC,
+      this.pendingC,
+      this.exploredC,
+      this.fogC,
+      this.highlightG,
+    ]) {
+      layer.eventMode = 'none';
+    }
 
     this.viewport.on('moved', () => {
       this.viewDirty = true;
@@ -600,7 +622,7 @@ export class CanvasEngine {
     const tokenWorldDiameter = this.layout.size * 1.1;
     const tokenScale = Math.max(1, TOKEN_MIN_SCREEN / (tokenWorldDiameter * zoom));
     for (const view of this.tokens.values()) {
-      view.root.scale.set(tokenScale);
+      view.root.scale.set(tokenScale * view.crowdScale);
     }
   }
 
@@ -863,9 +885,32 @@ export class CanvasEngine {
         this.tokens.delete(id);
       }
     }
+    // Tokens sharing a hex spread into a ring and shrink so all stay visible.
+    const byHex = new Map<string, Token[]>();
+    for (const t of tokens) {
+      const key = hexKey(t.q, t.r);
+      const list = byHex.get(key) ?? [];
+      list.push(t);
+      byHex.set(key, list);
+    }
+    const size = this.layout.size;
     for (const token of tokens) {
       let view = this.tokens.get(token.id);
-      const target = hexToPixel(this.layout, token);
+      const group = byHex.get(hexKey(token.q, token.r))!;
+      const n = group.length;
+      const idx = group.findIndex((t) => t.id === token.id);
+      const center = hexToPixel(this.layout, token);
+      let offX = 0;
+      let offY = 0;
+      let crowd = 1;
+      if (n > 1) {
+        const angle = (2 * Math.PI * idx) / n - Math.PI / 2;
+        const radius = size * (n === 2 ? 0.34 : 0.48);
+        offX = Math.cos(angle) * radius;
+        offY = Math.sin(angle) * radius;
+        crowd = n === 2 ? 0.62 : n <= 4 ? 0.5 : 0.4;
+      }
+      const target = { x: center.x + offX, y: center.y + offY };
       if (!view) {
         view = this.createTokenView(token);
         this.tokens.set(token.id, view);
@@ -874,6 +919,7 @@ export class CanvasEngine {
         this.styleTokenView(view, token);
       }
       view.token = token;
+      view.crowdScale = crowd;
       view.targetX = target.x;
       view.targetY = target.y;
       if (jump && !view.dragging) view.root.position.set(target.x, target.y);
@@ -937,7 +983,7 @@ export class CanvasEngine {
     label.anchor.set(0.5, 0);
     root.addChild(body, glyph, label);
     this.tokensC.addChild(root);
-    const view: TokenView = { root, body, glyph, label, token, targetX: 0, targetY: 0, dragging: false };
+    const view: TokenView = { root, body, glyph, label, token, targetX: 0, targetY: 0, dragging: false, crowdScale: 1 };
     this.styleTokenView(view, token);
     this.wireTokenDrag(view);
     return view;
@@ -961,6 +1007,9 @@ export class CanvasEngine {
     view.label.style.fontSize = size * 0.42;
     view.label.position.set(0, size * 1.12);
     view.root.alpha = token.kind === 'npc' && !token.playerVisible ? 0.75 : 1;
+    // Explicit grab target: hit-testing a bare Container depends on child
+    // geometry, which is fragile; a hitArea makes the whole disc grabbable.
+    view.root.hitArea = new Circle(0, 0, size * 1.25);
   }
 
   private wireTokenDrag(view: TokenView): void {
@@ -1208,8 +1257,12 @@ export class CanvasEngine {
       });
       return;
     }
+    const teleport = this.role === 'dm' && useUi.getState().altTeleport;
     useSession.getState().optimisticTokenMove(token.id, dropHex.q, dropHex.r);
-    send({ kind: 'token.move', tokenId: token.id, q: dropHex.q, r: dropHex.r });
+    send({ kind: 'token.move', tokenId: token.id, q: dropHex.q, r: dropHex.r, teleport });
+    if (teleport) {
+      useSession.getState().pushToast({ kind: 'info', title: 'Teleported', text: `${token.label || 'Token'} moved without leaving a trail.` });
+    }
   }
 
   // -- ticker ----------------------------------------------------------------

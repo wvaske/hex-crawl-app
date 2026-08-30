@@ -40,6 +40,8 @@ interface UiStore {
   viewedMapId: string | null;
   /** DM view aid: dim location pins on hexes the party hasn't explored. */
   dimUnexplored: boolean;
+  /** Held Alt/Option: a DM token drop teleports (no explored trail). */
+  altTeleport: boolean;
 
   set<K extends keyof UiStore>(key: K, value: UiStore[K]): void;
   setTool(tool: Tool): void;
@@ -67,6 +69,7 @@ export const useUi = create<UiStore>((set) => ({
   movingContentId: null,
   viewedMapId: null,
   dimUnexplored: false,
+  altTeleport: false,
 
   set: (key, value) => set({ [key]: value } as Partial<UiStore>),
   setTool: (tool) => set({ tool, measureStart: null }),

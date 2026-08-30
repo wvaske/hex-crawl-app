@@ -280,7 +280,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         },
       });
     }
-    executeTokenMove(ctx, token, cmd.q, cmd.r);
+    executeTokenMove(ctx, token, cmd.q, cmd.r, cmd.teleport && ctx.seat.role === 'dm');
   }) as Handler,
 
   'move.request': ((cmd: Extract<ClientCommand, { kind: 'move.request' }>, ctx: Ctx) => {
@@ -320,7 +320,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     if (!pending) throw new Error('No pending move for that token');
     rt.pendingMoves.delete(cmd.tokenId);
     if (cmd.approve) {
-      executeTokenMove(ctx, token, pending.toQ, pending.toR);
+      executeTokenMove(ctx, token, pending.toQ, pending.toR, cmd.teleport);
     }
     ctx.hub.sendTo(
       ctx.runtime,
@@ -624,14 +624,16 @@ function afterPartyMoved(ctx: Ctx, mapId: string, token: Token): void {
 }
 
 /** Execute a token move: traversed path becomes the explored trail, then sight + knowledge. */
-function executeTokenMove(ctx: Ctx, token: Token, q: number, r: number): void {
+function executeTokenMove(ctx: Ctx, token: Token, q: number, r: number, teleport = false): void {
   const from = { q: token.q, r: token.r };
   const moved = ctx.runtime.updateToken(token.mapId, token.id, { q, r });
   if (token.kind === 'pc') {
-    // Traversed hexes join the explored trail; the destination itself is
-    // where the party stands, so it becomes (or stays) visible.
-    const path = hexLine(from, { q, r }).filter((c) => !(c.q === q && c.r === r));
-    if (path.length) ctx.runtime.setFog(token.mapId, path, 'explored');
+    if (!teleport) {
+      // Traversed hexes join the explored trail; the destination itself is
+      // where the party stands, so it becomes (or stays) visible.
+      const path = hexLine(from, { q, r }).filter((c) => !(c.q === q && c.r === r));
+      if (path.length) ctx.runtime.setFog(token.mapId, path, 'explored');
+    }
     ctx.runtime.setFog(token.mapId, [{ q, r }], 'visible');
   }
   afterPartyMoved(ctx, token.mapId, moved);
