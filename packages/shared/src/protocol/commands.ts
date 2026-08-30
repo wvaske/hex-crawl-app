@@ -46,6 +46,7 @@ const CharacterPatchSchema = z
     glyph: z.string().max(8),
     speed: z.number().int().min(0).max(120),
     skills: z.record(z.string(), z.number().int().min(-10).max(20)),
+    ddbId: z.string().nullable(),
   })
   .partial();
 
@@ -316,12 +317,30 @@ export const ContentUpsertCommand = z.object({
     showLabel: z.boolean().default(false),
     scaleVisibility: z.number().int().min(0).max(2).default(1),
     wikiPage: z.string().max(300).default(''),
+    enabled: z.boolean().default(true),
+    quest: z.string().max(120).default(''),
     clues: z.array(
       ClueSchema.omit({ id: true, contentId: true }).extend({
         id: z.string().nullable().default(null),
       }),
     ),
   }),
+});
+
+/** DM: bulk enable/disable content (quest staging). */
+export const ContentSetEnabledCommand = z.object({
+  ...base,
+  kind: z.literal('content.setEnabled'),
+  contentIds: z.array(z.string()).min(1).max(2000),
+  enabled: z.boolean(),
+});
+
+/** DM: bulk-assign a quest tag to content. */
+export const ContentSetQuestCommand = z.object({
+  ...base,
+  kind: z.literal('content.setQuest'),
+  contentIds: z.array(z.string()).min(1).max(2000),
+  quest: z.string().max(120),
 });
 
 /** DM: relocate a content entry to another hex. */
@@ -473,6 +492,8 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   SeatReleaseCharacterCommand,
   SeatDeleteCommand,
   ContentUpsertCommand,
+  ContentSetEnabledCommand,
+  ContentSetQuestCommand,
   ContentMoveCommand,
   ViewMapCommand,
   TrailUpsertCommand,

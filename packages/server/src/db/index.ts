@@ -222,6 +222,10 @@ function migrate(d: DB): void {
   // pin before the senses rework keep seeing it.
   ensureColumn(d, 'discovery', 'locates', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn(d, 'enc_table', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn(d, 'character', 'ddb_id', 'TEXT');
+  ensureColumn(d, 'clue', 'reveals_location', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn(d, 'content', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn(d, 'content', 'quest', "TEXT NOT NULL DEFAULT ''");
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {

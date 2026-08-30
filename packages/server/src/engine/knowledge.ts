@@ -41,12 +41,16 @@ export function evaluateKnowledge(
     const character = runtime.characters.get(characterId);
     if (!character) continue;
     for (const content of rt.contents.values()) {
+      if (!content.enabled) continue;
       const distance = hexDistance(pos, { q: content.q, r: content.r });
       for (const clue of content.clues) {
         if (runtime.hasDiscovery(clue.id, characterId)) {
           // Reaching the source upgrades an earlier at-a-distance discovery:
-          // the character now knows exactly where it came from.
-          if (distance === 0) runtime.markDiscoveryLocated(clue.id, characterId);
+          // the character now knows exactly where it came from. Info-only
+          // clues never reveal the pin.
+          if (distance === 0 && clue.revealsLocation) {
+            runtime.markDiscoveryLocated(clue.id, characterId);
+          }
           continue;
         }
         const evaluation = gateOpensPassively(clue.gate, character, distance);
@@ -61,6 +65,7 @@ export function evaluateKnowledge(
           distance,
           evaluation.passive,
           direction,
+          clue.revealsLocation,
         );
         if (runtime.addDiscovery(discovery)) {
           results.push({
@@ -84,6 +89,7 @@ function buildDiscovery(
   distance: number,
   passive: number | undefined,
   direction: string | null,
+  revealsLocation: boolean,
 ): Discovery {
   const how: Discovery['how'] =
     gate.kind === 'skill'
@@ -102,6 +108,6 @@ function buildDiscovery(
     at: Date.now(),
     how,
     direction,
-    locates: distance === 0,
+    locates: distance === 0 && revealsLocation,
   };
 }

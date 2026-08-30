@@ -18,6 +18,7 @@ interface ClueDraft {
   text: string;
   gate: Gate;
   indicatesDirection: boolean;
+  revealsLocation: boolean;
 }
 
 /** DM editor for hex content and its gated clues. */
@@ -42,12 +43,15 @@ export function ContentDialog() {
   const [showLabel, setShowLabel] = useState(existing?.showLabel ?? false);
   const [scaleVisibility, setScaleVisibility] = useState(existing?.scaleVisibility ?? 1);
   const [wikiPage, setWikiPage] = useState(existing?.wikiPage ?? '');
+  const [enabled, setEnabled] = useState(existing?.enabled ?? true);
+  const [quest, setQuest] = useState(existing?.quest ?? '');
   const [clues, setClues] = useState<ClueDraft[]>(
     existing?.clues.map((c) => ({
       id: c.id,
       text: c.text,
       gate: c.gate,
       indicatesDirection: c.indicatesDirection,
+      revealsLocation: c.revealsLocation,
     })) ?? [],
   );
 
@@ -74,6 +78,8 @@ export function ContentDialog() {
         showLabel,
         scaleVisibility,
         wikiPage: wikiPage.trim(),
+        enabled,
+        quest: quest.trim(),
         clues: clues
           .filter((c) => c.text.trim())
           .map((c, i) => ({
@@ -82,6 +88,7 @@ export function ContentDialog() {
             gate: c.gate,
             sortOrder: i,
             indicatesDirection: c.indicatesDirection,
+            revealsLocation: c.revealsLocation,
           })),
       },
     });
@@ -119,6 +126,16 @@ export function ContentDialog() {
           <input type="checkbox" checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />
           Always show the name on the map (major towns and the like)
         </label>
+        <div className="grid grid-cols-2 gap-2 items-end">
+          <label className="flex items-center gap-2 text-sm text-ink-200 cursor-pointer pb-1.5">
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            Enabled
+            <span className="text-xs text-ink-400">(off = doesn't exist for players yet)</span>
+          </label>
+          <Field label="Quest tag (group for bulk enable/disable)">
+            <Input value={quest} onChange={(e) => setQuest(e.target.value)} placeholder="varram-hunt" maxLength={120} />
+          </Field>
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Visible at hex scales">
             <Select
@@ -156,6 +173,7 @@ export function ContentDialog() {
                     text: '',
                     gate: { kind: 'skill', skill: 'perception', dc: 12, maxDistance: 1, mode: 'passive' },
                     indicatesDirection: false,
+                    revealsLocation: true,
                   },
                 ])
               }
@@ -333,6 +351,18 @@ function ClueEditor({
           title='Append the sensed compass bearing when delivered, e.g. "… — to the north-east" (computed from where the character stands toward this hex)'
         >
           🧭 direction
+        </button>
+        <button
+          onClick={() => onChange({ ...clue, revealsLocation: !clue.revealsLocation })}
+          className={cx(
+            'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border',
+            clue.revealsLocation
+              ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+              : 'border-ink-700 text-ink-300 hover:bg-ink-700',
+          )}
+          title="On: discovering this clue on the hex reveals the pin. Off: info-only — the item stays hidden until some location-revealing clue (or check) finds it."
+        >
+          📍 location
         </button>
       </div>
     </div>

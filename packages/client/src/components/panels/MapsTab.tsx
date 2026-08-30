@@ -65,6 +65,7 @@ export function MapsTab({ campaignId }: { campaignId: string }) {
       </Section>
 
       {map ? <MapSettings key={map.id} map={map} campaignId={campaignId} /> : <EmptyNote>Create a map to begin.</EmptyNote>}
+      {map && <QuestsPanel />}
     </div>
   );
 }
@@ -398,5 +399,61 @@ function MiniNum({
         }}
       />
     </label>
+  );
+}
+
+
+/**
+ * Quest staging: distinct quest tags on the viewed map with bulk
+ * enable/disable. Tag content via its dialog, or box-select on the map
+ * (Shift+drag with the select tool).
+ */
+function QuestsPanel() {
+  const state = useSession((s) => s.state);
+  const contents = (state?.mapState?.contents ?? []).filter(
+    (c): c is Extract<typeof c, { quest: string }> => 'quest' in c,
+  );
+  const byQuest = new Map<string, { ids: string[]; enabled: number }>();
+  for (const c of contents) {
+    if (!c.quest) continue;
+    const g = byQuest.get(c.quest) ?? { ids: [], enabled: 0 };
+    g.ids.push(c.id);
+    if (c.enabled) g.enabled++;
+    byQuest.set(c.quest, g);
+  }
+
+  return (
+    <Section title="Quests">
+      {byQuest.size === 0 && (
+        <EmptyNote>
+          Tag content with a quest (in its dialog, or Shift+drag a box on the map) to stage whole
+          quests on and off.
+        </EmptyNote>
+      )}
+      <div className="space-y-1.5">
+        {[...byQuest.entries()].map(([quest, g]) => (
+          <div key={quest} className="flex items-center gap-2 bg-ink-850 border border-ink-700 rounded-md px-2.5 py-1.5">
+            <span className="flex-1 min-w-0 truncate text-sm text-ink-100">
+              {quest}
+              <span className="text-xs text-ink-400 ml-1.5">
+                {g.enabled}/{g.ids.length} live
+              </span>
+            </span>
+            <button
+              className="text-xs px-2 py-0.5 rounded cursor-pointer bg-brass-500/20 text-brass-300 border border-brass-500/50"
+              onClick={() => send({ kind: 'content.setEnabled', contentIds: g.ids, enabled: true })}
+            >
+              Enable all
+            </button>
+            <button
+              className="text-xs px-2 py-0.5 rounded cursor-pointer text-ink-200 border border-ink-600 hover:bg-ink-700"
+              onClick={() => send({ kind: 'content.setEnabled', contentIds: g.ids, enabled: false })}
+            >
+              Disable all
+            </button>
+          </div>
+        ))}
+      </div>
+    </Section>
   );
 }

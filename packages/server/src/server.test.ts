@@ -134,7 +134,7 @@ describe('fog auto-reveal', () => {
 
     dm({ kind: 'map.update', mapId, patch: { fogDecay: true } } as never);
     asSeat(playerSeat, { kind: 'token.move', tokenId, q: 3, r: 0 } as never);
-    expect(rt.fog.get(hexKey(3, 0))).toBe('visible');
+    expect(rt.fog.get(hexKey(3, 0))).toBe('explored'); // standing hex is walked
     expect(rt.fog.get(hexKey(0, 0))).toBe('explored');
 
     // player snapshot: explored hexes visible but npc-free; hidden hexes absent
@@ -272,13 +272,14 @@ describe('seat recovery', () => {
 });
 
 describe('move approval + explored trail', () => {
-  it('trail: traversed path becomes explored, destination visible', () => {
+  it('trail: the whole walked path, destination included, becomes explored', () => {
     const { mapId, tokenId, playerSeat } = setupPartyWithScout();
     asSeat(playerSeat, { kind: 'token.move', tokenId, q: 4, r: 0 } as never);
     const rt = runtime.requireMap(mapId);
     expect(rt.fog.get(hexKey(0, 0))).toBe('explored'); // origin traversed
     expect(rt.fog.get(hexKey(2, 0))).toBe('explored'); // path traversed
-    expect(rt.fog.get(hexKey(4, 0))).toBe('visible'); // standing here
+    expect(rt.fog.get(hexKey(4, 0))).toBe('explored'); // standing here — walked too
+    expect(rt.fog.get(hexKey(5, 0))).toBe('visible'); // sight ring stays visible
   });
 
   it('approval mode: player moves become requests the DM resolves', () => {
@@ -304,7 +305,7 @@ describe('move approval + explored trail', () => {
     dm({ kind: 'move.resolve', tokenId, approve: true } as never);
     expect(runtime.findToken(tokenId)).toMatchObject({ q: 3, r: 0 });
     expect(rt.fog.get(hexKey(1, 0))).toBe('explored');
-    expect(rt.fog.get(hexKey(3, 0))).toBe('visible');
+    expect(rt.fog.get(hexKey(3, 0))).toBe('explored');
     // Players cannot resolve.
     asSeat(playerSeat, { kind: 'move.request', tokenId, q: 5, r: 0 } as never);
     expect(() => asSeat(playerSeat, { kind: 'move.resolve', tokenId, approve: true } as never)).toThrow(/DM/);
@@ -446,7 +447,7 @@ describe('move undo restores fog', () => {
 
     dm({ kind: 'token.move', tokenId, q: 4, r: 0, teleport: false } as never);
     expect(rt.fog.get(hexKey(2, 0))).toBe('explored');
-    expect(rt.fog.get(hexKey(4, 0))).toBe('visible');
+    expect(rt.fog.get(hexKey(4, 0))).toBe('explored');
 
     dm({ kind: 'undo' } as never);
     expect(rt.tokens.get(tokenId)!.q).toBe(0);
@@ -682,5 +683,86 @@ describe('trails', () => {
     const sign = view.mapState!.trailSigns.find((s) => s.q === 2)!;
     expect(sign.forward).toBeNull();
     expect(sign.backward).toBe('north-west');
+  });
+});
+
+describe('skill-gated items (issue #41)', () => {
+  it('a content with no auto clue stays hidden until a check on its hex reveals it', () => {
+    const { mapId, charId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 3, r: 0, type: 'dungeon', title: 'Goblin Cave', dmNotes: '', glyph: '',
+        clues: [
+          { id: null, text: 'Goblin tracks crisscross the area', gate: { kind: 'skill', skill: 'perception', dc: 12, maxDistance: 2, mode: 'passive' }, sortOrder: 0, indicatesDirection: true, revealsLocation: false },
+          { id: null, text: 'A brush-hidden cave mouth in the rocks', gate: { kind: 'skill', skill: 'survival', dc: 2, maxDistance: 0, mode: 'active' }, sortOrder: 1 },
+        ],
+      },
+    } as never);
+
+    const playerView = () => filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+
+    // Approach within perception range: tracks sensed, but no pin.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 1, r: 0 } as never);
+    expect(playerView().senses.some((s) => s.text.includes('Goblin tracks'))).toBe(true);
+    expect(playerView().mapState!.contents.find((c) => c.title === 'Goblin Cave')).toBeUndefined();
+
+    // Standing ON the hex still reveals nothing — the cave gate is an active check.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 3, r: 0 } as never);
+    expect(playerView().mapState!.contents.find((c) => c.title === 'Goblin Cave')).toBeUndefined();
+
+    // A Survival search on the hex finds the cave and reveals the item.
+    asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 3, r: 0 } } as never);
+    const cave = playerView().mapState!.contents.find((c) => c.title === 'Goblin Cave');
+    expect(cave).toBeDefined();
+  });
+});
+
+describe('content enable/disable + quests (issue #42)', () => {
+  it('disabled content produces no discoveries and no player pin; enabling wakes it', () => {
+    const { mapId, charId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 1, r: 0, type: 'ruin', title: 'Future Ruin', dmNotes: '', glyph: '',
+        enabled: false, quest: 'act2',
+        clues: [{ id: null, text: 'Old stones', gate: { kind: 'auto' }, sortOrder: 0 }],
+      },
+    } as never);
+    const ruin = [...runtime.requireMap(mapId).contents.values()].find((c) => c.title === 'Future Ruin')!;
+
+    // Walk onto it: nothing fires, nothing shows.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 1, r: 0 } as never);
+    expect(runtime.discoveries.size).toBe(0);
+    const view1 = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    expect(view1.mapState!.contents).toHaveLength(0);
+
+    // Enable while the character stands there: the auto clue fires immediately.
+    dm({ kind: 'content.setEnabled', contentIds: [ruin.id], enabled: true } as never);
+    expect(runtime.discoveries.size).toBe(1);
+    const view2 = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    expect(view2.mapState!.contents.find((c) => c.title === 'Future Ruin')).toBeDefined();
+
+    // Disable again: pin vanishes for players (discovery kept for later).
+    dm({ kind: 'content.setEnabled', contentIds: [ruin.id], enabled: false } as never);
+    const view3 = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    expect(view3.mapState!.contents).toHaveLength(0);
+    expect(runtime.discoveries.size).toBe(1);
+
+    // Undo restores the previous enabled state.
+    dm({ kind: 'undo' } as never);
+    expect(runtime.requireMap(mapId).contents.get(ruin.id)!.enabled).toBe(true);
+
+    // Quest tagging.
+    dm({ kind: 'content.setQuest', contentIds: [ruin.id], quest: 'act3' } as never);
+    expect(runtime.requireMap(mapId).contents.get(ruin.id)!.quest).toBe('act3');
   });
 });

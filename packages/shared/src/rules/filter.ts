@@ -137,7 +137,7 @@ export function contentPlayerView(
   characterId: string | null,
   full: CampaignState,
 ): ContentPlayerView | null {
-  if (!characterId) return null;
+  if (!characterId || !content.enabled) return null;
   const clueIds = new Set(content.clues.map((c) => c.id));
   const mine = full.discoveries.filter(
     (d) => d.characterId === characterId && clueIds.has(d.clueId),
@@ -192,7 +192,7 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
 
   const senses: Sense[] = [];
   for (const content of mapState.contents) {
-    if (!isFullContent(content)) continue;
+    if (!isFullContent(content) || !content.enabled) continue;
     const located = content.clues.some((clue) => {
       const d = mine.get(clue.id);
       return d ? discoveryLocates(d) : false;
