@@ -35,13 +35,13 @@ export function Toolbar() {
             onClick={() => ui.setTool(t.tool)}
             title={`${t.name} — ${t.hint}`}
             className={cx(
-              'w-9 h-9 rounded-md flex items-center justify-center text-base transition-colors cursor-pointer',
+              'px-2.5 py-1.5 rounded-md text-left text-xs font-medium transition-colors cursor-pointer whitespace-nowrap',
               ui.tool === t.tool
                 ? 'bg-brass-500/25 ring-1 ring-brass-500 text-brass-300'
                 : 'hover:bg-ink-700 text-ink-300',
             )}
           >
-            {t.icon}
+            {t.name}
           </button>
         ))}
       </div>

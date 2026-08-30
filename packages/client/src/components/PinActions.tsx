@@ -42,7 +42,7 @@ export function PinActions() {
           </span>
           <button
             className={cx(
-              'px-1.5 py-0.5 rounded text-xs cursor-pointer',
+              'px-1.5 py-0.5 rounded text-[11px] cursor-pointer',
               c.enabled ? 'text-brass-300 hover:bg-ink-700' : 'text-ink-400 hover:bg-ink-700',
             )}
             title={c.enabled ? 'Live for players — click to disable' : 'Disabled — click to enable'}
@@ -50,7 +50,7 @@ export function PinActions() {
               send({ kind: 'content.setEnabled', contentIds: [c.id], enabled: !c.enabled })
             }
           >
-            {c.enabled ? '🟢' : '⚪'}
+            {c.enabled ? 'Disable' : 'Enable'}
           </button>
           <span className="w-px h-4 bg-ink-700" />
           {(['visible', 'explored', 'hidden'] as FogState[]).map((s) => (
@@ -63,12 +63,12 @@ export function PinActions() {
               title={`Set this hex's fog to ${s}`}
               onClick={() => send({ kind: 'fog.set', mapId: map.id, cells: [hex], state: s })}
             >
-              {s === 'visible' ? '👁' : s === 'explored' ? '🥾' : '🌫'}
+              {s}
             </button>
           ))}
           <span className="w-px h-4 bg-ink-700" />
           <button
-            className="px-1.5 py-0.5 rounded text-xs cursor-pointer text-ink-300 hover:bg-ink-700"
+            className="px-1.5 py-0.5 rounded text-[11px] cursor-pointer text-ink-300 hover:bg-ink-700"
             title="Move: click the destination hex"
             onClick={() => {
               useUi.getState().set('movingContentId', c.id);
@@ -79,7 +79,7 @@ export function PinActions() {
               });
             }}
           >
-            🎯
+            Move
           </button>
           {c.wikiPage ? (
             <a
@@ -89,11 +89,11 @@ export function PinActions() {
               rel="noreferrer"
               title={`Open wiki: ${c.wikiPage}`}
             >
-              📖
+              Wiki
             </a>
           ) : (
-            <span className="px-1.5 py-0.5 text-xs text-ink-600" title="No wiki page set">
-              📖
+            <span className="px-1.5 py-0.5 text-[11px] text-ink-600" title="No wiki page set">
+              Wiki
             </span>
           )}
         </div>

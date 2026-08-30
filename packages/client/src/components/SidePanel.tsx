@@ -46,13 +46,13 @@ export function SidePanel({ campaignId }: { campaignId: string }) {
             onClick={() => setUi('panelTab', t.tab)}
             title={t.name}
             className={cx(
-              'flex-1 min-w-10 py-2.5 text-center text-base transition-colors cursor-pointer border-b-2',
+              'flex-1 px-2 py-2 text-center text-[11px] font-medium transition-colors cursor-pointer border-b-2 whitespace-nowrap',
               active === t.tab
-                ? 'border-brass-500 bg-ink-850'
-                : 'border-transparent hover:bg-ink-850/60 opacity-60 hover:opacity-100',
+                ? 'border-brass-500 bg-ink-850 text-brass-300'
+                : 'border-transparent hover:bg-ink-850/60 text-ink-300 hover:text-ink-100',
             )}
           >
-            {t.icon}
+            {t.name}
           </button>
         ))}
       </nav>
