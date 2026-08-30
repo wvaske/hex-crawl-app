@@ -89,8 +89,8 @@ export function Toolbar() {
               <div className="flex flex-col gap-1 mb-2">
                 {(
                   [
-                    ['visible', '☀️ Visible', 'Players see everything here'],
-                    ['explored', '🌘 Explored', 'Seen before — dimmed, no creatures'],
+                    ['visible', '☀️ Visible', 'Players see everything here (light tint; creatures shown)'],
+                    ['explored', '🌘 Explored', 'Where the party has been — renders brightest, no creatures shown'],
                     ['hidden', '⬛ Hidden', 'Players see nothing'],
                   ] as [FogState, string, string][]
                 ).map(([state, label, hint]) => (
