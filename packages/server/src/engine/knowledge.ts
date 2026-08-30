@@ -43,7 +43,12 @@ export function evaluateKnowledge(
     for (const content of rt.contents.values()) {
       const distance = hexDistance(pos, { q: content.q, r: content.r });
       for (const clue of content.clues) {
-        if (runtime.hasDiscovery(clue.id, characterId)) continue;
+        if (runtime.hasDiscovery(clue.id, characterId)) {
+          // Reaching the source upgrades an earlier at-a-distance discovery:
+          // the character now knows exactly where it came from.
+          if (distance === 0) runtime.markDiscoveryLocated(clue.id, characterId);
+          continue;
+        }
         const evaluation = gateOpensPassively(clue.gate, character, distance);
         if (!evaluation.opens) continue;
         const direction = clue.indicatesDirection
@@ -90,5 +95,13 @@ function buildDiscovery(
           distance,
         }
       : { kind: 'auto' };
-  return { id: nanoid(12), clueId, characterId: character.id, at: Date.now(), how, direction };
+  return {
+    id: nanoid(12),
+    clueId,
+    characterId: character.id,
+    at: Date.now(),
+    how,
+    direction,
+    locates: distance === 0,
+  };
 }

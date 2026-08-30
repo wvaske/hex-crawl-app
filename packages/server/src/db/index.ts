@@ -196,6 +196,9 @@ function migrate(d: DB): void {
   ensureColumn(d, 'token', 'party_id', 'TEXT');
   ensureColumn(d, 'clue', 'indicates_direction', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'discovery', 'direction', 'TEXT');
+  // Grandfather pre-existing discoveries as locating: players who could see a
+  // pin before the senses rework keep seeing it.
+  ensureColumn(d, 'discovery', 'locates', 'INTEGER NOT NULL DEFAULT 1');
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {

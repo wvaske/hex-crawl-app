@@ -117,9 +117,10 @@ function fullState(): CampaignState {
       pendingMoves: [],
     },
     discoveries: [
-      { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' }, direction: null },
-      { id: 'd2', clueId: 'cl3', characterId: 'char2', at: 1001, how: { kind: 'auto' }, direction: null },
+      { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' }, direction: null, locates: true },
+      { id: 'd2', clueId: 'cl3', characterId: 'char2', at: 1001, how: { kind: 'auto' }, direction: null, locates: true },
     ],
+    senses: [],
     encounterTables: [{ id: 'et1', name: 'Forest', terrains: ['forest'], die: '1d12', entries: [] }],
     log: [
       { id: 'l1', at: 1, kind: 'roll', text: 'dm secret roll', visibility: 'dm', data: {} },
@@ -133,9 +134,11 @@ function fullState(): CampaignState {
 describe('filterStateForViewer', () => {
   const viewer = { seatId: 's1', role: 'player' as const, characterId: 'char1' };
 
-  it('passes DM state through untouched', () => {
+  it('passes DM state through untouched (senses stay player-only)', () => {
     const full = fullState();
-    expect(filterStateForViewer(full, { seatId: 'dm', role: 'dm', characterId: null })).toBe(full);
+    const dm = filterStateForViewer(full, { seatId: 'dm', role: 'dm', characterId: null });
+    expect(dm).toEqual({ ...full, senses: [] });
+    expect(dm.mapState).toBe(full.mapState);
   });
 
   it('strips hidden hexes, fog, dm-only layers', () => {

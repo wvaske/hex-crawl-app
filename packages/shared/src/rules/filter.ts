@@ -2,13 +2,16 @@ import type {
   CampaignState,
   Content,
   ContentPlayerView,
+  Discovery,
   FogState,
   SeatRole,
+  Sense,
   Token,
 } from '../domain.js';
 import { isFullContent } from '../domain.js';
-import { hexKey } from '../hex/coords.js';
-import { withDirection } from '../hex/direction.js';
+import { hexDistance, hexKey, hexRange } from '../hex/coords.js';
+import { compassDirection, withDirection } from '../hex/direction.js';
+import type { HexOrientation } from '../hex/layout.js';
 
 export interface Viewer {
   seatId: string;
@@ -23,7 +26,7 @@ export interface Viewer {
  * same rules). Pure function; unit-tested.
  */
 export function filterStateForViewer(full: CampaignState, viewer: Viewer): CampaignState {
-  if (viewer.role === 'dm') return full;
+  if (viewer.role === 'dm') return { ...full, senses: [] };
 
   const mapState = full.mapState;
   const filteredMapState = mapState
@@ -56,6 +59,7 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
     discoveries: viewer.characterId
       ? full.discoveries.filter((d) => d.characterId === viewer.characterId)
       : [],
+    senses: computeSenses(full, viewer.characterId),
     encounterTables: [],
     log: full.log.filter((e) => e.visibility === 'all' || e.visibility === viewer.seatId),
   };
@@ -68,8 +72,18 @@ export function tokenVisibleToPlayers(token: Token, fogAtToken: FogState): boole
 }
 
 /**
- * A player's view of a content entry: present only if their character has
- * discovered at least one clue; carries only discovered clue texts.
+ * Does this discovery pin down the source's location? Discoveries made on
+ * the hex itself (or DM-revealed) do; sensing something from afar does not —
+ * those clues live in the senses panel until the character actually reaches
+ * the place, which upgrades the discovery.
+ */
+export function discoveryLocates(d: Discovery): boolean {
+  return d.locates;
+}
+
+/**
+ * A player's view of a content entry: present only once their character has
+ * LOCATED it (not merely sensed a clue from afar); carries discovered clues.
  */
 export function contentPlayerView(
   content: Content,
@@ -81,7 +95,7 @@ export function contentPlayerView(
   const mine = full.discoveries.filter(
     (d) => d.characterId === characterId && clueIds.has(d.clueId),
   );
-  if (mine.length === 0) return null;
+  if (!mine.some(discoveryLocates)) return null;
   const clueText = new Map(content.clues.map((c) => [c.id, c.text]));
   return {
     id: content.id,
@@ -102,4 +116,57 @@ export function contentPlayerView(
         at: d.at,
       })),
   };
+}
+
+/**
+ * The character's sensed clues on the viewed map: every discovered clue with
+ * a live bearing while in range, plus the visited hexes it can be sensed
+ * from (for triangulation). Never leaks the source hex of unlocated content.
+ */
+function computeSenses(full: CampaignState, characterId: string | null): Sense[] {
+  const mapState = full.mapState;
+  if (!mapState || !characterId) return [];
+  const mine = new Map(
+    full.discoveries.filter((d) => d.characterId === characterId).map((d) => [d.clueId, d]),
+  );
+  if (mine.size === 0) return [];
+
+  const orientation: HexOrientation =
+    full.maps.find((m) => m.id === full.campaign.activeMapId)?.orientation ?? 'flat';
+  const myToken = mapState.tokens.find((t) => t.kind === 'pc' && t.characterId === characterId);
+  const visited = new Set(
+    mapState.fog.filter((f) => f.state !== 'hidden').map((f) => hexKey(f.q, f.r)),
+  );
+
+  const senses: Sense[] = [];
+  for (const content of mapState.contents) {
+    if (!isFullContent(content)) continue;
+    const located = content.clues.some((clue) => {
+      const d = mine.get(clue.id);
+      return d ? discoveryLocates(d) : false;
+    });
+    for (const clue of content.clues) {
+      const d = mine.get(clue.id);
+      if (!d) continue;
+      const src = { q: content.q, r: content.r };
+      const radius = clue.gate.kind === 'skill' ? clue.gate.maxDistance : 0;
+      const here = myToken ? { q: myToken.q, r: myToken.r } : null;
+      const inRange = here ? hexDistance(here, src) <= radius : false;
+      const liveDirection =
+        inRange && here && clue.indicatesDirection
+          ? compassDirection(here, src, orientation)
+          : null;
+      senses.push({
+        clueId: clue.id,
+        text: clue.text,
+        direction: liveDirection ?? d.direction,
+        inRange,
+        at: d.at,
+        observableFrom: hexRange(src, radius).filter((c) => visited.has(hexKey(c.q, c.r))),
+        located,
+        contentTitle: located ? content.title : null,
+      });
+    }
+  }
+  return senses.sort((a, b) => Number(b.inRange) - Number(a.inRange) || b.at - a.at);
 }

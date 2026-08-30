@@ -175,6 +175,7 @@ export class CampaignRuntime {
         at: dd.at as number,
         how: safeJson(dd.how as string, { kind: 'manual' }) as Discovery['how'],
         direction: (dd.direction as string | null) ?? null,
+        locates: Boolean(dd.locates),
       };
       this.discoveries.set(disc.id, disc);
       this.discoveredByClueChar.add(`${disc.clueId}|${disc.characterId}`);
@@ -341,6 +342,7 @@ export class CampaignRuntime {
       maps: [...this.maps.values()].sort((a, b) => a.sortOrder - b.sortOrder),
       mapState: this.mapState(mapId),
       discoveries: [...this.discoveries.values()],
+      senses: [],
       encounterTables: [...this.encounterTables.values()],
       log: this.log,
     };
@@ -848,7 +850,7 @@ export class CampaignRuntime {
     this.discoveredByClueChar.add(`${discovery.clueId}|${discovery.characterId}`);
     this.db
       .prepare(
-        'INSERT INTO discovery (id, campaign_id, clue_id, character_id, at, how, direction) VALUES (?,?,?,?,?,?,?)',
+        'INSERT INTO discovery (id, campaign_id, clue_id, character_id, at, how, direction, locates) VALUES (?,?,?,?,?,?,?,?)',
       )
       .run(
         discovery.id,
@@ -858,8 +860,19 @@ export class CampaignRuntime {
         discovery.at,
         JSON.stringify(discovery.how),
         discovery.direction,
+        discovery.locates ? 1 : 0,
       );
     return true;
+  }
+
+  /** Upgrade an at-a-distance discovery: the character reached the source. */
+  markDiscoveryLocated(clueId: string, characterId: string): void {
+    for (const disc of this.discoveries.values()) {
+      if (disc.clueId === clueId && disc.characterId === characterId && !disc.locates) {
+        disc.locates = true;
+        this.db.prepare('UPDATE discovery SET locates = 1 WHERE id = ?').run(disc.id);
+      }
+    }
   }
 
   revokeDiscovery(discoveryId: string): Discovery | null {
