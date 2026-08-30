@@ -182,6 +182,7 @@ export const TokenUpdateCommand = z.object({
       glyph: z.string().max(8),
       playerVisible: z.boolean(),
       characterId: z.string().nullable(),
+      partyId: z.string().nullable(),
     })
     .partial(),
 });

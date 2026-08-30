@@ -134,6 +134,23 @@ function TokenRow({ token }: { token: Token }) {
           {token.q},{token.r}
         </span>
       </button>
+      <button
+        className={`text-xs cursor-pointer ${token.partyId ? '' : 'opacity-35 grayscale'}`}
+        title={
+          token.partyId
+            ? 'In the party — moves with the group. Click to detach.'
+            : 'Solo — click to add to the party (party members move together).'
+        }
+        onClick={() =>
+          send({
+            kind: 'token.update',
+            tokenId: token.id,
+            patch: { partyId: token.partyId ? null : 'party' },
+          })
+        }
+      >
+        🧭
+      </button>
       {token.kind === 'npc' && (
         <button
           className="text-xs cursor-pointer"

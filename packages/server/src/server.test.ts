@@ -399,3 +399,57 @@ describe('narration', () => {
     expect(state.log.every((l) => l.visibility !== 'dm')).toBe(true);
   });
 });
+
+describe('party movement', () => {
+  it('moving one party member shifts the whole party by the same offset', () => {
+    const mapId = activeMapId();
+    dm({ kind: 'token.create', mapId, q: 0, r: 0, tokenKind: 'pc', characterId: null, label: 'A', color: '#e05555', glyph: '', playerVisible: true } as never);
+    dm({ kind: 'token.create', mapId, q: 1, r: 0, tokenKind: 'pc', characterId: null, label: 'B', color: '#e05555', glyph: '', playerVisible: true } as never);
+    dm({ kind: 'token.create', mapId, q: 5, r: 5, tokenKind: 'pc', characterId: null, label: 'Solo', color: '#e05555', glyph: '', playerVisible: true } as never);
+    const tokens = [...runtime.requireMap(mapId).tokens.values()];
+    const a = tokens.find((t) => t.label === 'A')!;
+    const b = tokens.find((t) => t.label === 'B')!;
+    const solo = tokens.find((t) => t.label === 'Solo')!;
+    dm({ kind: 'token.update', tokenId: a.id, patch: { partyId: 'party' } } as never);
+    dm({ kind: 'token.update', tokenId: b.id, patch: { partyId: 'party' } } as never);
+
+    dm({ kind: 'token.move', tokenId: a.id, q: 3, r: -1, teleport: false } as never);
+    const after = runtime.requireMap(mapId);
+    expect([after.tokens.get(a.id)!.q, after.tokens.get(a.id)!.r]).toEqual([3, -1]);
+    expect([after.tokens.get(b.id)!.q, after.tokens.get(b.id)!.r]).toEqual([4, -1]);
+    expect([after.tokens.get(solo.id)!.q, after.tokens.get(solo.id)!.r]).toEqual([5, 5]);
+
+    // Undo restores every member.
+    dm({ kind: 'undo' } as never);
+    expect([after.tokens.get(a.id)!.q, after.tokens.get(a.id)!.r]).toEqual([0, 0]);
+    expect([after.tokens.get(b.id)!.q, after.tokens.get(b.id)!.r]).toEqual([1, 0]);
+  });
+
+  it('a player moving their own token brings the party along', () => {
+    const { mapId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({ kind: 'token.create', mapId, q: 0, r: 1, tokenKind: 'pc', characterId: null, label: 'Friend', color: '#e05555', glyph: '', playerVisible: true } as never);
+    const friend = [...runtime.requireMap(mapId).tokens.values()].find((t) => t.label === 'Friend')!;
+    dm({ kind: 'token.update', tokenId, patch: { partyId: 'party' } } as never);
+    dm({ kind: 'token.update', tokenId: friend.id, patch: { partyId: 'party' } } as never);
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 2, r: 0 } as never);
+    const rt = runtime.requireMap(mapId);
+    expect([rt.tokens.get(tokenId)!.q, rt.tokens.get(tokenId)!.r]).toEqual([2, 0]);
+    expect([rt.tokens.get(friend.id)!.q, rt.tokens.get(friend.id)!.r]).toEqual([2, 1]);
+  });
+});
+
+describe('move undo restores fog', () => {
+  it('undoing a movement reverts the explored trail and auto-revealed cells', () => {
+    const { mapId, tokenId } = setupPartyWithScout();
+    const rt = runtime.requireMap(mapId);
+    const before = new Map(rt.fog);
+
+    dm({ kind: 'token.move', tokenId, q: 4, r: 0, teleport: false } as never);
+    expect(rt.fog.get(hexKey(2, 0))).toBe('explored');
+    expect(rt.fog.get(hexKey(4, 0))).toBe('visible');
+
+    dm({ kind: 'undo' } as never);
+    expect(rt.tokens.get(tokenId)!.q).toBe(0);
+    expect(Object.fromEntries(rt.fog)).toEqual(Object.fromEntries(before));
+  });
+});

@@ -230,6 +230,7 @@ export class CampaignRuntime {
         color: t.color as string,
         glyph: t.glyph as string,
         playerVisible: Boolean(t.player_visible),
+        partyId: (t.party_id as string | null) ?? null,
       });
     }
     for (const m of d.prepare('SELECT * FROM marker WHERE map_id = ?').all(mapId) as Array<
@@ -664,7 +665,7 @@ export class CampaignRuntime {
     rt.tokens.set(token.id, token);
     this.db
       .prepare(
-        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         token.id,
@@ -677,6 +678,7 @@ export class CampaignRuntime {
         token.color,
         token.glyph,
         token.playerVisible ? 1 : 0,
+        token.partyId,
       );
   }
 
@@ -687,7 +689,9 @@ export class CampaignRuntime {
     const updated: Token = { ...token, ...patch, id: token.id, mapId: token.mapId };
     rt.tokens.set(tokenId, updated);
     this.db
-      .prepare('UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=? WHERE id=?')
+      .prepare(
+        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=? WHERE id=?',
+      )
       .run(
         updated.q,
         updated.r,
@@ -696,6 +700,7 @@ export class CampaignRuntime {
         updated.color,
         updated.glyph,
         updated.playerVisible ? 1 : 0,
+        updated.partyId,
         tokenId,
       );
     return updated;

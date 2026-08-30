@@ -232,6 +232,8 @@ export const TokenSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   glyph: z.string().max(8),
   playerVisible: z.boolean().default(true),
+  /** Tokens sharing a partyId move together; any member's move shifts the group. */
+  partyId: z.string().nullable().default(null),
 });
 export type Token = z.infer<typeof TokenSchema>;
 
