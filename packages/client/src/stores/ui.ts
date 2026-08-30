@@ -43,6 +43,8 @@ interface UiStore {
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
   /** DM trail tool: cells of the trail being drawn, in click order. */
   trailDraft: HexCoord[];
+  /** DM box-select: content ids selected for bulk enable/disable/quest. */
+  contentSelection: string[] | null;
   /** Player-chosen map for this session (null = follow the DM default). */
   viewedMapId: string | null;
   /** DM view aid: dim location pins on hexes the party hasn't explored. */
@@ -77,6 +79,7 @@ export const useUi = create<UiStore>((set) => ({
   movingTokenId: null,
   senseHighlight: null,
   trailDraft: [],
+  contentSelection: null,
   viewedMapId: null,
   dimUnexplored: false,
   altTeleport: false,

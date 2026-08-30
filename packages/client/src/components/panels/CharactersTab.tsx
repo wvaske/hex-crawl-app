@@ -131,7 +131,7 @@ function NewCharacterForm({ onDone }: { onDone: () => void }) {
     if (!name.trim()) return;
     send({
       kind: 'character.create',
-      character: { name: name.trim(), color, glyph: '', speed: 30, skills: {} },
+      character: { name: name.trim(), color, glyph: '', speed: 30, skills: {}, ddbId: null },
     });
     onDone();
   };
@@ -171,6 +171,62 @@ function NewCharacterForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+/**
+ * One-click skill sync from a PUBLIC D&D Beyond sheet. The URL/id persists on
+ * the character so future syncs are a single click.
+ */
+function DdbSync({ character }: { character: Character }) {
+  const [value, setValue] = useState(character.ddbId ?? '');
+  const [busy, setBusy] = useState(false);
+  const campaignId = useSession((s) => s.state?.campaign.id);
+
+  const sync = async () => {
+    if (!value.trim() || !campaignId || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/campaigns/${campaignId}/characters/${character.id}/sync-ddb`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ddbId: value.trim() }),
+        },
+      );
+      const data = (await res.json()) as { error?: string; name?: string; classes?: string };
+      if (!res.ok) throw new Error(data.error ?? 'Sync failed');
+      useSession.getState().pushToast({
+        kind: 'info',
+        title: 'Synced from D&D Beyond',
+        text: `${data.name} (${data.classes}) — skill modifiers updated.`,
+      });
+    } catch (err) {
+      useSession.getState().pushToast({
+        kind: 'error',
+        title: 'D&D Beyond sync failed',
+        text: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Field label="D&D Beyond (public sheet URL or id)">
+      <div className="flex gap-1.5">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="https://www.dndbeyond.com/characters/…"
+          className="!text-xs"
+        />
+        <Button size="sm" onClick={sync} disabled={!value.trim() || busy}>
+          {busy ? '…' : '⟳ Sync'}
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
 function CharacterEditor({ character, readOnly }: { character: Character; readOnly: boolean }) {
   const [customName, setCustomName] = useState('');
   const patch = (p: Partial<Character>) =>
@@ -202,6 +258,7 @@ function CharacterEditor({ character, readOnly }: { character: Character; readOn
           </Field>
         </div>
       )}
+      {!readOnly && <DdbSync character={character} />}
       <div>
         <p className="text-[11px] uppercase tracking-wider text-ink-400 mb-1.5">
           Skill modifiers <span className="normal-case">(passive = 10 + mod)</span>

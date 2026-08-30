@@ -8,6 +8,7 @@ import type { Content, ImageLayer } from '@hexcrawl/shared';
 import { ContentTypeSchema, GateSchema, pixelToHex } from '@hexcrawl/shared';
 import { evaluateKnowledge } from '../engine/knowledge.js';
 import { evaluateTrails } from '../engine/trails.js';
+import { fetchDdbCharacter, parseDdbId } from '../engine/ddb.js';
 import { generateSettlementClues } from '../engine/settlements.js';
 import { MAX_UPLOAD_BYTES, UPLOADS_DIR } from '../config.js';
 import type { Store } from '../state/store.js';
@@ -128,6 +129,33 @@ export function createApp(store: Store, hub: Hub): Hono {
     return c.json({ seatId: seat.id, role: seat.role, name: seat.name, characterId: seat.characterId });
   });
 
+  /**
+   * Sync a character's skills from their PUBLIC D&D Beyond sheet.
+   * DM or the seat that claimed the character.
+   */
+  app.post('/api/campaigns/:id/characters/:charId/sync-ddb', async (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const seat = getSeat(c, runtime);
+    const charId = c.req.param('charId');
+    const character = runtime.characters.get(charId);
+    if (!character) return c.json({ error: 'Character not found' }, 404);
+    if (!seat || (seat.role !== 'dm' && seat.characterId !== charId)) {
+      return c.json({ error: 'Only the DM or the claiming player can sync' }, 403);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as { ddbId?: string };
+    const ddbId = body.ddbId ? parseDdbId(body.ddbId) : character.ddbId;
+    if (!ddbId) return c.json({ error: 'No D&D Beyond character id or URL given' }, 400);
+    try {
+      const sync = await fetchDdbCharacter(ddbId);
+      runtime.upsertCharacter({ ...character, skills: sync.skills, ddbId });
+      hub.scheduleSync(runtime);
+      return c.json({ name: sync.name, classes: sync.classes, level: sync.level, skills: sync.skills });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : 'Sync failed' }, 502);
+    }
+  });
+
   // -- image upload ----------------------------------------------------------
 
   app.post('/api/campaigns/:id/maps/:mapId/images', async (c) => {
@@ -240,12 +268,15 @@ export function createApp(store: Store, hub: Hub): Hono {
     wikiPage: z.string().max(300).default(''),
     showLabel: z.boolean().default(false),
     scaleVisibility: z.number().int().min(0).max(2).default(1),
+    enabled: z.boolean().default(true),
+    quest: z.string().max(120).default(''),
     clues: z
       .array(
         z.object({
           text: z.string().min(1).max(2000),
           gate: GateSchema.default({ kind: 'auto' }),
           indicatesDirection: z.boolean().default(false),
+          revealsLocation: z.boolean().default(true),
         }),
       )
       .default([]),
@@ -292,6 +323,8 @@ export function createApp(store: Store, hub: Hub): Hono {
       showLabel: input.showLabel,
       scaleVisibility: input.scaleVisibility,
       wikiPage: input.wikiPage || existing?.wikiPage || '',
+      enabled: input.enabled ?? existing?.enabled ?? true,
+      quest: input.quest || existing?.quest || '',
       clues: input.clues.length
         ? input.clues.map((cl, i) => ({
             id: nanoid(10),
@@ -300,6 +333,7 @@ export function createApp(store: Store, hub: Hub): Hono {
             gate: cl.gate,
             sortOrder: i,
             indicatesDirection: cl.indicatesDirection,
+            revealsLocation: cl.revealsLocation,
           }))
         : (existing?.clues ?? []),
     };

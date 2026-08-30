@@ -121,6 +121,9 @@ export class CanvasEngine {
     null;
   private drag: { view: TokenView } | null = null;
   private panning = false;
+  /** DM shift+drag rubber band (world coords) for bulk content selection. */
+  private boxSelect: { start: { x: number; y: number }; end: { x: number; y: number } } | null =
+    null;
 
   async init(host: HTMLElement): Promise<void> {
     this.host = host;
@@ -715,6 +718,25 @@ export class CanvasEngine {
       g.stroke({ width: lineW * 1.5, color: 0x8b7fd4, alpha: 0.9 });
     }
 
+    // Shift+drag rubber band for content selection.
+    if (this.boxSelect) {
+      const b = this.boxSelect;
+      g.rect(
+        Math.min(b.start.x, b.end.x),
+        Math.min(b.start.y, b.end.y),
+        Math.abs(b.end.x - b.start.x),
+        Math.abs(b.end.y - b.start.y),
+      );
+      g.fill({ color: 0xd9b44f, alpha: 0.08 });
+      g.rect(
+        Math.min(b.start.x, b.end.x),
+        Math.min(b.start.y, b.end.y),
+        Math.abs(b.end.x - b.start.x),
+        Math.abs(b.end.y - b.start.y),
+      );
+      g.stroke({ width: lineW * 1.5, color: 0xd9b44f, alpha: 0.9 });
+    }
+
     // Trail tool: preview the path being drawn.
     if (ui.tool === 'trail' && ui.trailDraft.length) {
       const pts = ui.trailDraft.map((c) => hexToPixel(this.layout!, c));
@@ -840,6 +862,7 @@ export class CanvasEngine {
             'clues' in content && content.clues.some((cl) => discoveredClues.has(cl.id));
           pin.alpha *= known ? 1 : 0.25;
         }
+        if ('enabled' in content && content.enabled === false) pin.alpha *= 0.3;
         this.pinsC.addChild(pin);
         continue;
       }
@@ -863,6 +886,7 @@ export class CanvasEngine {
           'clues' in content && content.clues.some((cl) => discoveredClues.has(cl.id));
         pin.alpha *= known ? 1 : 0.25;
       }
+      if ('enabled' in content && content.enabled === false) pin.alpha *= 0.3;
       this.pinsC.addChild(pin);
     }
 
@@ -1221,6 +1245,15 @@ export class CanvasEngine {
       if (!hex) return;
       const isDm = this.role === 'dm';
 
+      // DM shift+drag with the select tool: rubber-band content selection.
+      if (isDm && ui.tool === 'select' && e.shiftKey) {
+        const world = this.viewport.toWorld(e.global.x, e.global.y);
+        this.boxSelect = { start: { x: world.x, y: world.y }, end: { x: world.x, y: world.y } };
+        this.viewport.plugins.pause('drag');
+        this.drawHighlight();
+        return;
+      }
+
       // Armed "move content" mode: next click relocates the entry.
       if (ui.movingContentId && isDm) {
         send({ kind: 'content.move', contentId: ui.movingContentId, q: hex.q, r: hex.r });
@@ -1301,6 +1334,11 @@ export class CanvasEngine {
     });
 
     this.viewport.on('pointermove', (e) => {
+      if (this.boxSelect) {
+        const world = this.viewport.toWorld(e.global.x, e.global.y);
+        this.boxSelect.end = { x: world.x, y: world.y };
+        this.drawHighlight();
+      }
       const hex = this.worldHex(e);
       const ui = useUi.getState();
       if (
@@ -1320,9 +1358,30 @@ export class CanvasEngine {
       this.panning = false;
       if (this.stroke) this.endStroke();
       if (this.drag) this.endTokenDrag();
+      if (this.boxSelect) this.endBoxSelect();
     };
     this.viewport.on('pointerup', finish);
     this.viewport.on('pointerupoutside', finish);
+  }
+
+  /** Resolve the rubber band into a bulk content selection. */
+  private endBoxSelect(): void {
+    const box = this.boxSelect;
+    this.boxSelect = null;
+    this.updateDragMode();
+    this.drawHighlight();
+    if (!box || !this.layout) return;
+    const minX = Math.min(box.start.x, box.end.x);
+    const maxX = Math.max(box.start.x, box.end.x);
+    const minY = Math.min(box.start.y, box.end.y);
+    const maxY = Math.max(box.start.y, box.end.y);
+    if (maxX - minX < 4 && maxY - minY < 4) return; // just a shift-click
+    const ids: string[] = [];
+    for (const content of this.lastContents) {
+      const p = hexToPixel(this.layout, { q: content.q, r: content.r });
+      if (p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) ids.push(content.id);
+    }
+    useUi.getState().set('contentSelection', ids.length ? ids : null);
   }
 
   private beginStroke(mode: 'paint' | 'fog', hex: HexCoord): void {
@@ -1521,7 +1580,8 @@ function contentsEqual(
       c.glyph === o.glyph &&
       c.type === o.type &&
       c.title === o.title &&
-      c.showLabel === o.showLabel
+      c.showLabel === o.showLabel &&
+      ('enabled' in c ? c.enabled : true) === ('enabled' in o ? o.enabled : true)
     );
   });
 }

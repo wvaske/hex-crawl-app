@@ -443,6 +443,8 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       showLabel: cmd.content.showLabel ?? false,
       scaleVisibility: cmd.content.scaleVisibility ?? 1,
       wikiPage: cmd.content.wikiPage ?? '',
+      enabled: cmd.content.enabled ?? true,
+      quest: cmd.content.quest ?? '',
       clues: cmd.content.clues.map((c, i) => ({
         id: c.id ?? nanoid(10),
         contentId: id,
@@ -450,10 +452,57 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         gate: c.gate,
         sortOrder: i,
         indicatesDirection: c.indicatesDirection ?? false,
+        revealsLocation: c.revealsLocation ?? true,
       })),
     };
     ctx.runtime.upsertContent(content);
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, content.mapId));
+  }) as Handler,
+
+  'content.setEnabled': ((cmd: Extract<ClientCommand, { kind: 'content.setEnabled' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const prior: { content: Content; enabled: boolean }[] = [];
+    const touchedMaps = new Set<string>();
+    for (const id of cmd.contentIds) {
+      let found: Content | null = null;
+      for (const rt of ctx.runtime.mapStates.values()) {
+        const c = rt.contents.get(id);
+        if (c) { found = c; break; }
+      }
+      if (!found || found.enabled === cmd.enabled) continue;
+      prior.push({ content: found, enabled: found.enabled });
+      ctx.runtime.upsertContent({ ...found, enabled: cmd.enabled });
+      touchedMaps.add(found.mapId);
+    }
+    if (prior.length) {
+      ctx.runtime.pushUndo({
+        at: Date.now(),
+        kind: 'content.setEnabled',
+        description: `${cmd.enabled ? 'disable' : 'enable'} ${prior.length} item(s) again`,
+        run: (runtime) => {
+          for (const p of prior) {
+            const current = runtime.mapStates.get(p.content.mapId)?.contents.get(p.content.id);
+            if (current) runtime.upsertContent({ ...current, enabled: p.enabled });
+          }
+        },
+      });
+      // Newly-enabled content may open clues immediately.
+      if (cmd.enabled) {
+        for (const mapId of touchedMaps) {
+          deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, mapId));
+        }
+      }
+    }
+  }) as Handler,
+
+  'content.setQuest': ((cmd: Extract<ClientCommand, { kind: 'content.setQuest' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    for (const id of cmd.contentIds) {
+      for (const rt of ctx.runtime.mapStates.values()) {
+        const c = rt.contents.get(id);
+        if (c) { ctx.runtime.upsertContent({ ...c, quest: cmd.quest }); break; }
+      }
+    }
   }) as Handler,
 
   'content.move': ((cmd: Extract<ClientCommand, { kind: 'content.move' }>, ctx: Ctx) => {
@@ -554,8 +603,8 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         at: Date.now(),
         how: { kind: 'manual' as const },
         direction: clueDirectionFor(ctx, clue, content, characterId),
-        // A deliberate DM reveal tells the player where it is.
-        locates: true,
+        // A deliberate DM reveal locates unless the clue is info-only.
+        locates: clue.revealsLocation,
       };
       if (ctx.runtime.addDiscovery(discovery)) {
         created.push({
@@ -626,6 +675,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
           if (!token) continue;
           const character = ctx.runtime.characters.get(r.characterId)!;
           for (const content of rt.contents.values()) {
+            if (!content.enabled) continue;
             if (content.q !== cmd.hex.q || content.r !== cmd.hex.r) continue;
             const distance = hexDistance({ q: token.q, r: token.r }, cmd.hex);
             for (const clue of content.clues) {
@@ -651,7 +701,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
                   dc: clue.gate.dc,
                 },
                 direction,
-                locates: distance === 0,
+                locates: distance === 0 && clue.revealsLocation,
               };
               if (ctx.runtime.addDiscovery(discovery)) {
                 created.push({
@@ -884,13 +934,10 @@ function executeTokenMove(ctx: Ctx, token: Token, q: number, r: number, teleport
   const moved = ctx.runtime.updateToken(token.mapId, token.id, { q, r });
   const delta: FogDelta = [];
   if (token.kind === 'pc') {
-    if (!teleport) {
-      // Traversed hexes join the explored trail; the destination itself is
-      // where the party stands, so it becomes (or stays) visible.
-      const path = hexLine(from, { q, r }).filter((c) => !(c.q === q && c.r === r));
-      if (path.length) delta.push(...ctx.runtime.setFog(token.mapId, path, 'explored'));
-    }
-    delta.push(...ctx.runtime.setFog(token.mapId, [{ q, r }], 'visible'));
+    // Every walked hex — the traversed path AND the hex they end on — joins
+    // the explored trail. A teleport marks only the destination.
+    const path = teleport ? [{ q, r }] : hexLine(from, { q, r });
+    delta.push(...ctx.runtime.setFog(token.mapId, path, 'explored'));
   }
   delta.push(...afterPartyMoved(ctx, token.mapId, moved));
   return delta;

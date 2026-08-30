@@ -118,6 +118,8 @@ export const CharacterSchema = z.object({
   glyph: z.string().max(8),
   speed: z.number().int().min(0).max(120).default(30),
   skills: SkillsSchema,
+  /** D&D Beyond character id, for one-click skill sync (public sheets only). */
+  ddbId: z.string().nullable().default(null),
 });
 export type Character = z.infer<typeof CharacterSchema>;
 
@@ -357,6 +359,12 @@ export const ClueSchema = z.object({
    * toward this content's hex) to the delivered text: "… — to the north-east".
    */
   indicatesDirection: z.boolean().default(false),
+  /**
+   * Whether discovering this clue on the hex pins down the content's
+   * location. Info-only clues (tracks, rumors) never reveal the pin, so an
+   * item can stay hidden until a specific check finds it.
+   */
+  revealsLocation: z.boolean().default(true),
 });
 export type Clue = z.infer<typeof ClueSchema>;
 
@@ -373,6 +381,10 @@ export const ContentSchema = z.object({
   showLabel: z.boolean().default(false),
   /** Coarsest hex scale the pin is visible at: 0=fine only, 1=+mid, 2=all. */
   scaleVisibility: z.number().int().min(0).max(2).default(1),
+  /** Disabled content doesn't exist yet for players: no clues, no pin. */
+  enabled: z.boolean().default(true),
+  /** Free-form quest tag for grouping (enable/disable a whole quest). */
+  quest: z.string().max(120).default(''),
   /** Wiki page title (or full URL) players can read for more information. */
   wikiPage: z.string().max(300).default(''),
   clues: z.array(ClueSchema),
