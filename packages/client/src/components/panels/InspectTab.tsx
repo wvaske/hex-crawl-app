@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   CONTENT_TYPE_GLYPHS,
+  CORE_SKILLS,
   TERRAINS,
   isFullContent,
   describeGate,
@@ -160,12 +161,53 @@ export function InspectTab() {
         </div>
       </Section>
 
+      {(isDm || myCharacterId) && <SearchHex mapId={map.id} hex={hex} isDm={isDm} />}
+
       {!isDm && !myCharacterId && (
         <p className="text-xs text-ink-400 mt-4">
           Claim a character in the Party tab to make discoveries and move a token.
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Active search: roll a chosen skill against this hex. The server compares
+ * the roll to the clue gates of content here (in range of the character) and
+ * reveals anything the roll beats — including active-only gates that never
+ * open passively.
+ */
+function SearchHex({ mapId, hex, isDm }: { mapId: string; hex: { q: number; r: number }; isDm: boolean }) {
+  const [skill, setSkill] = React.useState('perception');
+  return (
+    <Section title="Search this hex">
+      <p className="text-xs text-ink-400 mb-2">
+        {isDm
+          ? 'Rolls for every character with a token on the map; reveals clues the rolls beat.'
+          : 'Roll a check against this hex — you might notice something others missed.'}
+      </p>
+      <div className="flex gap-1.5">
+        <select
+          className="flex-1 bg-ink-900 border border-ink-600 rounded px-2 py-1 text-sm text-ink-100 cursor-pointer capitalize"
+          value={skill}
+          onChange={(e) => setSkill(e.target.value)}
+        >
+          {CORE_SKILLS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => send({ kind: 'check.roll', skill, dc: null, characterIds: [], mapId, hex })}
+        >
+          🎲 Roll
+        </Button>
+      </div>
+    </Section>
   );
 }
 

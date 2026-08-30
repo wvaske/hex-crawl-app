@@ -163,6 +163,7 @@ export class CampaignRuntime {
         terrains: safeJson(t.terrains as string, []) as TerrainId[],
         die: t.die as string,
         entries: safeJson(t.entries as string, []) as EncounterTable['entries'],
+        enabled: Boolean(t.enabled ?? 1),
       });
     }
     for (const dd of d
@@ -890,10 +891,18 @@ export class CampaignRuntime {
     this.encounterTables.set(table.id, table);
     this.db
       .prepare(
-        `INSERT INTO enc_table (id, campaign_id, name, terrains, die, entries) VALUES (?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, terrains=excluded.terrains, die=excluded.die, entries=excluded.entries`,
+        `INSERT INTO enc_table (id, campaign_id, name, terrains, die, entries, enabled) VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, terrains=excluded.terrains, die=excluded.die, entries=excluded.entries, enabled=excluded.enabled`,
       )
-      .run(table.id, this.id, table.name, JSON.stringify(table.terrains), table.die, JSON.stringify(table.entries));
+      .run(
+        table.id,
+        this.id,
+        table.name,
+        JSON.stringify(table.terrains),
+        table.die,
+        JSON.stringify(table.entries),
+        table.enabled ? 1 : 0,
+      );
   }
 
   deleteEncounterTable(tableId: string): void {

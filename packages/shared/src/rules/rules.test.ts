@@ -121,7 +121,7 @@ function fullState(): CampaignState {
       { id: 'd2', clueId: 'cl3', characterId: 'char2', at: 1001, how: { kind: 'auto' }, direction: null, locates: true },
     ],
     senses: [],
-    encounterTables: [{ id: 'et1', name: 'Forest', terrains: ['forest'], die: '1d12', entries: [] }],
+    encounterTables: [{ id: 'et1', name: 'Forest', terrains: ['forest'], die: '1d12', entries: [], enabled: true }],
     log: [
       { id: 'l1', at: 1, kind: 'roll', text: 'dm secret roll', visibility: 'dm', data: {} },
       { id: 'l2', at: 2, kind: 'narration', text: 'you all see smoke', visibility: 'all', data: {} },

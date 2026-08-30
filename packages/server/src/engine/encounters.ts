@@ -60,9 +60,10 @@ export function rollEncounter(
 
   let table: EncounterTable | null = null;
   if (opts.tableId) {
+    // An explicitly chosen table rolls even when disabled.
     table = runtime.encounterTables.get(opts.tableId) ?? null;
   } else {
-    const tables = [...runtime.encounterTables.values()];
+    const tables = [...runtime.encounterTables.values()].filter((t) => t.enabled);
     table =
       (terrain ? tables.find((t) => t.terrains.includes(terrain)) : undefined) ??
       tables.find((t) => t.terrains.length === 0) ??

@@ -149,6 +149,8 @@ function CheckPanel() {
               skill,
               dc: dc && Number.isFinite(dcNum) ? Math.round(dcNum) : null,
               characterIds: [],
+              mapId: null,
+              hex: null,
             });
           }}
         >
@@ -181,17 +183,36 @@ function TablesPanel() {
       )}
       <div className="space-y-1.5">
         {tables.map((t) => (
-          <button
+          <div
             key={t.id}
-            className="w-full text-left bg-ink-850 border border-ink-700 rounded-md px-2.5 py-2 cursor-pointer hover:border-ink-600"
-            onClick={() => setEditing(t)}
+            className={cx(
+              'flex items-center bg-ink-850 border border-ink-700 rounded-md hover:border-ink-600',
+              !t.enabled && 'opacity-50',
+            )}
           >
-            <span className="text-sm text-ink-100 font-medium">{t.name}</span>
-            <span className="block text-xs text-ink-400 mt-0.5">
-              {t.die} · {t.entries.length} entries ·{' '}
-              {t.terrains.length ? t.terrains.map((x) => TERRAINS[x].label).join(', ') : 'any terrain'}
-            </span>
-          </button>
+            <button
+              className="flex-1 min-w-0 text-left px-2.5 py-2 cursor-pointer"
+              onClick={() => setEditing(t)}
+            >
+              <span className="text-sm text-ink-100 font-medium">{t.name}</span>
+              <span className="block text-xs text-ink-400 mt-0.5">
+                {t.die} · {t.entries.length} entries ·{' '}
+                {t.terrains.length ? t.terrains.map((x) => TERRAINS[x].label).join(', ') : 'any terrain'}
+                {!t.enabled && ' · disabled'}
+              </span>
+            </button>
+            <button
+              className="shrink-0 px-2.5 py-2 text-base cursor-pointer"
+              title={
+                t.enabled
+                  ? 'Active — terrain rolls can pick this table. Click to disable for this session.'
+                  : 'Disabled — terrain rolls skip this table. Click to enable.'
+              }
+              onClick={() => send({ kind: 'encounterTable.upsert', table: { ...t, enabled: !t.enabled } })}
+            >
+              {t.enabled ? '🟢' : '⚪'}
+            </button>
+          </div>
         ))}
       </div>
       {editing && (
@@ -237,7 +258,14 @@ function TableEditor({ table, onClose }: { table: EncounterTable | null; onClose
     }
     send({
       kind: 'encounterTable.upsert',
-      table: { id: table?.id ?? null, name: name.trim(), die, terrains, entries: parsed },
+      table: {
+        id: table?.id ?? null,
+        name: name.trim(),
+        die,
+        terrains,
+        entries: parsed,
+        enabled: table?.enabled ?? true,
+      },
     });
     onClose();
   };
