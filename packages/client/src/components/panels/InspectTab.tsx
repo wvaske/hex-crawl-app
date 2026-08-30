@@ -235,7 +235,7 @@ function MarkerLabel({
   );
 }
 
-function wikiHref(page: string, baseUrl: string): string {
+export function wikiHref(page: string, baseUrl: string): string {
   if (/^https?:\/\//.test(page)) return page;
   return baseUrl + encodeURIComponent(page.replace(/ /g, '_'));
 }

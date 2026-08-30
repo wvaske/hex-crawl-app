@@ -193,6 +193,7 @@ export class CanvasEngine {
 
     this.viewport.on('moved', () => {
       this.viewDirty = true;
+      this.updatePinPopupPos();
     });
     this.app.renderer.on('resize', (w: number, h: number) => {
       this.viewport.resize(w, h);
@@ -235,6 +236,9 @@ export class CanvasEngine {
       }
       if (u.senseHighlight !== prev.senseHighlight) {
         this.drawSenseHighlight();
+      }
+      if (u.selectedHex !== prev.selectedHex) {
+        this.updatePinPopupPos();
       }
       if (
         u.tool !== prev.tool ||
@@ -340,6 +344,7 @@ export class CanvasEngine {
     }
 
     this.drawHighlight();
+    this.updatePinPopupPos();
 
     if (layoutChanged && this.lastMapIdForCenter !== map.id) {
       this.lastMapIdForCenter = map.id;
@@ -668,6 +673,19 @@ export class CanvasEngine {
       g.poly(this.polyPoints(center, corners));
     }
     g.stroke({ width: 1.5 / this.viewport.scale.x, color: 0xd9b44f, alpha: 0.55 });
+  }
+
+  /** Keep the DM pin-action popup glued above the selected hex. */
+  private updatePinPopupPos(): void {
+    const ui = useUi.getState();
+    if (this.role !== 'dm' || !this.layout || !ui.selectedHex) {
+      if (ui.pinPopup) ui.set('pinPopup', null);
+      return;
+    }
+    const p = hexToPixel(this.layout, ui.selectedHex);
+    const sp = this.viewport.toScreen(p.x, p.y);
+    const zoom = this.viewport.scale.x;
+    ui.set('pinPopup', { x: sp.x, y: sp.y - this.layout.size * zoom * 0.95 });
   }
 
   private drawHighlight(): void {
