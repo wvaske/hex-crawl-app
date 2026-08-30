@@ -7,9 +7,16 @@ public DNS entry at `hex-crawl.deeznuts.wiki`.
 All commands assume root SSH to `alder01` (172.16.1.10) and follow the homelab
 conventions already in use for the deeznuts-wiki stack.
 
-> **Status:** prepared but NOT executed — the deploying machine had no route to
-> the homelab LAN and Tailscale was offline. Run these once on-LAN (or once a
-> lab host is reachable).
+> **Status: EXECUTED 2026-08-29.** Live at https://hex-crawl.deeznuts.wiki and
+> http://hex-crawl.vaske.us:3000 (internal). Facts as deployed:
+> - iSCSI: target `block.vaske.us:hexcrawl` (zvol `block/hexcrawl`, 10 GiB sparse),
+>   XFS UUID `2bc8b607-9d5a-46c8-8f17-03f063adc57d`, node.startup=automatic
+> - Docker volume `hexcrawl_data`; image `hex-crawl:latest` built on alder01
+>   from `/root/hex-crawl-build`; compose project `hex-crawl` at
+>   `/root/stacks/hex-crawl` (mirrored in docker-compose repo `stacks/hex-crawl`)
+> - IP 172.16.2.40 (homenet); Traefik route `/dynamic/hex-crawl.yml`; public DNS
+>   A `hex-crawl.deeznuts.wiki -> 71.211.246.196` (Cloudflare); LE cert issued
+> - Campaign data seeded from dev `./data` (the deployed instance is authoritative now)
 
 ---
 

@@ -39,19 +39,53 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
       <ShareLinks campaignId={campaignId} />
 
       <Section title="Seats">
+        <p className="text-xs text-ink-400 mb-2">
+          A seat is a browser that joined via an invite link. If a player lost their seat (new
+          device, cleared cookies), release their character here so they can claim it again after
+          re-joining, and remove the stale seat.
+        </p>
         <ul className="space-y-1">
-          {state.seats.map((seat) => (
-            <li key={seat.id} className="flex items-center gap-2 text-sm text-ink-200">
-              <span className={seat.online ? 'text-moss-500' : 'text-ink-600'}>●</span>
-              <span className="truncate">{seat.name}</span>
-              <span className="text-xs text-ink-400 uppercase">{seat.role}</span>
-              {seat.characterId && (
-                <span className="text-xs text-ink-400 truncate">
-                  → {state.characters.find((c) => c.id === seat.characterId)?.name}
+          {state.seats.map((seat) => {
+            const isMe = seat.id === useSession.getState().seatId;
+            return (
+              <li key={seat.id} className="flex items-center gap-2 text-sm text-ink-200">
+                <span className={seat.online ? 'text-moss-500' : 'text-ink-600'}>●</span>
+                <span className="truncate">
+                  {seat.name}
+                  {isMe && <span className="text-brass-400"> (you)</span>}
                 </span>
-              )}
-            </li>
-          ))}
+                <span className="text-xs text-ink-400 uppercase">{seat.role}</span>
+                {seat.characterId && (
+                  <span className="text-xs text-ink-400 truncate">
+                    → {state.characters.find((c) => c.id === seat.characterId)?.name}
+                  </span>
+                )}
+                <span className="flex-1" />
+                {seat.characterId && !isMe && (
+                  <button
+                    className="text-xs text-ink-400 hover:text-brass-300 cursor-pointer"
+                    title="Release this seat's character so someone can claim it again"
+                    onClick={() => send({ kind: 'seat.releaseCharacter', seatId: seat.id })}
+                  >
+                    release
+                  </button>
+                )}
+                {!isMe && (
+                  <button
+                    className="text-xs text-ink-400 hover:text-ember-500 cursor-pointer"
+                    title="Remove this seat (the browser behind it will have to re-join)"
+                    onClick={() => {
+                      if (confirm(`Remove seat "${seat.name}"? Their browser will need to re-join via the invite link.`)) {
+                        send({ kind: 'seat.delete', seatId: seat.id });
+                      }
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </Section>
     </div>

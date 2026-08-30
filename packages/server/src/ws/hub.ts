@@ -80,6 +80,19 @@ export class Hub {
     }
   }
 
+  /** Close every connection belonging to a seat (after the DM removes it). */
+  dropSeat(runtime: CampaignRuntime, seatId: string): void {
+    const room = this.rooms.get(runtime.id);
+    if (!room) return;
+    for (const conn of [...room]) {
+      if (conn.seat.id === seatId) {
+        conn.ws.close(4001, 'Seat removed by the DM');
+        room.delete(conn);
+      }
+    }
+    runtime.online.delete(seatId);
+  }
+
   /** Coalesced full-state resync for every client in the campaign. */
   scheduleSync(runtime: CampaignRuntime): void {
     if (this.pendingSync.has(runtime.id)) return;

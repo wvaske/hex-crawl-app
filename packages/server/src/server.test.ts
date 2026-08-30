@@ -245,6 +245,32 @@ describe('checks and encounters', () => {
   });
 });
 
+describe('seat recovery', () => {
+  it('DM can release a character claim and delete a stale seat; players cannot', () => {
+    const { charId, playerSeat } = setupPartyWithScout();
+    // Simulate a lost cookie: a second seat joins and cannot claim the character.
+    const newSeat = runtime.createSeat('player', 'Alice (new phone)');
+    expect(() =>
+      asSeat(newSeat, { kind: 'seat.claimCharacter', characterId: charId } as never),
+    ).toThrow(/already claimed/);
+    // Player seats cannot release others or delete seats.
+    expect(() =>
+      asSeat(newSeat, { kind: 'seat.releaseCharacter', seatId: playerSeat.id } as never),
+    ).toThrow(/DM/);
+    expect(() =>
+      asSeat(newSeat, { kind: 'seat.delete', seatId: playerSeat.id } as never),
+    ).toThrow(/DM/);
+    // DM releases the old seat's claim, deletes it, and the new seat claims.
+    dm({ kind: 'seat.releaseCharacter', seatId: playerSeat.id } as never);
+    dm({ kind: 'seat.delete', seatId: playerSeat.id } as never);
+    expect(runtime.seats.has(playerSeat.id)).toBe(false);
+    asSeat(newSeat, { kind: 'seat.claimCharacter', characterId: charId } as never);
+    expect(runtime.seats.get(newSeat.id)!.characterId).toBe(charId);
+    // DM cannot delete their own seat.
+    expect(() => dm({ kind: 'seat.delete', seatId: dmSeat.id } as never)).toThrow(/own seat/);
+  });
+});
+
 describe('narration', () => {
   it('narrate to all is visible to players; dm log entries are not', () => {
     const { playerSeat } = setupPartyWithScout();

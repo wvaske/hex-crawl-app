@@ -354,6 +354,12 @@ export class CampaignRuntime {
     this.db.prepare('UPDATE seat SET name = ? WHERE id = ?').run(name, seatId);
   }
 
+  deleteSeat(seatId: string): void {
+    this.seats.delete(seatId);
+    this.online.delete(seatId);
+    this.db.prepare('DELETE FROM seat WHERE id = ?').run(seatId);
+  }
+
   claimCharacter(seatId: string, characterId: string | null): void {
     const seat = this.seats.get(seatId);
     if (!seat) throw new Error('Seat not found');
