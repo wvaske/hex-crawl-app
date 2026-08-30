@@ -91,6 +91,19 @@ function handleMessage(msg: ServerMessage): void {
         session.pushToast({ kind: 'narration', title: 'The DM narrates', text: msg.entry.text });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'check') {
         session.pushToast({ kind: 'info', title: 'Skill check', text: msg.entry.text });
+      } else if (msg.kind === 'trail.found') {
+        const mine = msg.characterId === currentCharacterId();
+        const dirs = [
+          msg.forward ? `tracks lead ${msg.forward}` : null,
+          msg.backward ? `back-trail ${msg.backward}` : null,
+        ]
+          .filter(Boolean)
+          .join(', ');
+        session.pushToast({
+          kind: 'discovery',
+          title: mine ? 'You pick up a trail…' : `${msg.characterName} picks up a trail`,
+          text: dirs ? `Signs of passage — ${dirs}.` : 'Signs of passage here.',
+        });
       } else if (msg.kind === 'move.requested') {
         session.pushToast({
           kind: 'info',

@@ -23,6 +23,7 @@ import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
 import type { Hub } from './hub.js';
 import { applyAutoReveal } from '../engine/fog.js';
 import { evaluateKnowledge, type NewDiscovery } from '../engine/knowledge.js';
+import { evaluateTrails, trailBearings, type TrailFind } from '../engine/trails.js';
 import { generateSettlementClues } from '../engine/settlements.js';
 import { rollEncounter } from '../engine/encounters.js';
 
@@ -479,6 +480,20 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     throw new Error('view.map is connection-scoped');
   }) as Handler,
 
+  'trail.upsert': ((cmd: Extract<ClientCommand, { kind: 'trail.upsert' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const trail = { ...cmd.trail, id: cmd.trail.id ?? nanoid(10) };
+    if (!ctx.runtime.maps.has(trail.mapId)) throw new Error('Map not found');
+    ctx.runtime.upsertTrail(trail);
+    deliverTrailFinds(ctx, evaluateTrails(ctx.runtime, trail.mapId));
+  }) as Handler,
+
+  'trail.delete': ((cmd: Extract<ClientCommand, { kind: 'trail.delete' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const trail = ctx.runtime.findTrail(cmd.trailId);
+    if (trail) ctx.runtime.deleteTrail(trail.mapId, cmd.trailId);
+  }) as Handler,
+
   'clues.generateSettlements': ((
     cmd: Extract<ClientCommand, { kind: 'clues.generateSettlements' }>,
     ctx: Ctx,
@@ -650,7 +665,46 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
             }
           }
         }
-        found = created.length;
+        // Trails: a search can also spot trail cells on the hex (any skill
+        // gate, active included) when the roll beats the gate's DC.
+        const trailFinds: TrailFind[] = [];
+        for (const r of results) {
+          const token = [...rt.tokens.values()].find(
+            (t) => t.kind === 'pc' && t.characterId === r.characterId,
+          );
+          if (!token) continue;
+          const character = ctx.runtime.characters.get(r.characterId)!;
+          for (const trail of rt.trails.values()) {
+            if (trail.gate.kind !== 'skill' || trail.gate.skill !== cmd.skill) continue;
+            for (let i = 0; i < trail.cells.length; i++) {
+              const cell = trail.cells[i]!;
+              if (cell.q !== cmd.hex.q || cell.r !== cmd.hex.r) continue;
+              const distance = hexDistance({ q: token.q, r: token.r }, cell);
+              if (distance > trail.gate.maxDistance) continue;
+              if (r.total < trail.gate.dc) continue;
+              if (
+                ctx.runtime.addTrailDiscovery({
+                  id: nanoid(12),
+                  trailId: trail.id,
+                  cellIndex: i,
+                  characterId: r.characterId,
+                  at: Date.now(),
+                })
+              ) {
+                trailFinds.push({
+                  trailId: trail.id,
+                  characterId: r.characterId,
+                  characterName: character.name,
+                  q: cell.q,
+                  r: cell.r,
+                  ...trailBearings(trail, i, map.orientation),
+                });
+              }
+            }
+          }
+        }
+        deliverTrailFinds(ctx, trailFinds);
+        found = created.length + trailFinds.length;
         deliverDiscoveries(ctx, created);
       }
     }
@@ -743,8 +797,19 @@ function afterPartyMoved(ctx: Ctx, mapId: string, token: Token): FogDelta {
   }
   if (token.characterId) {
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, mapId, [token.characterId]));
+    deliverTrailFinds(ctx, evaluateTrails(ctx.runtime, mapId, [token.characterId]));
   }
   return revealed;
+}
+
+function deliverTrailFinds(ctx: Ctx, finds: TrailFind[]): void {
+  for (const f of finds) {
+    ctx.hub.sendTo(
+      ctx.runtime,
+      { type: 'event', kind: 'trail.found', ...f },
+      { all: true },
+    );
+  }
 }
 
 /** Fog cells changed by an operation, with their prior state for undo. */

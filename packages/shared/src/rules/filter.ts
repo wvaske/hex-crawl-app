@@ -7,10 +7,11 @@ import type {
   SeatRole,
   Sense,
   Token,
+  TrailSign,
 } from '../domain.js';
 import { isFullContent } from '../domain.js';
 import { hexDistance, hexKey, hexRange } from '../hex/coords.js';
-import { compassDirection, withDirection } from '../hex/direction.js';
+import { bearingAngle, compassDirection, withDirection } from '../hex/direction.js';
 import type { HexOrientation } from '../hex/layout.js';
 
 export interface Viewer {
@@ -46,6 +47,9 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
             .map((c) => contentPlayerView(c, viewer.characterId, full))
             .filter((v): v is ContentPlayerView => v !== null),
           pendingMoves: mapState.pendingMoves,
+          // Trail definitions never reach players; only discovered signs do.
+          trails: [],
+          trailSigns: computeTrailSigns(full, viewer.characterId),
         };
       })()
     : null;
@@ -59,10 +63,53 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
     discoveries: viewer.characterId
       ? full.discoveries.filter((d) => d.characterId === viewer.characterId)
       : [],
+    trailDiscoveries: viewer.characterId
+      ? full.trailDiscoveries.filter((d) => d.characterId === viewer.characterId)
+      : [],
     senses: computeSenses(full, viewer.characterId),
     encounterTables: [],
     log: full.log.filter((e) => e.visibility === 'all' || e.visibility === viewer.seatId),
   };
+}
+
+/**
+ * Signs for the trail cells the viewer's character has walked or spotted:
+ * the cell, its glyph, and the bearings onward and back — never the rest
+ * of the path.
+ */
+function computeTrailSigns(full: CampaignState, characterId: string | null): TrailSign[] {
+  const mapState = full.mapState;
+  if (!mapState || !characterId || mapState.trails.length === 0) return [];
+  const orientation: HexOrientation =
+    full.maps.find((m) => m.id === full.campaign.activeMapId)?.orientation ?? 'flat';
+  const mine = full.trailDiscoveries.filter((d) => d.characterId === characterId);
+  if (mine.length === 0) return [];
+  const trails = new Map(mapState.trails.map((t) => [t.id, t]));
+
+  const signs: TrailSign[] = [];
+  const seen = new Set<string>();
+  for (const d of mine) {
+    const trail = trails.get(d.trailId);
+    if (!trail) continue;
+    const cell = trail.cells[d.cellIndex];
+    if (!cell) continue;
+    const key = `${d.trailId}|${d.cellIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const next = trail.cells[d.cellIndex + 1] ?? null;
+    const prev = trail.cells[d.cellIndex - 1] ?? null;
+    signs.push({
+      trailId: d.trailId,
+      q: cell.q,
+      r: cell.r,
+      glyph: trail.glyph,
+      forward: next ? compassDirection(cell, next, orientation) : null,
+      backward: prev ? compassDirection(cell, prev, orientation) : null,
+      forwardAngle: next ? bearingAngle(cell, next, orientation) : null,
+      backwardAngle: prev ? bearingAngle(cell, prev, orientation) : null,
+    });
+  }
+  return signs;
 }
 
 export function tokenVisibleToPlayers(token: Token, fogAtToken: FogState): boolean {

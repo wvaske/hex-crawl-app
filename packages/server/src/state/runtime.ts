@@ -7,6 +7,8 @@ import type {
   Character,
   Content,
   Discovery,
+  Trail,
+  TrailDiscovery,
   EncounterTable,
   FogState,
   HexCell,
@@ -48,6 +50,7 @@ export interface MapRuntime {
   contents: Map<string, Content>;
   /** In-memory only: player moves awaiting DM approval, by tokenId. */
   pendingMoves: Map<string, PendingMove>;
+  trails: Map<string, Trail>;
 }
 
 const LOG_MEMORY_LIMIT = 500;
@@ -80,6 +83,8 @@ export class CampaignRuntime {
   mapStates = new Map<string, MapRuntime>();
   discoveries = new Map<string, Discovery>();
   discoveredByClueChar = new Set<string>();
+  trailDiscoveries = new Map<string, TrailDiscovery>();
+  private trailDiscoveryKeys = new Set<string>();
   encounterTables = new Map<string, EncounterTable>();
   log: LogEntry[] = [];
   /** Seat ids currently connected (managed by the hub). */
@@ -181,6 +186,19 @@ export class CampaignRuntime {
       this.discoveries.set(disc.id, disc);
       this.discoveredByClueChar.add(`${disc.clueId}|${disc.characterId}`);
     }
+    for (const td of d
+      .prepare('SELECT * FROM trail_discovery WHERE campaign_id = ?')
+      .all(this.id) as Array<Record<string, unknown>>) {
+      const disc: TrailDiscovery = {
+        id: td.id as string,
+        trailId: td.trail_id as string,
+        cellIndex: td.cell_index as number,
+        characterId: td.character_id as string,
+        at: td.at as number,
+      };
+      this.trailDiscoveries.set(disc.id, disc);
+      this.trailDiscoveryKeys.add(`${disc.trailId}|${disc.cellIndex}|${disc.characterId}`);
+    }
     this.log = (
       d
         .prepare('SELECT * FROM log WHERE campaign_id = ? ORDER BY at DESC, id DESC LIMIT ?')
@@ -208,7 +226,21 @@ export class CampaignRuntime {
       markers: new Map(),
       contents: new Map(),
       pendingMoves: new Map(),
+      trails: new Map(),
     };
+    for (const t of d.prepare('SELECT * FROM trail WHERE map_id = ?').all(mapId) as Array<
+      Record<string, unknown>
+    >) {
+      rt.trails.set(t.id as string, {
+        id: t.id as string,
+        mapId,
+        name: t.name as string,
+        glyph: t.glyph as string,
+        dmNotes: t.dm_notes as string,
+        gate: GateSchema.parse(safeJson(t.gate as string, { kind: 'auto' })),
+        cells: safeJson(t.cells as string, []) as Trail['cells'],
+      });
+    }
     for (const h of d.prepare('SELECT * FROM hex WHERE map_id = ?').all(mapId) as Array<
       Record<string, unknown>
     >) {
@@ -306,6 +338,8 @@ export class CampaignRuntime {
       markers: [...rt.markers.values()],
       contents: [...rt.contents.values()],
       pendingMoves: [...rt.pendingMoves.values()],
+      trails: [...rt.trails.values()],
+      trailSigns: [],
     };
   }
 
@@ -343,6 +377,7 @@ export class CampaignRuntime {
       maps: [...this.maps.values()].sort((a, b) => a.sortOrder - b.sortOrder),
       mapState: this.mapState(mapId),
       discoveries: [...this.discoveries.values()],
+      trailDiscoveries: [...this.trailDiscoveries.values()],
       senses: [],
       encounterTables: [...this.encounterTables.values()],
       log: this.log,
@@ -450,6 +485,7 @@ export class CampaignRuntime {
       markers: new Map(),
       contents: new Map(),
       pendingMoves: new Map(),
+      trails: new Map(),
     });
     this.db
       .prepare(
@@ -874,6 +910,63 @@ export class CampaignRuntime {
         this.db.prepare('UPDATE discovery SET locates = 1 WHERE id = ?').run(disc.id);
       }
     }
+  }
+
+  // -- trails ----------------------------------------------------------------
+
+  upsertTrail(trail: Trail): void {
+    const rt = this.requireMap(trail.mapId);
+    rt.trails.set(trail.id, trail);
+    this.db
+      .prepare(
+        `INSERT INTO trail (id, map_id, name, glyph, dm_notes, gate, cells) VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, glyph=excluded.glyph, dm_notes=excluded.dm_notes, gate=excluded.gate, cells=excluded.cells`,
+      )
+      .run(
+        trail.id,
+        trail.mapId,
+        trail.name,
+        trail.glyph,
+        trail.dmNotes,
+        JSON.stringify(trail.gate),
+        JSON.stringify(trail.cells),
+      );
+  }
+
+  deleteTrail(mapId: string, trailId: string): void {
+    this.requireMap(mapId).trails.delete(trailId);
+    this.db.prepare('DELETE FROM trail WHERE id = ?').run(trailId);
+    for (const [id, td] of this.trailDiscoveries) {
+      if (td.trailId === trailId) {
+        this.trailDiscoveries.delete(id);
+        this.trailDiscoveryKeys.delete(`${td.trailId}|${td.cellIndex}|${td.characterId}`);
+      }
+    }
+  }
+
+  findTrail(trailId: string): Trail | null {
+    for (const rt of this.mapStates.values()) {
+      const t = rt.trails.get(trailId);
+      if (t) return t;
+    }
+    return null;
+  }
+
+  hasTrailDiscovery(trailId: string, cellIndex: number, characterId: string): boolean {
+    return this.trailDiscoveryKeys.has(`${trailId}|${cellIndex}|${characterId}`);
+  }
+
+  addTrailDiscovery(disc: TrailDiscovery): boolean {
+    const key = `${disc.trailId}|${disc.cellIndex}|${disc.characterId}`;
+    if (this.trailDiscoveryKeys.has(key)) return false;
+    this.trailDiscoveries.set(disc.id, disc);
+    this.trailDiscoveryKeys.add(key);
+    this.db
+      .prepare(
+        'INSERT INTO trail_discovery (id, campaign_id, trail_id, cell_index, character_id, at) VALUES (?,?,?,?,?,?)',
+      )
+      .run(disc.id, this.id, disc.trailId, disc.cellIndex, disc.characterId, disc.at);
+    return true;
   }
 
   revokeDiscovery(discoveryId: string): Discovery | null {

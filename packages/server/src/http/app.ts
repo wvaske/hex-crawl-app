@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Content, ImageLayer } from '@hexcrawl/shared';
 import { ContentTypeSchema, GateSchema, pixelToHex } from '@hexcrawl/shared';
 import { evaluateKnowledge } from '../engine/knowledge.js';
+import { evaluateTrails } from '../engine/trails.js';
 import { generateSettlementClues } from '../engine/settlements.js';
 import { MAX_UPLOAD_BYTES, UPLOADS_DIR } from '../config.js';
 import type { Store } from '../state/store.js';
@@ -306,6 +307,33 @@ export function createApp(store: Store, hub: Hub): Hono {
     evaluateKnowledge(runtime, input.mapId);
     hub.scheduleSync(runtime);
     return c.json({ contentId: id, q, r, updated: Boolean(existing) });
+  });
+
+  /** Upsert a trail by (mapId, name): an ordered path of push-direction cells. */
+  app.post('/api/integration/campaigns/:id/trails', async (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    const schema = z.object({
+      mapId: z.string(),
+      name: z.string().min(1).max(120),
+      glyph: z.string().max(8).default('👣'),
+      dmNotes: z.string().max(10000).default(''),
+      gate: GateSchema.default({ kind: 'auto' }),
+      cells: z.array(z.object({ q: z.number().int(), r: z.number().int() })).min(2),
+    });
+    const body = schema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? 'Invalid body' }, 400);
+    const input = body.data;
+    const rt = runtime.mapStates.get(input.mapId);
+    if (!rt) return c.json({ error: 'Map not found' }, 404);
+    const existing = [...rt.trails.values()].find(
+      (t) => t.name.toLowerCase() === input.name.toLowerCase(),
+    );
+    const id = existing?.id ?? nanoid(10);
+    runtime.upsertTrail({ ...input, id });
+    evaluateTrails(runtime, input.mapId);
+    hub.scheduleSync(runtime);
+    return c.json({ trailId: id, cells: input.cells.length, updated: Boolean(existing) });
   });
 
   /** Generate the standard sensory clues for every settlement on a map. */

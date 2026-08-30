@@ -8,6 +8,7 @@ import {
   MarkerSchema,
   TerrainIdSchema,
   TokenKindSchema,
+  TrailSchema,
 } from '../domain.js';
 
 /**
@@ -339,6 +340,21 @@ export const ViewMapCommand = z.object({
   mapId: z.string(),
 });
 
+// --- trails -----------------------------------------------------------------
+
+/** DM: create or update a trail (ordered path of push-direction cells). */
+export const TrailUpsertCommand = z.object({
+  ...base,
+  kind: z.literal('trail.upsert'),
+  trail: TrailSchema.extend({ id: z.string().nullable() }),
+});
+
+export const TrailDeleteCommand = z.object({
+  ...base,
+  kind: z.literal('trail.delete'),
+  trailId: z.string(),
+});
+
 /**
  * DM: auto-generate sensory clues (smoke, din, smells) for every settlement
  * on a map that doesn't already have them. Scaled by the pin's
@@ -459,6 +475,8 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   ContentUpsertCommand,
   ContentMoveCommand,
   ViewMapCommand,
+  TrailUpsertCommand,
+  TrailDeleteCommand,
   CluesGenerateCommand,
   ContentDeleteCommand,
   ClueRevealCommand,

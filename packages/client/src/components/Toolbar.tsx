@@ -19,6 +19,7 @@ const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
   { tool: 'fog', icon: '🌫️', name: 'Fog (F)', hint: 'Reveal / hide hexes' },
   { tool: 'marker', icon: '📍', name: 'Marker (M)', hint: 'Place effect markers' },
   { tool: 'content', icon: '📖', name: 'Content (C)', hint: 'Add hex content' },
+  { tool: 'trail', icon: '👣', name: 'Trail (T)', hint: 'Draw a footstep trail cell by cell' },
   { tool: 'measure', icon: '📏', name: 'Measure (R)', hint: 'Measure distances' },
 ];
 
@@ -169,9 +170,124 @@ export function Toolbar() {
         </div>
       )}
 
+      {ui.tool === 'trail' && <TrailOptions />}
+
       {ui.tool === 'measure' && (
         <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-44 text-xs text-ink-300">
           Click a hex to set the start point, then hover. Click again to clear.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Trail tool options: click cells in order to draw the path, then save.
+ * A saved trail "pushes": each walked cell tells its finder the way onward
+ * and back, never the whole route.
+ */
+function TrailOptions() {
+  const draft = useUi((s) => s.trailDraft);
+  const state = useSession((s) => s.state);
+  const map = activeMap(state);
+  const trails = state?.mapState?.trails ?? [];
+  const [name, setName] = useState('');
+  const [mode, setMode] = useState<'auto' | 'survival'>('auto');
+  const [dc, setDc] = useState('12');
+
+  if (!map) return null;
+
+  const save = () => {
+    if (draft.length < 2 || !name.trim()) return;
+    const dcNum = Math.min(40, Math.max(1, Math.round(Number(dc) || 12)));
+    send({
+      kind: 'trail.upsert',
+      trail: {
+        id: null,
+        mapId: map.id,
+        name: name.trim(),
+        glyph: '👣',
+        dmNotes: '',
+        gate:
+          mode === 'auto'
+            ? { kind: 'auto' }
+            : { kind: 'skill', skill: 'survival', dc: dcNum, maxDistance: 0, mode: 'passive' },
+        cells: draft,
+      },
+    });
+    useUi.getState().set('trailDraft', []);
+    setName('');
+  };
+
+  return (
+    <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-52 overflow-y-auto space-y-2">
+      <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">
+        Trail — {draft.length} cell{draft.length === 1 ? '' : 's'}
+      </p>
+      <p className="text-[11px] text-ink-400">
+        Click hexes in order. Click the last cell again to step back. Walkers learn the direction
+        onward and back — never the whole route.
+      </p>
+      <input
+        className="w-full bg-ink-950 border border-ink-600 rounded px-2 py-1 text-xs text-ink-100"
+        placeholder="Trail name…"
+        value={name}
+        maxLength={120}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <div className="flex items-center gap-1.5 text-[11px] text-ink-300">
+        <select
+          className="flex-1 bg-ink-950 border border-ink-600 rounded px-1 py-0.5 cursor-pointer"
+          value={mode}
+          onChange={(e) => setMode(e.target.value as 'auto' | 'survival')}
+        >
+          <option value="auto">Obvious (auto)</option>
+          <option value="survival">Survival check</option>
+        </select>
+        {mode === 'survival' && (
+          <input
+            type="number"
+            min={1}
+            max={40}
+            className="w-12 bg-ink-950 border border-ink-600 rounded px-1 py-0.5"
+            value={dc}
+            onChange={(e) => setDc(e.target.value)}
+            title="Passive Survival DC to notice each cell"
+          />
+        )}
+      </div>
+      <div className="flex gap-1.5">
+        <button
+          className="flex-1 py-1 rounded text-xs cursor-pointer bg-brass-500/20 text-brass-300 border border-brass-500/50 disabled:opacity-40"
+          disabled={draft.length < 2 || !name.trim()}
+          onClick={save}
+        >
+          Save trail
+        </button>
+        <button
+          className="px-2 py-1 rounded text-xs cursor-pointer text-ink-300 border border-ink-600 hover:bg-ink-700"
+          onClick={() => useUi.getState().set('trailDraft', [])}
+        >
+          Clear
+        </button>
+      </div>
+      {trails.length > 0 && (
+        <div className="border-t border-ink-700 pt-1.5 space-y-1">
+          {trails.map((t) => (
+            <div key={t.id} className="flex items-center gap-1.5 text-xs text-ink-200">
+              <span className="truncate flex-1">
+                {t.glyph} {t.name}
+                <span className="text-ink-400"> · {t.cells.length}</span>
+              </span>
+              <button
+                className="text-ink-400 hover:text-ember-500 cursor-pointer"
+                title="Delete trail"
+                onClick={() => send({ kind: 'trail.delete', trailId: t.id })}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>
