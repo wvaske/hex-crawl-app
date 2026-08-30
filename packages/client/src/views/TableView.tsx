@@ -11,6 +11,7 @@ import { ContentDialog } from '../components/ContentDialog.js';
 import { EmptyMapHint, HexReadout } from '../components/StatusOverlays.js';
 import { PendingMoves } from '../components/PendingMoves.js';
 import { SelectionBar } from '../components/SelectionBar.js';
+import { PinActions } from '../components/PinActions.js';
 
 export function TableView({ campaignId }: { campaignId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -104,6 +105,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         <PendingMoves />
         {role === 'dm' && <Toolbar />}
         {role === 'dm' && <SelectionBar />}
+        {role === 'dm' && <PinActions />}
         {panelOpen && <SidePanel campaignId={campaignId} />}
         {!hasState && (
           <div className="absolute inset-0 flex items-center justify-center bg-ink-950/70 pointer-events-none">
