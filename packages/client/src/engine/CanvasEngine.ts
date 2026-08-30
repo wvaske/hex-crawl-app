@@ -1635,7 +1635,9 @@ function contentsEqual(
       c.type === o.type &&
       c.title === o.title &&
       c.showLabel === o.showLabel &&
-      ('enabled' in c ? c.enabled : true) === ('enabled' in o ? o.enabled : true)
+      ('enabled' in c ? c.enabled : true) === ('enabled' in o ? o.enabled : true) &&
+      ('knownLocation' in c ? c.knownLocation : false) ===
+        ('knownLocation' in o ? o.knownLocation : false)
     );
   });
 }

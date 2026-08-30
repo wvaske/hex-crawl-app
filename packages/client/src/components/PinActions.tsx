@@ -52,6 +52,48 @@ export function PinActions() {
           >
             {c.enabled ? 'Disable' : 'Enable'}
           </button>
+          <button
+            className={cx(
+              'px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap',
+              c.knownLocation ? 'bg-brass-500/25 text-brass-300' : 'text-ink-300 hover:bg-ink-700',
+            )}
+            title={
+              c.knownLocation
+                ? 'Players see this pin (location is common knowledge) — click to make it discovery-gated again'
+                : 'Show the pin to players: they learn WHERE it is, but clues stay gated'
+            }
+            onClick={() =>
+              send({
+                kind: 'content.upsert',
+                content: {
+                  id: c.id,
+                  mapId: c.mapId,
+                  q: c.q,
+                  r: c.r,
+                  type: c.type,
+                  title: c.title,
+                  dmNotes: c.dmNotes,
+                  glyph: c.glyph,
+                  showLabel: c.showLabel,
+                  scaleVisibility: c.scaleVisibility,
+                  wikiPage: c.wikiPage,
+                  enabled: c.enabled,
+                  knownLocation: !c.knownLocation,
+                  quest: c.quest,
+                  clues: c.clues.map((cl) => ({
+                    id: cl.id,
+                    text: cl.text,
+                    gate: cl.gate,
+                    sortOrder: cl.sortOrder,
+                    indicatesDirection: cl.indicatesDirection,
+                    revealsLocation: cl.revealsLocation,
+                  })),
+                },
+              })
+            }
+          >
+            {c.knownLocation ? 'Known ✓' : 'Show players'}
+          </button>
           <span className="w-px h-4 bg-ink-700" />
           {(['visible', 'explored', 'hidden'] as FogState[]).map((s) => (
             <button
