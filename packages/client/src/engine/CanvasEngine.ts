@@ -729,6 +729,40 @@ export class CanvasEngine {
 
     for (const content of this.lastContents) {
       if (content.scaleVisibility < this.scaleLevel) continue;
+      const center = hexToPixel(this.layout, { q: content.q, r: content.r });
+
+      // Regions render as printed-map style text labels, not pins.
+      if (content.type === 'region') {
+        const label = new Text({
+          text: content.title,
+          style: {
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontStyle: 'italic',
+            fontWeight: '600',
+            fontSize: PIN_BASE_FONT,
+            fill: 0x3d4633,
+            stroke: { color: 0xf2eddd, width: PIN_BASE_FONT * 0.14 },
+            align: 'center',
+            letterSpacing: 2,
+          },
+          resolution: 3,
+        });
+        label.anchor.set(0.5);
+        const pin = new Container();
+        pin.addChild(label);
+        // Bigger footprint for bigger regions; readable minimum when far out.
+        const worldSize = size * (content.scaleVisibility === 2 ? 2.6 : 1.8);
+        (pin as PinContainer).__pin = { worldSize, minScreen: 15 };
+        pin.position.set(center.x, center.y);
+        if (discoveredClues) {
+          const known =
+            'clues' in content && content.clues.some((cl) => discoveredClues.has(cl.id));
+          pin.alpha *= known ? 1 : 0.25;
+        }
+        this.pinsC.addChild(pin);
+        continue;
+      }
+
       const glyph = content.glyph || CONTENT_TYPE_GLYPHS[content.type];
       const isCity = content.type === 'settlement' && content.glyph === '🏰';
       // Cities cover at least a full hex; labeled places sit between; the rest
@@ -742,7 +776,6 @@ export class CanvasEngine {
         worldSize,
         minScreen,
       });
-      const center = hexToPixel(this.layout, { q: content.q, r: content.r });
       pin.position.set(center.x, center.y);
       if (discoveredClues) {
         const known =
