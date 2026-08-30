@@ -174,6 +174,7 @@ export class CampaignRuntime {
         characterId: dd.character_id as string,
         at: dd.at as number,
         how: safeJson(dd.how as string, { kind: 'manual' }) as Discovery['how'],
+        direction: (dd.direction as string | null) ?? null,
       };
       this.discoveries.set(disc.id, disc);
       this.discoveredByClueChar.add(`${disc.clueId}|${disc.characterId}`);
@@ -259,6 +260,7 @@ export class CampaignRuntime {
         text: cl.text as string,
         gate: GateSchema.parse(safeJson(cl.gate as string)),
         sortOrder: cl.sort_order as number,
+        indicatesDirection: Boolean(cl.indicates_direction),
       }));
       rt.contents.set(c.id as string, {
         id: c.id as string,
@@ -777,11 +779,18 @@ export class CampaignRuntime {
         }
       }
       const put = this.db.prepare(
-        `INSERT INTO clue (id, content_id, text, gate, sort_order) VALUES (?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET text=excluded.text, gate=excluded.gate, sort_order=excluded.sort_order`,
+        `INSERT INTO clue (id, content_id, text, gate, sort_order, indicates_direction) VALUES (?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET text=excluded.text, gate=excluded.gate, sort_order=excluded.sort_order, indicates_direction=excluded.indicates_direction`,
       );
       for (const clue of content.clues) {
-        put.run(clue.id, content.id, clue.text, JSON.stringify(clue.gate), clue.sortOrder);
+        put.run(
+          clue.id,
+          content.id,
+          clue.text,
+          JSON.stringify(clue.gate),
+          clue.sortOrder,
+          clue.indicatesDirection ? 1 : 0,
+        );
       }
     });
     tx();
@@ -838,8 +847,18 @@ export class CampaignRuntime {
     this.discoveries.set(discovery.id, discovery);
     this.discoveredByClueChar.add(`${discovery.clueId}|${discovery.characterId}`);
     this.db
-      .prepare('INSERT INTO discovery (id, campaign_id, clue_id, character_id, at, how) VALUES (?,?,?,?,?,?)')
-      .run(discovery.id, this.id, discovery.clueId, discovery.characterId, discovery.at, JSON.stringify(discovery.how));
+      .prepare(
+        'INSERT INTO discovery (id, campaign_id, clue_id, character_id, at, how, direction) VALUES (?,?,?,?,?,?,?)',
+      )
+      .run(
+        discovery.id,
+        this.id,
+        discovery.clueId,
+        discovery.characterId,
+        discovery.at,
+        JSON.stringify(discovery.how),
+        discovery.direction,
+      );
     return true;
   }
 

@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import type {
   ClientCommand,
+  Clue,
   Content,
   LogEntry,
   MapInfo,
@@ -8,6 +9,7 @@ import type {
   Token,
 } from '@hexcrawl/shared';
 import {
+  compassDirection,
   EncounterCheckConfigSchema,
   GridStyleSchema,
   hexDistance,
@@ -445,6 +447,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         text: c.text,
         gate: c.gate,
         sortOrder: i,
+        indicatesDirection: c.indicatesDirection ?? false,
       })),
     };
     ctx.runtime.upsertContent(content);
@@ -506,6 +509,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         characterId,
         at: Date.now(),
         how: { kind: 'manual' as const },
+        direction: clueDirectionFor(ctx, clue, content, characterId),
       };
       if (ctx.runtime.addDiscovery(discovery)) {
         created.push({
@@ -662,6 +666,28 @@ function restoreFogDelta(runtime: CampaignRuntime, mapId: string, delta: FogDelt
     byState.set(state, list);
   }
   for (const [state, cells] of byState) runtime.setFog(mapId, cells, state);
+}
+
+/**
+ * Bearing from a character's PC token toward a content hex, for clues that
+ * indicate direction. Null when the clue doesn't, or the character has no
+ * token on that map, or they stand on the hex itself.
+ */
+function clueDirectionFor(
+  ctx: Ctx,
+  clue: Clue,
+  content: Content,
+  characterId: string,
+): string | null {
+  if (!clue.indicatesDirection) return null;
+  const rt = ctx.runtime.mapStates.get(content.mapId);
+  if (!rt) return null;
+  const token = [...rt.tokens.values()].find(
+    (t) => t.kind === 'pc' && t.characterId === characterId,
+  );
+  if (!token) return null;
+  const orientation = ctx.runtime.maps.get(content.mapId)?.orientation ?? 'flat';
+  return compassDirection({ q: token.q, r: token.r }, { q: content.q, r: content.r }, orientation);
 }
 
 /** All tokens moving together with `token` — just the token itself unless it's in a party. */

@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import type { Character, Discovery } from '@hexcrawl/shared';
-import { gateOpensPassively, hexDistance } from '@hexcrawl/shared';
+import { compassDirection, gateOpensPassively, hexDistance } from '@hexcrawl/shared';
 import type { CampaignRuntime } from '../state/runtime.js';
 
 export interface NewDiscovery {
@@ -25,6 +25,7 @@ export function evaluateKnowledge(
 ): NewDiscovery[] {
   const rt = runtime.mapStates.get(mapId);
   if (!rt) return [];
+  const orientation = runtime.maps.get(mapId)?.orientation ?? 'flat';
 
   // Character -> position of their PC token on this map.
   const positions = new Map<string, { q: number; r: number }>();
@@ -45,7 +46,17 @@ export function evaluateKnowledge(
         if (runtime.hasDiscovery(clue.id, characterId)) continue;
         const evaluation = gateOpensPassively(clue.gate, character, distance);
         if (!evaluation.opens) continue;
-        const discovery = buildDiscovery(clue.id, character, clue.gate, distance, evaluation.passive);
+        const direction = clue.indicatesDirection
+          ? compassDirection(pos, { q: content.q, r: content.r }, orientation)
+          : null;
+        const discovery = buildDiscovery(
+          clue.id,
+          character,
+          clue.gate,
+          distance,
+          evaluation.passive,
+          direction,
+        );
         if (runtime.addDiscovery(discovery)) {
           results.push({
             discovery,
@@ -67,6 +78,7 @@ function buildDiscovery(
   gate: { kind: string; skill?: string; dc?: number },
   distance: number,
   passive: number | undefined,
+  direction: string | null,
 ): Discovery {
   const how: Discovery['how'] =
     gate.kind === 'skill'
@@ -78,5 +90,5 @@ function buildDiscovery(
           distance,
         }
       : { kind: 'auto' };
-  return { id: nanoid(12), clueId, characterId: character.id, at: Date.now(), how };
+  return { id: nanoid(12), clueId, characterId: character.id, at: Date.now(), how, direction };
 }
