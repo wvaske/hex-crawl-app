@@ -487,12 +487,16 @@ describe('directional clues', () => {
     expect(sense.inRange).toBe(true);
     expect(sense.located).toBe(false);
     expect(sense.contentTitle).toBeNull();
-    // Triangulation cells: only hexes the character has been to.
-    const visited = new Set(
-      view.mapState!.fog.map((f) => `${f.q},${f.r}`),
+    // Triangulation cells: only hexes the character has actually walked
+    // (explored trail + current hex) — never merely-visible cells.
+    const walked = new Set(
+      view.mapState!.fog.filter((f) => f.state === 'explored').map((f) => `${f.q},${f.r}`),
     );
+    walked.add('0,0'); // where the character currently stands
     expect(sense.observableFrom.length).toBeGreaterThan(0);
-    for (const c of sense.observableFrom) expect(visited.has(`${c.q},${c.r}`)).toBe(true);
+    for (const c of sense.observableFrom) expect(walked.has(`${c.q},${c.r}`)).toBe(true);
+    // The sight-radius 'visible' ring around the token must NOT be included.
+    expect(sense.observableFrom.some((c) => c.q === 1 && c.r === 0)).toBe(false);
 
     // Walking onto the hex locates the source and reveals the pin.
     asSeat(playerSeat, { kind: 'token.move', tokenId, q: 4, r: -2 } as never);

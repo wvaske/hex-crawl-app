@@ -134,9 +134,14 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
   const orientation: HexOrientation =
     full.maps.find((m) => m.id === full.campaign.activeMapId)?.orientation ?? 'flat';
   const myToken = mapState.tokens.find((t) => t.kind === 'pc' && t.characterId === characterId);
+  // Hexes the party has actually been to: the explored trail plus wherever
+  // the character stands right now. Merely-visible cells (e.g. a map opened
+  // up wholesale by the DM) don't count — you can't triangulate from a hex
+  // you never walked.
   const visited = new Set(
-    mapState.fog.filter((f) => f.state !== 'hidden').map((f) => hexKey(f.q, f.r)),
+    mapState.fog.filter((f) => f.state === 'explored').map((f) => hexKey(f.q, f.r)),
   );
+  if (myToken) visited.add(hexKey(myToken.q, myToken.r));
 
   const senses: Sense[] = [];
   for (const content of mapState.contents) {
