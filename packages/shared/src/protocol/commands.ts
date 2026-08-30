@@ -35,7 +35,7 @@ const EncounterCheckPatchSchema = z
   .partial();
 
 const CampaignSettingsPatchSchema = z
-  .object({ description: z.string().max(2000) })
+  .object({ description: z.string().max(2000), wikiBaseUrl: z.string().max(300) })
   .partial();
 
 const CharacterPatchSchema = z
@@ -290,12 +290,30 @@ export const ContentUpsertCommand = z.object({
     dmNotes: z.string().max(10000).default(''),
     glyph: z.string().max(8).default(''),
     showLabel: z.boolean().default(false),
+    scaleVisibility: z.number().int().min(0).max(2).default(1),
+    wikiPage: z.string().max(300).default(''),
     clues: z.array(
       ClueSchema.omit({ id: true, contentId: true }).extend({
         id: z.string().nullable().default(null),
       }),
     ),
   }),
+});
+
+/** DM: relocate a content entry to another hex. */
+export const ContentMoveCommand = z.object({
+  ...base,
+  kind: z.literal('content.move'),
+  contentId: z.string(),
+  q: z.number().int(),
+  r: z.number().int(),
+});
+
+/** Any seat: view a different map on this connection (handled per-connection). */
+export const ViewMapCommand = z.object({
+  ...base,
+  kind: z.literal('view.map'),
+  mapId: z.string(),
 });
 
 export const ContentDeleteCommand = z.object({
@@ -389,6 +407,8 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   SeatReleaseCharacterCommand,
   SeatDeleteCommand,
   ContentUpsertCommand,
+  ContentMoveCommand,
+  ViewMapCommand,
   ContentDeleteCommand,
   ClueRevealCommand,
   DiscoveryRevokeCommand,

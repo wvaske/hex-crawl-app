@@ -13,27 +13,33 @@ export function Toasts() {
   const toasts = useSession((s) => s.toasts);
   const dismiss = useSession((s) => s.dismissToast);
   if (!toasts.length) return null;
+  // Compact stack pinned to the bottom of the sidebar; never covers the map.
+  const visible = toasts.slice(-3);
+  const hidden = toasts.length - visible.length;
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 flex flex-col gap-2 w-full max-w-md px-4">
-      {toasts.map((t) => {
+    <div className="absolute bottom-2 right-2 z-40 flex flex-col gap-1.5 w-[19rem] pointer-events-none">
+      {hidden > 0 && (
+        <p className="text-[10px] text-ink-400 text-right pr-1">+{hidden} more…</p>
+      )}
+      {visible.map((t) => {
         const style = KIND_STYLE[t.kind] ?? KIND_STYLE.info!;
         return (
           <button
             key={t.id}
             onClick={() => dismiss(t.id)}
             className={cx(
-              'text-left bg-ink-850/95 border rounded-lg px-4 py-3 shadow-xl backdrop-blur cursor-pointer',
-              'hover:bg-ink-800 transition-colors animate-[toast-in_0.25s_ease-out]',
+              'pointer-events-auto text-left bg-ink-850/95 border rounded-md px-2.5 py-1.5 shadow-lg backdrop-blur cursor-pointer',
+              'hover:bg-ink-800 transition-colors',
               style.ring,
             )}
           >
-            <div className="flex items-start gap-3">
-              <span className="text-lg leading-none mt-0.5">{style.icon}</span>
+            <div className="flex items-start gap-2">
+              <span className="text-sm leading-none mt-0.5">{style.icon}</span>
               <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wider text-ink-400 font-semibold">
+                <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold truncate">
                   {t.title}
                 </p>
-                <p className="text-sm text-ink-100 mt-0.5">{t.text}</p>
+                <p className="text-xs text-ink-100 mt-0.5 line-clamp-2">{t.text}</p>
               </div>
             </div>
           </button>

@@ -1,8 +1,43 @@
 import React from 'react';
+import { SUPER_SCALE } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { Button, Select, cx } from '../ui/kit.js';
+
+function ScaleControl({ baseMiles }: { baseMiles: number }) {
+  const scaleLock = useUi((s) => s.scaleLock);
+  const currentScale = useUi((s) => s.currentScale);
+  const setUi = useUi((s) => s.set);
+  const labels = [0, 1, 2].map((l) => `${Math.round(baseMiles * Math.pow(SUPER_SCALE, l))}mi`);
+  return (
+    <div
+      className="hidden md:flex items-center rounded-md border border-ink-600 overflow-hidden text-[11px]"
+      title="Hex scale: Auto follows zoom; lock a scale for travel or searching"
+    >
+      {(['auto', 0, 1, 2] as const).map((opt) => {
+        const active = scaleLock === opt;
+        const isCurrent = opt !== 'auto' && currentScale === opt;
+        return (
+          <button
+            key={String(opt)}
+            onClick={() => setUi('scaleLock', opt)}
+            className={cx(
+              'px-2 py-1 cursor-pointer transition-colors',
+              active
+                ? 'bg-brass-500/25 text-brass-300'
+                : isCurrent && scaleLock === 'auto'
+                  ? 'bg-ink-700 text-ink-100'
+                  : 'text-ink-400 hover:bg-ink-700',
+            )}
+          >
+            {opt === 'auto' ? 'Auto' : labels[opt]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function TopBar({
   campaignId: _campaignId,
@@ -34,12 +69,16 @@ export function TopBar({
         )}
       </div>
 
-      {role === 'dm' && state && state.maps.length > 0 && (
+      {state && state.maps.length > 0 && (
         <Select
           className="!w-auto max-w-44"
           value={state.campaign.activeMapId ?? ''}
-          onChange={(e) => send({ kind: 'map.setActive', mapId: e.target.value })}
-          title="Active map (what everyone sees)"
+          onChange={(e) =>
+            role === 'dm'
+              ? send({ kind: 'map.setActive', mapId: e.target.value })
+              : send({ kind: 'view.map', mapId: e.target.value })
+          }
+          title={role === 'dm' ? 'Active map (the party default)' : 'Browse another map'}
         >
           {state.maps.map((m) => (
             <option key={m.id} value={m.id}>
@@ -48,6 +87,8 @@ export function TopBar({
           ))}
         </Select>
       )}
+
+      {map && <ScaleControl baseMiles={map.milesPerHex} />}
 
       <div className="flex-1" />
 

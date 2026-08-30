@@ -30,6 +30,14 @@ interface UiStore {
   measureStart: HexCoord | null;
   /** Held spacebar: pan with left-drag regardless of the active tool. */
   spacePan: boolean;
+  /** Hex scale: 'auto' derives from zoom; 0/1/2 locks fine/mid/coarse. */
+  scaleLock: 'auto' | 0 | 1 | 2;
+  /** Current scale level, written by the engine for UI display. */
+  currentScale: 0 | 1 | 2;
+  /** DM armed "click to move this content" mode. */
+  movingContentId: string | null;
+  /** Player-chosen map for this session (null = follow the DM default). */
+  viewedMapId: string | null;
 
   set<K extends keyof UiStore>(key: K, value: UiStore[K]): void;
   setTool(tool: Tool): void;
@@ -52,6 +60,10 @@ export const useUi = create<UiStore>((set) => ({
   panelOpen: true,
   measureStart: null,
   spacePan: false,
+  scaleLock: 'auto',
+  currentScale: 0,
+  movingContentId: null,
+  viewedMapId: null,
 
   set: (key, value) => set({ [key]: value } as Partial<UiStore>),
   setTool: (tool) => set({ tool, measureStart: null }),

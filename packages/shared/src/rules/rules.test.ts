@@ -69,7 +69,7 @@ describe('gates', () => {
 
 function fullState(): CampaignState {
   return {
-    campaign: { id: 'c1', name: 'Test', activeMapId: 'm1', settings: { description: '' } },
+    campaign: { id: 'c1', name: 'Test', activeMapId: 'm1', settings: { description: '', wikiBaseUrl: 'https://wiki.example/wiki/' } },
     seats: [
       { id: 'dm', role: 'dm', name: 'DM', characterId: null, online: true },
       { id: 's1', role: 'player', name: 'Alice', characterId: 'char1', online: true },
@@ -103,14 +103,14 @@ function fullState(): CampaignState {
       ],
       contents: [
         {
-          id: 'ct1', mapId: 'm1', q: 1, r: 0, type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false,
+          id: 'ct1', mapId: 'm1', q: 1, r: 0, type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false, scaleVisibility: 1, wikiPage: '',
           clues: [
             { id: 'cl1', contentId: 'ct1', text: 'Dead vegetation', gate: { kind: 'auto' }, sortOrder: 0 },
             { id: 'cl2', contentId: 'ct1', text: 'Acid scars', gate: { kind: 'manual' }, sortOrder: 1 },
           ],
         },
         {
-          id: 'ct2', mapId: 'm1', q: 2, r: 0, type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false,
+          id: 'ct2', mapId: 'm1', q: 2, r: 0, type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false, scaleVisibility: 1, wikiPage: '',
           clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0 }],
         },
       ],

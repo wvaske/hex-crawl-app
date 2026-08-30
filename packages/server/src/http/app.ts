@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-import type { ImageLayer } from '@hexcrawl/shared';
+import type { Content, ImageLayer } from '@hexcrawl/shared';
+import { ContentTypeSchema, GateSchema, pixelToHex } from '@hexcrawl/shared';
+import { evaluateKnowledge } from '../engine/knowledge.js';
 import { MAX_UPLOAD_BYTES, UPLOADS_DIR } from '../config.js';
 import type { Store } from '../state/store.js';
 import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
@@ -184,6 +186,121 @@ export function createApp(store: Store, hub: Hub): Hono {
       'Content-Type': mime,
       'Cache-Control': 'public, max-age=31536000, immutable',
     });
+  });
+
+  // -- integration API (for dm-companion and friends) ------------------------
+  // Auth: Authorization: Bearer <campaign dm key>. Campaign-scoped.
+
+  const integrationAuth = (c: { req: { raw: Request; header(n: string): string | undefined; param(n: string): string } }) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return null;
+    const auth = c.req.header('Authorization') ?? '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+    return token === runtime.dmSecret ? runtime : null;
+  };
+
+  app.get('/api/integration/campaigns/:id/maps', (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    return c.json({
+      maps: [...runtime.maps.values()].map((m) => ({
+        id: m.id,
+        name: m.name,
+        milesPerHex: m.milesPerHex,
+        hexSize: m.hexSize,
+        orientation: m.orientation,
+        originX: m.originX,
+        originY: m.originY,
+      })),
+    });
+  });
+
+  app.get('/api/integration/campaigns/:id/maps/:mapId/content', (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    const rt = runtime.mapStates.get(c.req.param('mapId'));
+    if (!rt) return c.json({ error: 'Map not found' }, 404);
+    return c.json({ content: [...rt.contents.values()] });
+  });
+
+  const IntegrationContentSchema = z.object({
+    mapId: z.string(),
+    title: z.string().min(1).max(120),
+    /** Pixel coordinates on the map image (wiki DataMap frame) — preferred. */
+    x: z.number().optional(),
+    y: z.number().optional(),
+    /** Or explicit hex coordinates. */
+    q: z.number().int().optional(),
+    r: z.number().int().optional(),
+    type: ContentTypeSchema.default('landmark'),
+    glyph: z.string().max(8).default(''),
+    dmNotes: z.string().max(10000).default(''),
+    wikiPage: z.string().max(300).default(''),
+    showLabel: z.boolean().default(false),
+    scaleVisibility: z.number().int().min(0).max(2).default(1),
+    clues: z
+      .array(z.object({ text: z.string().min(1).max(2000), gate: GateSchema.default({ kind: 'auto' }) }))
+      .default([]),
+  });
+
+  /** Upsert content by (mapId, title). Repeated syncs update in place. */
+  app.post('/api/integration/campaigns/:id/content', async (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    const body = IntegrationContentSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? 'Invalid body' }, 400);
+    const input = body.data;
+    const map = runtime.maps.get(input.mapId);
+    const rt = runtime.mapStates.get(input.mapId);
+    if (!map || !rt) return c.json({ error: 'Map not found' }, 404);
+
+    let q = input.q;
+    let r = input.r;
+    if ((q === undefined || r === undefined) && input.x !== undefined && input.y !== undefined) {
+      const hex = pixelToHex(
+        { orientation: map.orientation, size: map.hexSize, origin: { x: map.originX, y: map.originY } },
+        { x: input.x, y: input.y },
+      );
+      q = hex.q;
+      r = hex.r;
+    }
+    if (q === undefined || r === undefined) {
+      return c.json({ error: 'Provide x/y pixel coordinates or q/r hex coordinates' }, 400);
+    }
+
+    const existing = [...rt.contents.values()].find(
+      (ct) => ct.title.toLowerCase() === input.title.toLowerCase(),
+    );
+    const id = existing?.id ?? nanoid(10);
+    const content: Content = {
+      id,
+      mapId: input.mapId,
+      q,
+      r,
+      type: input.type,
+      title: input.title,
+      dmNotes: input.dmNotes || existing?.dmNotes || '',
+      glyph: input.glyph || existing?.glyph || '',
+      showLabel: input.showLabel,
+      scaleVisibility: input.scaleVisibility,
+      wikiPage: input.wikiPage || existing?.wikiPage || '',
+      clues: input.clues.length
+        ? input.clues.map((cl, i) => ({ id: nanoid(10), contentId: id, text: cl.text, gate: cl.gate, sortOrder: i }))
+        : (existing?.clues ?? []),
+    };
+    runtime.upsertContent(content);
+    evaluateKnowledge(runtime, input.mapId);
+    hub.scheduleSync(runtime);
+    return c.json({ contentId: id, q, r, updated: Boolean(existing) });
+  });
+
+  app.delete('/api/integration/campaigns/:id/content/:contentId', (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    const removed = runtime.deleteContent(c.req.param('contentId'));
+    if (!removed) return c.json({ error: 'Not found' }, 404);
+    hub.scheduleSync(runtime);
+    return c.json({ deleted: true });
   });
 
   app.get('/api/health', (c) => c.json({ ok: true }));

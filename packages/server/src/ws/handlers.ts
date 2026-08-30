@@ -287,7 +287,9 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       title: cmd.content.title,
       dmNotes: cmd.content.dmNotes,
       glyph: cmd.content.glyph,
-      showLabel: cmd.content.showLabel,
+      showLabel: cmd.content.showLabel ?? false,
+      scaleVisibility: cmd.content.scaleVisibility ?? 1,
+      wikiPage: cmd.content.wikiPage ?? '',
       clues: cmd.content.clues.map((c, i) => ({
         id: c.id ?? nanoid(10),
         contentId: id,
@@ -298,6 +300,23 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     };
     ctx.runtime.upsertContent(content);
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, content.mapId));
+  }) as Handler,
+
+  'content.move': ((cmd: Extract<ClientCommand, { kind: 'content.move' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    let found: Content | null = null;
+    for (const rt of ctx.runtime.mapStates.values()) {
+      const c = rt.contents.get(cmd.contentId);
+      if (c) { found = c; break; }
+    }
+    if (!found) throw new Error('Content not found');
+    ctx.runtime.upsertContent({ ...found, q: cmd.q, r: cmd.r });
+    deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, found.mapId));
+  }) as Handler,
+
+  'view.map': ((_cmd: Extract<ClientCommand, { kind: 'view.map' }>, _ctx: Ctx) => {
+    // Handled at the connection layer (per-connection state); never dispatched.
+    throw new Error('view.map is connection-scoped');
   }) as Handler,
 
   'content.delete': ((cmd: Extract<ClientCommand, { kind: 'content.delete' }>, ctx: Ctx) => {

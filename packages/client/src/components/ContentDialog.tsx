@@ -39,6 +39,8 @@ export function ContentDialog() {
   const [glyph, setGlyph] = useState(existing?.glyph ?? '');
   const [dmNotes, setDmNotes] = useState(existing?.dmNotes ?? '');
   const [showLabel, setShowLabel] = useState(existing?.showLabel ?? false);
+  const [scaleVisibility, setScaleVisibility] = useState(existing?.scaleVisibility ?? 1);
+  const [wikiPage, setWikiPage] = useState(existing?.wikiPage ?? '');
   const [clues, setClues] = useState<ClueDraft[]>(
     existing?.clues.map((c) => ({ id: c.id, text: c.text, gate: c.gate })) ?? [],
   );
@@ -64,6 +66,8 @@ export function ContentDialog() {
         dmNotes,
         glyph,
         showLabel,
+        scaleVisibility,
+        wikiPage: wikiPage.trim(),
         clues: clues
           .filter((c) => c.text.trim())
           .map((c, i) => ({ id: c.id, text: c.text.trim(), gate: c.gate, sortOrder: i })),
@@ -103,6 +107,26 @@ export function ContentDialog() {
           <input type="checkbox" checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />
           Always show the name on the map (major towns and the like)
         </label>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Visible at hex scales">
+            <Select
+              value={scaleVisibility}
+              onChange={(e) => setScaleVisibility(Number(e.target.value))}
+            >
+              <option value={0}>Fine hexes only (searching)</option>
+              <option value={1}>Fine + regional</option>
+              <option value={2}>Every zoom level (cities, roads)</option>
+            </Select>
+          </Field>
+          <Field label="Wiki page (players can read more)">
+            <Input
+              value={wikiPage}
+              onChange={(e) => setWikiPage(e.target.value)}
+              placeholder="Elturel"
+              maxLength={300}
+            />
+          </Field>
+        </div>
 
         <div>
           <div className="flex items-center justify-between mb-1.5">

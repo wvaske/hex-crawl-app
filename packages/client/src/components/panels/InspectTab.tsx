@@ -193,17 +193,45 @@ function MarkerLabel({
   );
 }
 
+function wikiHref(page: string, baseUrl: string): string {
+  if (/^https?:\/\//.test(page)) return page;
+  return baseUrl + encodeURIComponent(page.replace(/ /g, '_'));
+}
+
 function DmContentCard({ content }: { content: Content }) {
   const state = useSession((s) => s.state);
   const setUi = useUi((s) => s.set);
+  const pushToast = useSession((s) => s.pushToast);
   const discoveries = state?.discoveries ?? [];
   const characters = state?.characters ?? [];
+  const wikiBase = state?.campaign.settings.wikiBaseUrl ?? '';
 
   return (
     <div className="bg-ink-850 border border-ink-700 rounded-lg p-2.5">
       <div className="flex items-center gap-2">
         <span>{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
         <span className="font-medium text-sm text-ink-100 truncate flex-1">{content.title}</span>
+        {content.wikiPage && (
+          <a
+            className="text-xs text-arcane-500 hover:text-ink-100 cursor-pointer"
+            href={wikiHref(content.wikiPage, wikiBase)}
+            target="_blank"
+            rel="noreferrer"
+            title="Open wiki page"
+          >
+            wiki ↗
+          </a>
+        )}
+        <button
+          className="text-xs text-ink-400 hover:text-brass-300 cursor-pointer"
+          title="Move this location: click the destination hex on the map"
+          onClick={() => {
+            setUi('movingContentId', content.id);
+            pushToast({ kind: 'info', title: 'Moving ' + content.title, text: 'Click the destination hex on the map.' });
+          }}
+        >
+          📍 Move
+        </button>
         <button
           className="text-xs text-ink-400 hover:text-ink-100 cursor-pointer"
           onClick={() => {
@@ -273,11 +301,23 @@ function DmContentCard({ content }: { content: Content }) {
 }
 
 function PlayerContentCard({ content }: { content: ContentPlayerView }) {
+  const wikiBase = useSession((s) => s.state?.campaign.settings.wikiBaseUrl ?? '');
   return (
     <div className="bg-ink-850 border border-ink-700 rounded-lg p-2.5">
       <div className="flex items-center gap-2">
         <span>{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
-        <span className="font-medium text-sm text-ink-100">{content.title}</span>
+        <span className="font-medium text-sm text-ink-100 flex-1">{content.title}</span>
+        {content.wikiPage && (
+          <a
+            className="text-xs text-arcane-500 hover:text-ink-100"
+            href={wikiHref(content.wikiPage, wikiBase)}
+            target="_blank"
+            rel="noreferrer"
+            title="Read more on the wiki"
+          >
+            wiki ↗
+          </a>
+        )}
       </div>
       <ul className="mt-1.5 space-y-1">
         {content.discoveredClues.map((c) => (

@@ -16,14 +16,22 @@ import type {
 } from '@hexcrawl/shared';
 import {
   CONTENT_TYPE_GLYPHS,
+  MAX_SCALE_LEVEL,
+  SUPER_SCALE,
   TERRAINS,
+  fineToIndex,
+  fractionalIndex,
   hexCornerOffsets,
   hexDistance,
   hexKey,
   hexRange,
   hexToPixel,
   hexesInPixelRect,
+  indexToFineCenter,
   pixelToHex,
+  superCornerOffsets,
+  superIndexRange,
+  superMembers,
 } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
@@ -92,6 +100,8 @@ export class CanvasEngine {
   private myCharacterId: string | null = null;
 
   private viewDirty = true;
+  /** Current hex scale level (0=fine, 1=x sqrt7, 2=x7), derived from zoom. */
+  private scaleLevel = 0;
   private destroyed = false;
   private needsRecenter = false;
   private resizeObserver: ResizeObserver | null = null;
@@ -177,6 +187,12 @@ export class CanvasEngine {
       if (u.spacePan !== prev.spacePan) {
         this.updateDragMode();
         this.viewport.cursor = u.spacePan ? 'grab' : 'default';
+      }
+      if (u.movingContentId !== prev.movingContentId) {
+        this.viewport.cursor = u.movingContentId ? 'crosshair' : 'default';
+      }
+      if (u.scaleLock !== prev.scaleLock) {
+        this.updateScaleLevel();
       }
       if (
         u.tool !== prev.tool ||
@@ -389,6 +405,67 @@ export class CanvasEngine {
     }
   }
 
+  /**
+   * Derive the hex scale level from zoom (with hysteresis) unless the user
+   * locked a level. Fine hexes below ~15 screen px step up to the next scale.
+   */
+  private updateScaleLevel(): void {
+    if (!this.layout) return;
+    const lock = useUi.getState().scaleLock;
+    let next: number;
+    if (lock !== 'auto') {
+      next = lock;
+    } else {
+      const zoom = this.viewport.scale.x;
+      const fineWidth = 2 * this.layout.size * zoom;
+      next = 0;
+      // Step up while the current level's hexes are under the threshold.
+      while (next < MAX_SCALE_LEVEL && fineWidth * Math.pow(SUPER_SCALE, next) < 15) next++;
+      // Hysteresis: resist flapping right at the boundary.
+      if (next !== this.scaleLevel) {
+        const width = fineWidth * Math.pow(SUPER_SCALE, Math.min(next, this.scaleLevel));
+        if (Math.abs(width - 15) < 1.5) next = this.scaleLevel;
+      }
+    }
+    if (next !== this.scaleLevel) {
+      this.scaleLevel = next;
+      useUi.getState().set('currentScale', next as 0 | 1 | 2);
+      this.viewDirty = true;
+      this.drawPins();
+    }
+  }
+
+  /** Enumerate coarse cell centers (fine axial) covering a pixel rect. */
+  private superCellsInRect(
+    level: number,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+  ): { q: number; r: number }[] {
+    const layout = this.layout!;
+    const cornersPx = [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: minX, y: maxY },
+      { x: maxX, y: maxY },
+    ];
+    let iMin = Infinity, iMax = -Infinity, jMin = Infinity, jMax = -Infinity;
+    for (const pnt of cornersPx) {
+      const fine = pixelToHex(layout, pnt);
+      const f = fractionalIndex(fine.q, fine.r, level);
+      iMin = Math.min(iMin, f.i); iMax = Math.max(iMax, f.i);
+      jMin = Math.min(jMin, f.j); jMax = Math.max(jMax, f.j);
+    }
+    const out: { q: number; r: number }[] = [];
+    for (let i = Math.floor(iMin) - 1; i <= Math.ceil(iMax) + 1; i++) {
+      for (let j = Math.floor(jMin) - 1; j <= Math.ceil(jMax) + 1; j++) {
+        out.push(indexToFineCenter({ q: i, r: j }, level));
+      }
+    }
+    return out;
+  }
+
   /** Grid lines + fog cover are viewport-dependent; redrawn when the view moves. */
   private drawViewDependent(): void {
     if (!this.layout || !this.lastMap) {
@@ -410,20 +487,40 @@ export class CanvasEngine {
     const tooMany = cells.length > 12000;
     const corners = this.corners();
 
-    // Grid lines
+    // Grid lines: fine hexes at level 0, rotated superhex lattice above.
     const grid = this.gridG;
     grid.clear();
     const style = this.lastMap.gridStyle;
-    if (!tooMany && style.lineOpacity > 0) {
-      for (const cell of cells) {
-        const center = hexToPixel(this.layout, cell);
-        const pts = this.polyPoints(center, corners);
-        grid.moveTo(pts[0]!, pts[1]!);
-        for (let i = 2; i < pts.length; i += 2) grid.lineTo(pts[i]!, pts[i + 1]!);
-        grid.closePath();
+    if (style.lineOpacity > 0) {
+      if (this.scaleLevel === 0) {
+        if (!tooMany) {
+          for (const cell of cells) {
+            const center = hexToPixel(this.layout, cell);
+            const pts = this.polyPoints(center, corners);
+            grid.moveTo(pts[0]!, pts[1]!);
+            for (let i = 2; i < pts.length; i += 2) grid.lineTo(pts[i]!, pts[i + 1]!);
+            grid.closePath();
+          }
+        }
+      } else {
+        const superCorners = superCornerOffsets(this.layout, this.scaleLevel);
+        const centers = this.superCellsInRect(
+          this.scaleLevel,
+          bounds.x - pad,
+          bounds.y - pad,
+          bounds.x + bounds.width + pad,
+          bounds.y + bounds.height + pad,
+        );
+        for (const c of centers) {
+          const center = hexToPixel(this.layout, c);
+          const pts = this.polyPoints(center, superCorners);
+          grid.moveTo(pts[0]!, pts[1]!);
+          for (let i = 2; i < pts.length; i += 2) grid.lineTo(pts[i]!, pts[i + 1]!);
+          grid.closePath();
+        }
       }
       grid.stroke({
-        width: style.lineWidth / this.viewport.scale.x,
+        width: (style.lineWidth * (this.scaleLevel > 0 ? 1.6 : 1)) / this.viewport.scale.x,
         color: style.lineColor,
         alpha: style.lineOpacity,
       });
@@ -499,23 +596,34 @@ export class CanvasEngine {
     const corners = this.corners();
     const lineW = 2 / this.viewport.scale.x;
 
+    const lvl = this.scaleLevel;
+    const activeCorners = lvl === 0 ? corners : superCornerOffsets(this.layout, lvl);
+    const cellCenter = (h: { q: number; r: number }) =>
+      hexToPixel(this.layout!, lvl === 0 ? h : indexToFineCenter(fineToIndex(h, lvl), lvl));
+
     if (ui.selectedHex) {
-      const center = hexToPixel(this.layout, ui.selectedHex);
-      g.poly(this.polyPoints(center, corners));
+      const center = cellCenter(ui.selectedHex);
+      g.poly(this.polyPoints(center, activeCorners));
       g.stroke({ width: lineW * 1.5, color: 0xc9a24b, alpha: 1 });
     }
     if (ui.hoverHex) {
       const isBrush = (ui.tool === 'paint' || ui.tool === 'fog') && this.role === 'dm';
-      const cells = isBrush ? hexRange(ui.hoverHex, ui.brushRadius) : [ui.hoverHex];
-      for (const cell of cells) {
-        const center = hexToPixel(this.layout, cell);
-        g.poly(this.polyPoints(center, corners));
+      let centers: { x: number; y: number }[];
+      if (lvl === 0) {
+        const cells = isBrush ? hexRange(ui.hoverHex, ui.brushRadius) : [ui.hoverHex];
+        centers = cells.map((c) => hexToPixel(this.layout!, c));
+      } else {
+        const idx = fineToIndex(ui.hoverHex, lvl);
+        const indices = isBrush ? superIndexRange(idx, ui.brushRadius) : [idx];
+        centers = indices.map((i2) => hexToPixel(this.layout!, indexToFineCenter(i2, lvl)));
+      }
+      for (const center of centers) {
+        g.poly(this.polyPoints(center, activeCorners));
       }
       g.stroke({ width: lineW, color: 0xffffff, alpha: 0.6 });
       if (isBrush) {
-        for (const cell of cells) {
-          const center = hexToPixel(this.layout, cell);
-          g.poly(this.polyPoints(center, corners));
+        for (const center of centers) {
+          g.poly(this.polyPoints(center, activeCorners));
         }
         g.fill({ color: 0xffffff, alpha: 0.08 });
       }
@@ -596,6 +704,7 @@ export class CanvasEngine {
     const hexWidth = size * 2; // flat-top hex width; the "covers a hex" yardstick
 
     for (const content of this.lastContents) {
+      if (content.scaleVisibility < this.scaleLevel) continue;
       const glyph = content.glyph || CONTENT_TYPE_GLYPHS[content.type];
       const isCity = content.type === 'settlement' && content.glyph === '🏰';
       // Cities cover at least a full hex; labeled places sit between; the rest
@@ -802,6 +911,15 @@ export class CanvasEngine {
       if (!hex) return;
       const isDm = this.role === 'dm';
 
+      // Armed "move content" mode: next click relocates the entry.
+      if (ui.movingContentId && isDm) {
+        send({ kind: 'content.move', contentId: ui.movingContentId, q: hex.q, r: hex.r });
+        useUi.getState().set('movingContentId', null);
+        this.viewport.cursor = 'default';
+        useSession.getState().pushToast({ kind: 'info', title: 'Moved', text: 'Location updated.' });
+        return;
+      }
+
       switch (ui.tool) {
         case 'select':
           this.panning = true;
@@ -879,7 +997,13 @@ export class CanvasEngine {
   private strokeApply(hex: HexCoord): void {
     if (!this.stroke || !this.lastMap) return;
     const ui = useUi.getState();
-    const cells = hexRange(hex, ui.brushRadius);
+    const lvl = this.scaleLevel;
+    const cells =
+      lvl === 0
+        ? hexRange(hex, ui.brushRadius)
+        : superIndexRange(fineToIndex(hex, lvl), ui.brushRadius).flatMap((idx) =>
+            superMembers(idx, lvl),
+          );
     const fresh: HexCoord[] = [];
     for (const cell of cells) {
       const key = hexKey(cell.q, cell.r);
@@ -963,6 +1087,7 @@ export class CanvasEngine {
   // -- ticker ----------------------------------------------------------------
 
   private tick(): void {
+    this.updateScaleLevel();
     if (this.viewDirty) {
       this.viewDirty = false;
       this.drawViewDependent();

@@ -250,6 +250,8 @@ export class CampaignRuntime {
         dmNotes: c.dm_notes as string,
         glyph: c.glyph as string,
         showLabel: Boolean(c.show_label),
+        scaleVisibility: (c.scale_visibility as number) ?? 1,
+        wikiPage: (c.wiki_page as string) ?? '',
         clues,
       });
     }
@@ -302,14 +304,19 @@ export class CampaignRuntime {
     }));
   }
 
-  /** Full (DM-level) state for the active map. Filter per viewer before sending. */
-  buildFullState(): CampaignState {
+  /**
+   * Full (DM-level) state. `viewMapId` selects which map's state to embed
+   * (per-connection map browsing); campaign.activeMapId in the result is
+   * rewritten to match so clients render the map they asked for.
+   */
+  buildFullState(viewMapId?: string | null): CampaignState {
+    const mapId = viewMapId && this.maps.has(viewMapId) ? viewMapId : this.campaign.activeMapId;
     return {
-      campaign: this.campaign,
+      campaign: { ...this.campaign, activeMapId: mapId },
       seats: this.seatsPublic(),
       characters: [...this.characters.values()],
       maps: [...this.maps.values()].sort((a, b) => a.sortOrder - b.sortOrder),
-      mapState: this.mapState(this.campaign.activeMapId),
+      mapState: this.mapState(mapId),
       discoveries: [...this.discoveries.values()],
       encounterTables: [...this.encounterTables.values()],
       log: this.log,
@@ -722,10 +729,10 @@ export class CampaignRuntime {
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label) VALUES (?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label`,
+          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label, scale_visibility, wiki_page) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label, scale_visibility=excluded.scale_visibility, wiki_page=excluded.wiki_page`,
         )
-        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0);
+        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0, content.scaleVisibility, content.wikiPage);
       const keep = new Set(content.clues.map((c) => c.id));
       if (existing) {
         for (const old of existing.clues) {
