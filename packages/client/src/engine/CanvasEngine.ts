@@ -30,6 +30,14 @@ import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
 
 const STROKE_FLUSH_MS = 180;
+/** Base font pins are rasterized at; scaling maps this to world/screen size. */
+const PIN_BASE_FONT = 32;
+/** Minimum on-screen token diameter in px. */
+const TOKEN_MIN_SCREEN = 26;
+
+type PinContainer = Container & {
+  __pin?: { worldSize: number; minScreen: number };
+};
 
 interface TokenView {
   root: Container;
@@ -461,16 +469,25 @@ export class CanvasEngine {
   }
 
   /**
-   * Content/marker pins keep a minimum on-screen size (like map-app pins) so
-   * they stay legible on maps with tiny hexes or when zoomed far out.
+   * Scale pins and tokens: each occupies its intended world footprint, clamped
+   * to a minimum on-screen size so nothing vanishes when zoomed out. Because
+   * pins are rasterized at PIN_BASE_FONT with extra resolution, they stay
+   * sharp as the player zooms in.
    */
   private updatePinScales(): void {
     if (!this.layout) return;
-    const minScreenPx = 16;
-    const baseWorldPx = this.layout.size * 0.5;
-    const scale = Math.max(1, minScreenPx / (baseWorldPx * this.viewport.scale.x));
+    const zoom = this.viewport.scale.x;
     for (const child of this.pinsC.children) {
-      child.scale.set(scale);
+      const meta = (child as PinContainer).__pin;
+      if (!meta) continue;
+      const effectiveWorld = Math.max(meta.worldSize, meta.minScreen / zoom);
+      child.scale.set(effectiveWorld / PIN_BASE_FONT);
+    }
+    // Party/NPC tokens: same guarantee — never smaller than a thumbprint.
+    const tokenWorldDiameter = this.layout.size * 1.1;
+    const tokenScale = Math.max(1, TOKEN_MIN_SCREEN / (tokenWorldDiameter * zoom));
+    for (const view of this.tokens.values()) {
+      view.root.scale.set(tokenScale);
     }
   }
 
@@ -512,40 +529,88 @@ export class CanvasEngine {
     }
   }
 
+  /**
+   * Pins are authored at a fixed base font (crisp rasterization) and scaled:
+   * they occupy a real footprint in world space (cities at least a full hex),
+   * never shrink below a readable on-screen minimum when zoomed out, and grow
+   * naturally — still sharp — as players zoom in.
+   */
+  private buildPin(opts: {
+    glyph: string;
+    label?: string;
+    chip: boolean;
+    dmOnly?: boolean;
+    worldSize: number;
+    minScreen: number;
+  }): Container {
+    const pin = new Container();
+    if (opts.chip) {
+      const chip = new Graphics();
+      chip.circle(0, 0, PIN_BASE_FONT * 0.72);
+      chip.fill({ color: 0x12151d, alpha: 0.88 });
+      chip.stroke({ width: PIN_BASE_FONT * 0.07, color: 0xdcb968, alpha: 0.95 });
+      pin.addChild(chip);
+    }
+    const text = new Text({
+      text: opts.glyph,
+      style: { fontSize: PIN_BASE_FONT, align: 'center' },
+      resolution: 3,
+    });
+    text.anchor.set(0.5);
+    pin.addChild(text);
+    if (opts.label) {
+      const label = new Text({
+        text: opts.label,
+        style: {
+          fontSize: PIN_BASE_FONT * 0.55,
+          fill: 0xffffff,
+          fontWeight: '600',
+          stroke: { color: 0x000000, width: PIN_BASE_FONT * 0.14 },
+          align: 'center',
+        },
+        resolution: 3,
+      });
+      label.anchor.set(0.5, 0);
+      label.position.set(0, PIN_BASE_FONT * 0.8);
+      pin.addChild(label);
+    }
+    if (opts.dmOnly) {
+      const badge = new Text({
+        text: '🚫',
+        style: { fontSize: PIN_BASE_FONT * 0.42 },
+        resolution: 2,
+      });
+      badge.anchor.set(0.5);
+      badge.position.set(PIN_BASE_FONT * 0.55, -PIN_BASE_FONT * 0.5);
+      pin.addChild(badge);
+      pin.alpha = 0.7;
+    }
+    (pin as PinContainer).__pin = { worldSize: opts.worldSize, minScreen: opts.minScreen };
+    return pin;
+  }
+
   private drawPins(): void {
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
     if (!this.layout) return;
     const size = this.layout.size;
+    const hexWidth = size * 2; // flat-top hex width; the "covers a hex" yardstick
 
     for (const content of this.lastContents) {
       const glyph = content.glyph || CONTENT_TYPE_GLYPHS[content.type];
+      const isCity = content.type === 'settlement' && content.glyph === '🏰';
+      // Cities cover at least a full hex; labeled places sit between; the rest
+      // still get a solid footprint.
+      const worldSize = isCity ? hexWidth * 1.15 : content.showLabel ? hexWidth * 0.85 : hexWidth * 0.6;
+      const minScreen = isCity ? 36 : content.showLabel ? 28 : 21;
+      const pin = this.buildPin({
+        glyph,
+        label: content.showLabel ? content.title : undefined,
+        chip: true,
+        worldSize,
+        minScreen,
+      });
       const center = hexToPixel(this.layout, { q: content.q, r: content.r });
-      const pin = new Container();
-      const fontSize = size * 0.5;
-      // Dark chip behind the glyph keeps pins bright and readable on map art.
-      const chip = new Graphics();
-      chip.circle(0, 0, fontSize * 0.72);
-      chip.fill({ color: 0x12151d, alpha: 0.88 });
-      chip.stroke({ width: fontSize * 0.07, color: 0xdcb968, alpha: 0.95 });
-      const text = new Text({ text: glyph, style: { fontSize, align: 'center' } });
-      text.anchor.set(0.5);
-      pin.addChild(chip, text);
-      if (content.showLabel) {
-        const label = new Text({
-          text: content.title,
-          style: {
-            fontSize: fontSize * 0.62,
-            fill: 0xffffff,
-            fontWeight: '600',
-            stroke: { color: 0x000000, width: fontSize * 0.16 },
-            align: 'center',
-          },
-        });
-        label.anchor.set(0.5, 0);
-        label.position.set(0, fontSize * 0.82);
-        pin.addChild(label);
-      }
-      pin.position.set(center.x, center.y - size * 0.42);
+      pin.position.set(center.x, center.y);
       this.pinsC.addChild(pin);
     }
 
@@ -560,25 +625,16 @@ export class CanvasEngine {
     for (const markers of byHex.values()) {
       markers.forEach((m, i) => {
         const center = hexToPixel(this.layout!, { q: m.q, r: m.r });
-        const spread = (i - (markers.length - 1) / 2) * size * 0.45;
-        const pin = new Text({
-          text: m.glyph,
-          style: {
-            fontSize: size * 0.42,
-            align: 'center',
-            dropShadow: { color: 0x000000, alpha: 0.8, blur: 2, distance: 1, angle: Math.PI / 3 },
-          },
+        const spread = (i - (markers.length - 1) / 2) * size * 0.7;
+        const pin = this.buildPin({
+          glyph: m.glyph,
+          chip: false,
+          dmOnly: m.dmOnly,
+          worldSize: size * 1.0,
+          minScreen: 19,
         });
-        pin.anchor.set(0.5);
-        pin.position.set(center.x + spread, center.y + size * 0.45);
-        pin.alpha = m.dmOnly ? 0.65 : 1;
+        pin.position.set(center.x + spread, center.y + size * 0.55);
         this.pinsC.addChild(pin);
-        if (m.dmOnly) {
-          const badge = new Text({ text: '🚫', style: { fontSize: size * 0.16 } });
-          badge.anchor.set(0.5);
-          badge.position.set(center.x + spread + size * 0.16, center.y + size * 0.32);
-          this.pinsC.addChild(badge);
-        }
       });
     }
     this.updatePinScales();
@@ -642,16 +698,18 @@ export class CanvasEngine {
       view.targetY = target.y;
       if (jump && !view.dragging) view.root.position.set(target.x, target.y);
     }
+    this.updatePinScales();
   }
 
   private createTokenView(token: Token): TokenView {
     const root = new Container();
     const body = new Graphics();
-    const glyph = new Text({ text: '', style: { fontSize: 10 } });
+    const glyph = new Text({ text: '', style: { fontSize: 10 }, resolution: 3 });
     glyph.anchor.set(0.5);
     const label = new Text({
       text: '',
       style: { fontSize: 10, fill: 0xffffff, stroke: { color: 0x000000, width: 3 } },
+      resolution: 3,
     });
     label.anchor.set(0.5, 0);
     root.addChild(body, glyph, label);
