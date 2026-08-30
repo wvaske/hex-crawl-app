@@ -1,13 +1,10 @@
 import { z } from 'zod';
 import {
-  CampaignSettingsSchema,
   CharacterSchema,
   ContentTypeSchema,
   ClueSchema,
-  EncounterCheckConfigSchema,
   EncounterTableSchema,
   FogStateSchema,
-  GridStyleSchema,
   MarkerSchema,
   TerrainIdSchema,
   TokenKindSchema,
@@ -21,6 +18,36 @@ import {
 
 const base = { id: z.string().min(1).max(64) };
 
+/** Patch schemas are declared default-free: zod v4 `.partial()` re-applies
+ * `.default()`s for omitted keys, which would turn a one-field patch into a
+ * multi-field reset. */
+const GridStylePatchSchema = z
+  .object({
+    lineColor: z.string(),
+    lineOpacity: z.number().min(0).max(1),
+    lineWidth: z.number().min(0.5).max(8),
+    terrainOpacity: z.number().min(0).max(1),
+  })
+  .partial();
+
+const EncounterCheckPatchSchema = z
+  .object({ die: z.string(), threshold: z.number().int() })
+  .partial();
+
+const CampaignSettingsPatchSchema = z
+  .object({ description: z.string().max(2000) })
+  .partial();
+
+const CharacterPatchSchema = z
+  .object({
+    name: z.string().min(1).max(60),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    glyph: z.string().max(8),
+    speed: z.number().int().min(0).max(120),
+    skills: z.record(z.string(), z.number().int().min(-10).max(20)),
+  })
+  .partial();
+
 const CellsSchema = z
   .array(z.object({ q: z.number().int(), r: z.number().int() }))
   .min(1)
@@ -32,7 +59,7 @@ export const CampaignUpdateCommand = z.object({
   ...base,
   kind: z.literal('campaign.update'),
   name: z.string().min(1).max(120).optional(),
-  settings: CampaignSettingsSchema.partial().optional(),
+  settings: CampaignSettingsPatchSchema.optional(),
 });
 
 // --- maps -------------------------------------------------------------------
@@ -56,13 +83,13 @@ export const MapUpdateCommand = z.object({
       hexSize: z.number().min(4).max(512),
       originX: z.number(),
       originY: z.number(),
-      gridStyle: GridStyleSchema.partial(),
+      gridStyle: GridStylePatchSchema,
       sightRadius: z.number().int().min(0).max(10),
       fogMode: z.enum(['manual', 'auto']),
       fogDecay: z.boolean(),
       moveMode: z.enum(['step', 'free']),
       milesPerHex: z.number().min(0).max(1000),
-      encounterCheck: EncounterCheckConfigSchema.partial(),
+      encounterCheck: EncounterCheckPatchSchema,
       sortOrder: z.number().int(),
     })
     .partial(),
@@ -213,7 +240,7 @@ export const CharacterUpdateCommand = z.object({
   ...base,
   kind: z.literal('character.update'),
   characterId: z.string(),
-  patch: CharacterSchema.omit({ id: true }).partial(),
+  patch: CharacterPatchSchema,
 });
 
 export const CharacterDeleteCommand = z.object({
