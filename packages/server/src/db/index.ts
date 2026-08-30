@@ -186,6 +186,28 @@ function migrate(d: DB): void {
       data TEXT NOT NULL DEFAULT '{}'
     );
     CREATE INDEX IF NOT EXISTS log_campaign_at ON log(campaign_id, at);
+
+    CREATE TABLE IF NOT EXISTS trail (
+      id TEXT PRIMARY KEY,
+      map_id TEXT NOT NULL REFERENCES map(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      glyph TEXT NOT NULL DEFAULT '👣',
+      dm_notes TEXT NOT NULL DEFAULT '',
+      gate TEXT NOT NULL DEFAULT '{"kind":"auto"}',
+      cells TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS trail_map ON trail(map_id);
+
+    CREATE TABLE IF NOT EXISTS trail_discovery (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      trail_id TEXT NOT NULL REFERENCES trail(id) ON DELETE CASCADE,
+      cell_index INTEGER NOT NULL,
+      character_id TEXT NOT NULL,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS trail_discovery_campaign ON trail_discovery(campaign_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS trail_discovery_unique ON trail_discovery(trail_id, cell_index, character_id);
   `);
   // Additive migrations for columns introduced after first release.
   ensureColumn(d, 'content', 'show_label', 'INTEGER NOT NULL DEFAULT 0');

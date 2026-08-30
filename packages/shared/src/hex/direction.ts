@@ -36,3 +36,19 @@ export function compassDirection(
 export function withDirection(text: string, direction: string | null | undefined): string {
   return direction ? `${text} — to the ${direction}` : text;
 }
+
+/**
+ * Exact map-space bearing from one hex to another in degrees
+ * (0 = east, clockwise on screen). Null when the hexes coincide.
+ */
+export function bearingAngle(
+  from: HexCoord,
+  to: HexCoord,
+  orientation: HexOrientation = 'flat',
+): number | null {
+  if (from.q === to.q && from.r === to.r) return null;
+  const layout = { orientation, size: 1, origin: { x: 0, y: 0 } };
+  const a = hexToPixel(layout, from);
+  const b = hexToPixel(layout, to);
+  return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+}

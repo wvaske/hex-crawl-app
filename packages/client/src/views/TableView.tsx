@@ -48,6 +48,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.set('measureStart', null);
         ui.set('movingTokenId', null);
         ui.set('senseHighlight', null);
+        ui.set('trailDraft', []);
         return;
       }
       if (useSession.getState().role !== 'dm') return;
@@ -56,7 +57,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         send({ kind: 'undo' });
         return;
       }
-      const tools = { v: 'select', b: 'paint', f: 'fog', m: 'marker', c: 'content', r: 'measure' } as const;
+      const tools = { v: 'select', b: 'paint', f: 'fog', m: 'marker', c: 'content', t: 'trail', r: 'measure' } as const;
       const tool = tools[e.key.toLowerCase() as keyof typeof tools];
       if (tool && !e.metaKey && !e.ctrlKey && !e.altKey) ui.setTool(tool);
     };

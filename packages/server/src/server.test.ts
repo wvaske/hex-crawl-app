@@ -620,3 +620,67 @@ describe('encounter table enable/disable', () => {
     expect(forced.table?.id).toBe('tblA');
   });
 });
+
+describe('trails', () => {
+  it('walking a trail cell reveals its push-directions; players get signs only', () => {
+    const { mapId, charId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'trail.upsert',
+      trail: {
+        id: null, mapId, name: "Varram's footsteps", glyph: '👣', dmNotes: '',
+        gate: { kind: 'auto' },
+        cells: [{ q: 2, r: 0 }, { q: 3, r: 0 }, { q: 4, r: -1 }, { q: 5, r: -1 }],
+      },
+    } as never);
+    expect(runtime.trailDiscoveries.size).toBe(0);
+
+    // Step onto the second cell.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 3, r: 0 } as never);
+    expect(runtime.trailDiscoveries.size).toBe(1);
+    const td = [...runtime.trailDiscoveries.values()][0]!;
+    expect(td.characterId).toBe(charId);
+    expect(td.cellIndex).toBe(1);
+
+    const view = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    // Trail definitions never reach players.
+    expect(view.mapState!.trails).toEqual([]);
+    expect(view.mapState!.trailSigns).toHaveLength(1);
+    const sign = view.mapState!.trailSigns[0]!;
+    expect([sign.q, sign.r]).toEqual([3, 0]);
+    expect(sign.forward).toBeTruthy();  // toward (4,-1)
+    expect(sign.backward).toBeTruthy(); // toward (2,0)
+    expect(sign.forwardAngle).not.toBeNull();
+
+    // Re-entering doesn't duplicate; walking the next cell adds one sign.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 4, r: -1 } as never);
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 3, r: 0 } as never);
+    expect(runtime.trailDiscoveries.size).toBe(2);
+
+    // DM keeps full trails and no signs (engine derives its own).
+    const dmView = filterStateForViewer(runtime.buildFullState(), {
+      seatId: 'dm', role: 'dm', characterId: null,
+    });
+    expect(dmView.mapState!.trails).toHaveLength(1);
+  });
+
+  it('an end cell has a backward direction but no forward', () => {
+    const { mapId, charId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'trail.upsert',
+      trail: {
+        id: null, mapId, name: 'Short path', glyph: '👣', dmNotes: '',
+        gate: { kind: 'auto' },
+        cells: [{ q: 1, r: 0 }, { q: 2, r: 0 }],
+      },
+    } as never);
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 2, r: 0 } as never);
+    const view = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    const sign = view.mapState!.trailSigns.find((s) => s.q === 2)!;
+    expect(sign.forward).toBeNull();
+    expect(sign.backward).toBe('north-west');
+  });
+});

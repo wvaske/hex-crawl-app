@@ -11,6 +11,8 @@ import type {
   ImageLayer,
   MapInfo,
   Marker,
+  Trail,
+  TrailSign,
   SeatRole,
   Token,
 } from '@hexcrawl/shared';
@@ -100,6 +102,8 @@ export class CanvasEngine {
   private lastFog: FogCell[] = [];
   private lastMarkers: Marker[] = [];
   private lastContents: (Content | ContentPlayerView)[] = [];
+  private lastTrails: Trail[] = [];
+  private lastTrailSigns: TrailSign[] = [];
   private lastImages: ImageLayer[] = [];
   private lastDiscoveriesRef: unknown = null;
   private role: SeatRole = 'player';
@@ -235,7 +239,8 @@ export class CanvasEngine {
         u.hoverHex !== prev.hoverHex ||
         u.brushRadius !== prev.brushRadius ||
         u.measureStart !== prev.measureStart ||
-        u.selectedTokenId !== prev.selectedTokenId
+        u.selectedTokenId !== prev.selectedTokenId ||
+        u.trailDraft !== prev.trailDraft
       ) {
         if (u.tool !== prev.tool) this.updateDragMode();
         this.drawHighlight();
@@ -320,10 +325,14 @@ export class CanvasEngine {
     if (
       layoutChanged ||
       !markersEqual(ms.markers, this.lastMarkers) ||
-      !contentsEqual(ms.contents, this.lastContents)
+      !contentsEqual(ms.contents, this.lastContents) ||
+      JSON.stringify(ms.trails) !== JSON.stringify(this.lastTrails) ||
+      JSON.stringify(ms.trailSigns) !== JSON.stringify(this.lastTrailSigns)
     ) {
       this.lastMarkers = ms.markers;
       this.lastContents = ms.contents;
+      this.lastTrails = ms.trails;
+      this.lastTrailSigns = ms.trailSigns;
       this.drawPins();
     }
 
@@ -361,6 +370,8 @@ export class CanvasEngine {
     this.lastFog = [];
     this.lastMarkers = [];
     this.lastContents = [];
+    this.lastTrails = [];
+    this.lastTrailSigns = [];
     this.lastImages = [];
   }
 
@@ -703,6 +714,20 @@ export class CanvasEngine {
       g.lineTo(b.x, b.y);
       g.stroke({ width: lineW * 1.5, color: 0x8b7fd4, alpha: 0.9 });
     }
+
+    // Trail tool: preview the path being drawn.
+    if (ui.tool === 'trail' && ui.trailDraft.length) {
+      const pts = ui.trailDraft.map((c) => hexToPixel(this.layout!, c));
+      for (let i = 0; i < pts.length; i++) {
+        if (i === 0) g.moveTo(pts[i]!.x, pts[i]!.y);
+        else g.lineTo(pts[i]!.x, pts[i]!.y);
+      }
+      if (pts.length > 1) g.stroke({ width: lineW * 2, color: 0x8a6f4d, alpha: 0.85 });
+      for (const p of pts) {
+        g.circle(p.x, p.y, this.layout.size * 0.18);
+      }
+      g.fill({ color: 0x8a6f4d, alpha: 0.9 });
+    }
   }
 
   /**
@@ -869,7 +894,94 @@ export class CanvasEngine {
         this.pinsC.addChild(pin);
       });
     }
+    this.drawTrails();
     this.updatePinScales();
+  }
+
+  /**
+   * Trail signs: footstep glyphs with push-direction arrows. Players see the
+   * cells their character has discovered (server-computed signs); the DM sees
+   * every cell plus a faint connecting line.
+   */
+  private drawTrails(): void {
+    if (!this.layout) return;
+    const size = this.layout.size;
+    const signs: { q: number; r: number; glyph: string; forwardAngle: number | null; backwardAngle: number | null }[] = [];
+    if (this.role === 'dm') {
+      for (const trail of this.lastTrails) {
+        // Connecting line for the DM only.
+        const line = new Graphics();
+        const pts = trail.cells.map((c) => hexToPixel(this.layout!, c));
+        for (let i = 0; i < pts.length; i++) {
+          if (i === 0) line.moveTo(pts[i]!.x, pts[i]!.y);
+          else line.lineTo(pts[i]!.x, pts[i]!.y);
+        }
+        line.stroke({ width: Math.max(1.5, size * 0.06), color: 0x8a6f4d, alpha: 0.4 });
+        this.pinsC.addChild(line);
+        trail.cells.forEach((cell, i) => {
+          const next = trail.cells[i + 1];
+          const prev = trail.cells[i - 1];
+          const angle = (a: { q: number; r: number }, b: { q: number; r: number }) => {
+            const pa = hexToPixel(this.layout!, a);
+            const pb = hexToPixel(this.layout!, b);
+            return (Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180) / Math.PI;
+          };
+          signs.push({
+            q: cell.q,
+            r: cell.r,
+            glyph: trail.glyph,
+            forwardAngle: next ? angle(cell, next) : null,
+            backwardAngle: prev ? angle(cell, prev) : null,
+          });
+        });
+      }
+    } else {
+      for (const s of this.lastTrailSigns) signs.push(s);
+    }
+
+    for (const s of signs) {
+      const center = hexToPixel(this.layout, { q: s.q, r: s.r });
+      const pin = new Container();
+      const glyph = new Text({
+        text: s.glyph,
+        style: { fontSize: PIN_BASE_FONT * 0.7 },
+        resolution: 3,
+      });
+      glyph.anchor.set(0.5);
+      pin.addChild(glyph);
+      if (s.forwardAngle !== null) {
+        const arrow = new Text({
+          text: '➤',
+          style: { fontSize: PIN_BASE_FONT * 0.5, fill: 0xd9b44f },
+          resolution: 3,
+        });
+        arrow.anchor.set(0.5);
+        arrow.rotation = (s.forwardAngle * Math.PI) / 180;
+        arrow.position.set(
+          Math.cos(arrow.rotation) * PIN_BASE_FONT * 0.75,
+          Math.sin(arrow.rotation) * PIN_BASE_FONT * 0.75,
+        );
+        pin.addChild(arrow);
+      }
+      if (s.backwardAngle !== null) {
+        const back = new Text({
+          text: '➤',
+          style: { fontSize: PIN_BASE_FONT * 0.34, fill: 0xffffff },
+          resolution: 3,
+        });
+        back.anchor.set(0.5);
+        back.alpha = 0.45;
+        back.rotation = (s.backwardAngle * Math.PI) / 180;
+        back.position.set(
+          Math.cos(back.rotation) * PIN_BASE_FONT * 0.7,
+          Math.sin(back.rotation) * PIN_BASE_FONT * 0.7,
+        );
+        pin.addChild(back);
+      }
+      (pin as PinContainer).__pin = { worldSize: size * 0.9, minScreen: 17 };
+      pin.position.set(center.x, center.y - size * 0.25);
+      this.pinsC.addChild(pin);
+    }
   }
 
   // -- images ----------------------------------------------------------------
@@ -1165,6 +1277,19 @@ export class CanvasEngine {
           useUi.getState().set('contentDialogHex', hex);
           useUi.getState().set('editingContentId', null);
           break;
+        case 'trail': {
+          if (!isDm) return;
+          const draft = useUi.getState().trailDraft;
+          const last = draft[draft.length - 1];
+          // Clicking the last cell again removes it (undo one step).
+          if (last && last.q === hex.q && last.r === hex.r) {
+            useUi.getState().set('trailDraft', draft.slice(0, -1));
+          } else {
+            useUi.getState().set('trailDraft', [...draft, hex]);
+          }
+          this.drawHighlight();
+          break;
+        }
         case 'measure':
           if (ui.measureStart && hexDistance(ui.measureStart, hex) > 0) {
             useUi.getState().set('measureStart', null);

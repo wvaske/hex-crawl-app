@@ -115,11 +115,14 @@ function fullState(): CampaignState {
         },
       ],
       pendingMoves: [],
+      trails: [],
+      trailSigns: [],
     },
     discoveries: [
       { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' }, direction: null, locates: true },
       { id: 'd2', clueId: 'cl3', characterId: 'char2', at: 1001, how: { kind: 'auto' }, direction: null, locates: true },
     ],
+    trailDiscoveries: [],
     senses: [],
     encounterTables: [{ id: 'et1', name: 'Forest', terrains: ['forest'], die: '1d12', entries: [], enabled: true }],
     log: [

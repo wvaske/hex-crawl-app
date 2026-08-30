@@ -287,6 +287,8 @@ export const MARKER_LIBRARY: { group: string; glyphs: { glyph: string; name: str
       { glyph: '⚔️', name: 'Battle' },
       { glyph: '🚩', name: 'Rally point' },
       { glyph: '📜', name: 'Note' },
+      { glyph: '👣', name: 'Footsteps / tracks' },
+      { glyph: '🐾', name: 'Animal tracks' },
     ],
   },
 ];
@@ -484,6 +486,51 @@ export type LogEntry = z.infer<typeof LogEntrySchema>;
 // Aggregate state (what a snapshot carries)
 // ---------------------------------------------------------------------------
 
+/**
+ * A trail: one ordered path of cells (tracks, footprints, a blazed route).
+ * Standing on a cell "pushes" the party along: the walker learns the
+ * direction to the next and previous cells, never the whole path.
+ */
+export const TrailSchema = z.object({
+  id: z.string(),
+  mapId: z.string(),
+  name: z.string().min(1).max(120),
+  /** Glyph stamped on each discovered cell. */
+  glyph: z.string().max(8).default('👣'),
+  dmNotes: z.string().max(10000).default(''),
+  /** How a cell of the trail is noticed (distance is from the walker to the cell). */
+  gate: GateSchema.default({ kind: 'auto' }),
+  cells: z.array(z.object({ q: z.number().int(), r: z.number().int() })).min(2),
+});
+export type Trail = z.infer<typeof TrailSchema>;
+
+/** One character's knowledge of one trail cell. */
+export const TrailDiscoverySchema = z.object({
+  id: z.string(),
+  trailId: z.string(),
+  cellIndex: z.number().int(),
+  characterId: z.string(),
+  at: z.number(),
+});
+export type TrailDiscovery = z.infer<typeof TrailDiscoverySchema>;
+
+/**
+ * A rendered trail sign: a discovered cell with the bearings onward and back.
+ * Angles are map-space degrees (0 = east, screen clockwise) for drawing
+ * arrows; compass names are for prose.
+ */
+export const TrailSignSchema = z.object({
+  trailId: z.string(),
+  q: z.number().int(),
+  r: z.number().int(),
+  glyph: z.string(),
+  forward: z.string().nullable(),
+  backward: z.string().nullable(),
+  forwardAngle: z.number().nullable(),
+  backwardAngle: z.number().nullable(),
+});
+export type TrailSign = z.infer<typeof TrailSignSchema>;
+
 export const MapStateSchema = z.object({
   imageLayers: z.array(ImageLayerSchema),
   hexes: z.array(HexCellSchema),
@@ -493,6 +540,10 @@ export const MapStateSchema = z.object({
   /** DM: full Content[]; players: ContentPlayerView[] */
   contents: z.array(z.union([ContentSchema, ContentPlayerViewSchema])),
   pendingMoves: z.array(PendingMoveSchema).default([]),
+  /** DM only: full trail definitions (players receive trailSigns instead). */
+  trails: z.array(TrailSchema).default([]),
+  /** Players: signs for the trail cells their character has discovered. */
+  trailSigns: z.array(TrailSignSchema).default([]),
 });
 export type MapState = z.infer<typeof MapStateSchema>;
 
@@ -529,6 +580,8 @@ export const CampaignStateSchema = z.object({
   mapState: MapStateSchema.nullable(),
   /** DM: all; player: own character's. */
   discoveries: z.array(DiscoverySchema),
+  /** DM: all; player: own character's. */
+  trailDiscoveries: z.array(TrailDiscoverySchema).default([]),
   /** Player only: sensed clues on the viewed map; empty for the DM. */
   senses: z.array(SenseSchema).default([]),
   /** DM only; empty for players. */

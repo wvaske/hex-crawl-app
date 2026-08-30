@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { FogState, HexCoord, TerrainId } from '@hexcrawl/shared';
 
-export type Tool = 'select' | 'paint' | 'fog' | 'marker' | 'content' | 'measure';
+export type Tool = 'select' | 'paint' | 'fog' | 'marker' | 'content' | 'trail' | 'measure';
 
 export type PanelTab =
   | 'inspect'
@@ -41,6 +41,8 @@ interface UiStore {
   movingTokenId: string | null;
   /** Sense triangulation: visited hexes a clicked clue is observable from. */
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
+  /** DM trail tool: cells of the trail being drawn, in click order. */
+  trailDraft: HexCoord[];
   /** Player-chosen map for this session (null = follow the DM default). */
   viewedMapId: string | null;
   /** DM view aid: dim location pins on hexes the party hasn't explored. */
@@ -74,6 +76,7 @@ export const useUi = create<UiStore>((set) => ({
   movingContentId: null,
   movingTokenId: null,
   senseHighlight: null,
+  trailDraft: [],
   viewedMapId: null,
   dimUnexplored: false,
   altTeleport: false,
