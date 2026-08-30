@@ -91,10 +91,10 @@ function fullState(): CampaignState {
         { q: 1, r: 0, state: 'explored' },
       ],
       tokens: [
-        { id: 't1', mapId: 'm1', q: 0, r: 0, kind: 'pc', characterId: 'char1', label: 'Scout', color: '#00ff00', glyph: '', playerVisible: true },
-        { id: 't2', mapId: 'm1', q: 0, r: 0, kind: 'npc', characterId: null, label: 'Ogre', color: '#ff0000', glyph: '', playerVisible: true },
-        { id: 't3', mapId: 'm1', q: 1, r: 0, kind: 'npc', characterId: null, label: 'Ghost', color: '#ffffff', glyph: '', playerVisible: true },
-        { id: 't4', mapId: 'm1', q: 0, r: 0, kind: 'npc', characterId: null, label: 'Hidden', color: '#000000', glyph: '', playerVisible: false },
+        { id: 't1', mapId: 'm1', q: 0, r: 0, kind: 'pc', characterId: 'char1', label: 'Scout', color: '#00ff00', glyph: '', playerVisible: true, partyId: null },
+        { id: 't2', mapId: 'm1', q: 0, r: 0, kind: 'npc', characterId: null, label: 'Ogre', color: '#ff0000', glyph: '', playerVisible: true, partyId: null },
+        { id: 't3', mapId: 'm1', q: 1, r: 0, kind: 'npc', characterId: null, label: 'Ghost', color: '#ffffff', glyph: '', playerVisible: true, partyId: null },
+        { id: 't4', mapId: 'm1', q: 0, r: 0, kind: 'npc', characterId: null, label: 'Hidden', color: '#000000', glyph: '', playerVisible: false, partyId: null },
       ],
       markers: [
         { id: 'mk1', mapId: 'm1', q: 0, r: 0, glyph: '🔥', label: 'Fire', dmOnly: false },

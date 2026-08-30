@@ -230,6 +230,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       color: cmd.color,
       glyph: cmd.glyph,
       playerVisible: cmd.playerVisible,
+      partyId: null,
     };
     if (token.characterId) {
       const character = ctx.runtime.characters.get(token.characterId);
@@ -266,21 +267,24 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     if (ctx.seat.role !== 'dm' && map.moveApproval) {
       throw new Error('This map uses DM-approved movement — your move was sent as a request');
     }
-    const prevQ = token.q;
-    const prevR = token.r;
+    const prior = partyMembers(ctx, token).map((m) => ({ id: m.id, q: m.q, r: m.r }));
+    const label = token.label || 'token';
+    const fromQ = token.q;
+    const fromR = token.r;
+    const fogDelta = executePartyMove(ctx, token, cmd.q, cmd.r, cmd.teleport && ctx.seat.role === 'dm');
     if (ctx.seat.role === 'dm') {
       ctx.runtime.pushUndo({
         at: Date.now(),
         kind: 'token.move',
-        description: `move ${token.label || 'token'} back to ${prevQ},${prevR}`,
+        description: `move ${label} back to ${fromQ},${fromR}`,
         run: (runtime) => {
-          if (runtime.findToken(cmd.tokenId)) {
-            runtime.updateToken(token.mapId, cmd.tokenId, { q: prevQ, r: prevR });
+          for (const p of prior) {
+            if (runtime.findToken(p.id)) runtime.updateToken(token.mapId, p.id, { q: p.q, r: p.r });
           }
+          restoreFogDelta(runtime, token.mapId, fogDelta);
         },
       });
     }
-    executeTokenMove(ctx, token, cmd.q, cmd.r, cmd.teleport && ctx.seat.role === 'dm');
   }) as Handler,
 
   'move.request': ((cmd: Extract<ClientCommand, { kind: 'move.request' }>, ctx: Ctx) => {
@@ -320,7 +324,19 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     if (!pending) throw new Error('No pending move for that token');
     rt.pendingMoves.delete(cmd.tokenId);
     if (cmd.approve) {
-      executeTokenMove(ctx, token, pending.toQ, pending.toR, cmd.teleport);
+      const prior = partyMembers(ctx, token).map((m) => ({ id: m.id, q: m.q, r: m.r }));
+      const fogDelta = executePartyMove(ctx, token, pending.toQ, pending.toR, cmd.teleport);
+      ctx.runtime.pushUndo({
+        at: Date.now(),
+        kind: 'token.move',
+        description: `undo ${pending.label}'s approved move`,
+        run: (runtime) => {
+          for (const p of prior) {
+            if (runtime.findToken(p.id)) runtime.updateToken(token.mapId, p.id, { q: p.q, r: p.r });
+          }
+          restoreFogDelta(runtime, token.mapId, fogDelta);
+        },
+      });
     }
     ctx.hub.sendTo(
       ctx.runtime,
@@ -612,31 +628,79 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 };
 
 /** Fog auto-reveal + knowledge evaluation after a PC token appears or moves. */
-function afterPartyMoved(ctx: Ctx, mapId: string, token: Token): void {
+function afterPartyMoved(ctx: Ctx, mapId: string, token: Token): FogDelta {
   const map = ctx.runtime.maps.get(mapId);
-  if (!map) return;
+  if (!map) return [];
+  let revealed: FogDelta = [];
   if (token.kind === 'pc') {
-    applyAutoReveal(ctx.runtime, map);
+    revealed = applyAutoReveal(ctx.runtime, map);
   }
   if (token.characterId) {
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, mapId, [token.characterId]));
   }
+  return revealed;
+}
+
+/** Fog cells changed by an operation, with their prior state for undo. */
+type FogDelta = { q: number; r: number; state: FogState; prev: FogState }[];
+
+/**
+ * Undo helper: restore every touched cell to its earliest recorded prior
+ * state (the first change per cell holds the true pre-move value).
+ */
+function restoreFogDelta(runtime: CampaignRuntime, mapId: string, delta: FogDelta): void {
+  const prior = new Map<string, FogState>();
+  for (const c of delta) {
+    const key = `${c.q},${c.r}`;
+    if (!prior.has(key)) prior.set(key, c.prev);
+  }
+  const byState = new Map<FogState, { q: number; r: number }[]>();
+  for (const [key, state] of prior) {
+    const [q, r] = key.split(',').map(Number);
+    const list = byState.get(state) ?? [];
+    list.push({ q: q!, r: r! });
+    byState.set(state, list);
+  }
+  for (const [state, cells] of byState) runtime.setFog(mapId, cells, state);
+}
+
+/** All tokens moving together with `token` — just the token itself unless it's in a party. */
+function partyMembers(ctx: Ctx, token: Token): Token[] {
+  if (!token.partyId) return [token];
+  const rt = ctx.runtime.requireMap(token.mapId);
+  return [...rt.tokens.values()].filter((t) => t.partyId === token.partyId);
+}
+
+/**
+ * Move `token` to (q, r) and shift every other member of its party by the
+ * same offset, so the group travels as a unit while keeping formation.
+ */
+function executePartyMove(ctx: Ctx, token: Token, q: number, r: number, teleport = false): FogDelta {
+  const dq = q - token.q;
+  const dr = r - token.r;
+  const delta: FogDelta = [];
+  for (const member of partyMembers(ctx, token)) {
+    delta.push(...executeTokenMove(ctx, member, member.q + dq, member.r + dr, teleport));
+  }
+  return delta;
 }
 
 /** Execute a token move: traversed path becomes the explored trail, then sight + knowledge. */
-function executeTokenMove(ctx: Ctx, token: Token, q: number, r: number, teleport = false): void {
+function executeTokenMove(ctx: Ctx, token: Token, q: number, r: number, teleport = false): FogDelta {
   const from = { q: token.q, r: token.r };
   const moved = ctx.runtime.updateToken(token.mapId, token.id, { q, r });
+  const delta: FogDelta = [];
   if (token.kind === 'pc') {
     if (!teleport) {
       // Traversed hexes join the explored trail; the destination itself is
       // where the party stands, so it becomes (or stays) visible.
       const path = hexLine(from, { q, r }).filter((c) => !(c.q === q && c.r === r));
-      if (path.length) ctx.runtime.setFog(token.mapId, path, 'explored');
+      if (path.length) delta.push(...ctx.runtime.setFog(token.mapId, path, 'explored'));
     }
-    ctx.runtime.setFog(token.mapId, [{ q, r }], 'visible');
+    delta.push(...ctx.runtime.setFog(token.mapId, [{ q, r }], 'visible'));
   }
-  afterPartyMoved(ctx, token.mapId, moved);
+  delta.push(...afterPartyMoved(ctx, token.mapId, moved));
+  return delta;
 }
 
 function capitalize(s: string): string {

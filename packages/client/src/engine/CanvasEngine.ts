@@ -999,6 +999,11 @@ export class CanvasEngine {
       view.body.circle(0, 0, size);
       view.body.stroke({ width: size * 0.09, color: 0xd96c4f, alpha: 0.9 });
     }
+    if (token.partyId) {
+      // Halo marking a party member — the group moves as one.
+      view.body.circle(0, 0, size * 1.18);
+      view.body.stroke({ width: size * 0.07, color: 0xd9b44f, alpha: 0.75 });
+    }
     const text = token.glyph || initials(token.label);
     view.glyph.text = text;
     view.glyph.style.fontSize = size * (token.glyph ? 1.0 : 0.75);
@@ -1259,6 +1264,18 @@ export class CanvasEngine {
     }
     const teleport = this.role === 'dm' && useUi.getState().altTeleport;
     useSession.getState().optimisticTokenMove(token.id, dropHex.q, dropHex.r);
+    // Party members shift by the same offset; the server moves them for real.
+    if (token.partyId) {
+      const dq = dropHex.q - token.q;
+      const dr = dropHex.r - token.r;
+      for (const other of this.tokens.values()) {
+        if (other.token.id !== token.id && other.token.partyId === token.partyId) {
+          useSession
+            .getState()
+            .optimisticTokenMove(other.token.id, other.token.q + dq, other.token.r + dr);
+        }
+      }
+    }
     send({ kind: 'token.move', tokenId: token.id, q: dropHex.q, r: dropHex.r, teleport });
     if (teleport) {
       useSession.getState().pushToast({ kind: 'info', title: 'Teleported', text: `${token.label || 'Token'} moved without leaving a trail.` });
@@ -1353,7 +1370,8 @@ function visualChanged(a: Token, b: Token): boolean {
     a.color !== b.color ||
     a.glyph !== b.glyph ||
     a.kind !== b.kind ||
-    a.playerVisible !== b.playerVisible
+    a.playerVisible !== b.playerVisible ||
+    a.partyId !== b.partyId
   );
 }
 

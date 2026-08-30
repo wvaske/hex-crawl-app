@@ -14,7 +14,7 @@ import type { CampaignRuntime } from '../state/runtime.js';
 export function applyAutoReveal(
   runtime: CampaignRuntime,
   map: MapInfo,
-): { q: number; r: number; state: FogState }[] {
+): { q: number; r: number; state: FogState; prev: FogState }[] {
   if (map.fogMode !== 'auto') return [];
   const rt = runtime.requireMap(map.id);
 

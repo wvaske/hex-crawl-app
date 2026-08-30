@@ -193,6 +193,7 @@ function migrate(d: DB): void {
   ensureColumn(d, 'content', 'wiki_page', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(d, 'image_layer', 'visible', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn(d, 'map', 'move_approval', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'token', 'party_id', 'TEXT');
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {
