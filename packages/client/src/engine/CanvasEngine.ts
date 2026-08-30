@@ -78,9 +78,10 @@ export class CanvasEngine {
   private fogSheetG = new Graphics();
   private fogEraseG = new Graphics();
   private fogAlpha = new AlphaFilter({ alpha: 1 });
+  // Light tint over *visible* hexes so the explored trail reads brightest.
   private exploredC = new Container();
   private exploredG = new Graphics();
-  private exploredAlpha = new AlphaFilter({ alpha: 0.55 });
+  private exploredAlpha = new AlphaFilter({ alpha: 0.3 });
   private pinsC = new Container();
   private tokensC = new Container();
   private highlightG = new Graphics();
@@ -540,7 +541,9 @@ export class CanvasEngine {
     // idempotent, so slightly-enlarged hexes overlap cleanly with no seams.
     const isDm = this.role === 'dm';
     this.fogAlpha.alpha = isDm ? 0.55 : 1;
-    this.exploredAlpha.alpha = isDm ? 0.25 : 0.55;
+    // Swapped per DM preference: explored (actually traversed) renders
+    // brightest; visible gets a light tint.
+    this.exploredAlpha.alpha = isDm ? 0.18 : 0.3;
 
     this.fogSheetG.clear();
     this.fogEraseG.clear();
@@ -564,7 +567,7 @@ export class CanvasEngine {
       const center = hexToPixel(this.layout, f);
       if (center.x < minX || center.x > maxX || center.y < minY || center.y > maxY) continue;
       this.fogEraseG.poly(this.polyPoints(center, holeCorners));
-      if (f.state === 'explored') {
+      if (f.state === 'visible') {
         this.exploredG.poly(this.polyPoints(center, holeCorners));
       }
     }
