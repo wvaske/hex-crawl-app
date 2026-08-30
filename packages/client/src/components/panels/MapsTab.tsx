@@ -148,6 +148,11 @@ function MapSettings({ map, campaignId }: { map: MapInfo; campaignId: string }) 
             onChange={(v) => patch({ fogDecay: v })}
             label="Fade to explored when out of sight"
           />
+          <Toggle
+            checked={map.moveApproval}
+            onChange={(v) => patch({ moveApproval: v })}
+            label="DM approves player movement (turn-based travel)"
+          />
         </div>
       </Section>
 

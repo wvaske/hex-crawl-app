@@ -114,6 +114,7 @@ function fullState(): CampaignState {
           clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0 }],
         },
       ],
+      pendingMoves: [],
     },
     discoveries: [
       { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' } },

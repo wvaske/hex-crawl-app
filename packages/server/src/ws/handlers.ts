@@ -12,6 +12,7 @@ import {
   GridStyleSchema,
   hexDistance,
   hexKey,
+  hexLine,
   parseHexKey,
   rollD20,
 } from '@hexcrawl/shared';
@@ -166,6 +167,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       fogMode: 'auto',
       fogDecay: false,
       moveMode: 'free',
+      moveApproval: false,
       milesPerHex: 6,
       encounterCheck: EncounterCheckConfigSchema.parse({}),
       sortOrder: ctx.runtime.maps.size,
@@ -261,9 +263,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         if (dist > 1) throw new Error('You can only move one hex at a time');
       }
     }
+    if (ctx.seat.role !== 'dm' && map.moveApproval) {
+      throw new Error('This map uses DM-approved movement — your move was sent as a request');
+    }
     const prevQ = token.q;
     const prevR = token.r;
-    const moved = ctx.runtime.updateToken(token.mapId, cmd.tokenId, { q: cmd.q, r: cmd.r });
     if (ctx.seat.role === 'dm') {
       ctx.runtime.pushUndo({
         at: Date.now(),
@@ -276,13 +280,60 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         },
       });
     }
-    afterPartyMoved(ctx, token.mapId, moved);
+    executeTokenMove(ctx, token, cmd.q, cmd.r);
+  }) as Handler,
+
+  'move.request': ((cmd: Extract<ClientCommand, { kind: 'move.request' }>, ctx: Ctx) => {
+    const token = ctx.runtime.findToken(cmd.tokenId);
+    if (!token) throw new Error('Token not found');
+    if (
+      ctx.seat.role !== 'dm' &&
+      (token.kind !== 'pc' || !token.characterId || token.characterId !== ctx.seat.characterId)
+    ) {
+      throw new Error('You can only move your own character');
+    }
+    const rt = ctx.runtime.requireMap(token.mapId);
+    rt.pendingMoves.set(token.id, {
+      tokenId: token.id,
+      fromQ: token.q,
+      fromR: token.r,
+      toQ: cmd.q,
+      toR: cmd.r,
+      seatId: ctx.seat.id,
+      label: token.label || 'token',
+      color: token.color,
+      at: Date.now(),
+    });
+    ctx.hub.sendTo(
+      ctx.runtime,
+      { type: 'event', kind: 'move.requested', tokenId: token.id, label: token.label || 'token', q: cmd.q, r: cmd.r },
+      { dm: true },
+    );
+  }) as Handler,
+
+  'move.resolve': ((cmd: Extract<ClientCommand, { kind: 'move.resolve' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const token = ctx.runtime.findToken(cmd.tokenId);
+    if (!token) throw new Error('Token not found');
+    const rt = ctx.runtime.requireMap(token.mapId);
+    const pending = rt.pendingMoves.get(cmd.tokenId);
+    if (!pending) throw new Error('No pending move for that token');
+    rt.pendingMoves.delete(cmd.tokenId);
+    if (cmd.approve) {
+      executeTokenMove(ctx, token, pending.toQ, pending.toR);
+    }
+    ctx.hub.sendTo(
+      ctx.runtime,
+      { type: 'event', kind: 'move.resolved', tokenId: token.id, label: pending.label, approved: cmd.approve },
+      { all: true },
+    );
   }) as Handler,
 
   'token.delete': ((cmd: Extract<ClientCommand, { kind: 'token.delete' }>, ctx: Ctx) => {
     requireDm(ctx);
     const token = ctx.runtime.findToken(cmd.tokenId);
     if (!token) return;
+    ctx.runtime.requireMap(token.mapId).pendingMoves.delete(cmd.tokenId);
     ctx.runtime.deleteToken(token.mapId, cmd.tokenId);
     const map = ctx.runtime.maps.get(token.mapId);
     if (map) applyAutoReveal(ctx.runtime, map);
@@ -570,6 +621,20 @@ function afterPartyMoved(ctx: Ctx, mapId: string, token: Token): void {
   if (token.characterId) {
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, mapId, [token.characterId]));
   }
+}
+
+/** Execute a token move: traversed path becomes the explored trail, then sight + knowledge. */
+function executeTokenMove(ctx: Ctx, token: Token, q: number, r: number): void {
+  const from = { q: token.q, r: token.r };
+  const moved = ctx.runtime.updateToken(token.mapId, token.id, { q, r });
+  if (token.kind === 'pc') {
+    // Traversed hexes join the explored trail; the destination itself is
+    // where the party stands, so it becomes (or stays) visible.
+    const path = hexLine(from, { q, r }).filter((c) => !(c.q === q && c.r === r));
+    if (path.length) ctx.runtime.setFog(token.mapId, path, 'explored');
+    ctx.runtime.setFog(token.mapId, [{ q, r }], 'visible');
+  }
+  afterPartyMoved(ctx, token.mapId, moved);
 }
 
 function capitalize(s: string): string {

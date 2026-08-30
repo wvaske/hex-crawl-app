@@ -9,6 +9,7 @@ import { SidePanel } from '../components/SidePanel.js';
 import { Toasts } from '../components/Toasts.js';
 import { ContentDialog } from '../components/ContentDialog.js';
 import { EmptyMapHint, HexReadout } from '../components/StatusOverlays.js';
+import { PendingMoves } from '../components/PendingMoves.js';
 
 export function TableView({ campaignId }: { campaignId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -88,6 +89,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         <div ref={hostRef} className="canvas-host flex-1 min-w-0 relative" />
         <EmptyMapHint />
         <HexReadout />
+        <PendingMoves />
         {role === 'dm' && <Toolbar />}
         {panelOpen && <SidePanel campaignId={campaignId} />}
         {!hasState && (

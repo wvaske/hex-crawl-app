@@ -89,6 +89,18 @@ function handleMessage(msg: ServerMessage): void {
         });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'narration') {
         session.pushToast({ kind: 'narration', title: 'The DM narrates', text: msg.entry.text });
+      } else if (msg.kind === 'move.requested') {
+        session.pushToast({
+          kind: 'info',
+          title: 'Move requested',
+          text: `${msg.label} wants to travel to hex ${msg.q}, ${msg.r} — approve in the panel above the map.`,
+        });
+      } else if (msg.kind === 'move.resolved') {
+        session.pushToast({
+          kind: msg.approved ? 'info' : 'error',
+          title: msg.approved ? 'Move approved' : 'Move denied',
+          text: `${msg.label}'s travel was ${msg.approved ? 'approved by' : 'held by'} the DM.`,
+        });
       }
       break;
   }

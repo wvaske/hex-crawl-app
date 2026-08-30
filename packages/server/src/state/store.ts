@@ -53,6 +53,7 @@ export class Store {
       fogMode: 'auto',
       fogDecay: false,
       moveMode: 'free',
+      moveApproval: false,
       milesPerHex: 6,
       encounterCheck: EncounterCheckConfigSchema.parse({}),
       sortOrder: 0,

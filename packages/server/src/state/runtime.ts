@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import type {
   Campaign,
+  PendingMove,
   CampaignSettings,
   CampaignState,
   Character,
@@ -45,6 +46,8 @@ export interface MapRuntime {
   tokens: Map<string, Token>;
   markers: Map<string, Marker>;
   contents: Map<string, Content>;
+  /** In-memory only: player moves awaiting DM approval, by tokenId. */
+  pendingMoves: Map<string, PendingMove>;
 }
 
 const LOG_MEMORY_LIMIT = 500;
@@ -143,6 +146,7 @@ export class CampaignRuntime {
         fogMode: m.fog_mode as MapInfo['fogMode'],
         fogDecay: Boolean(m.fog_decay),
         moveMode: m.move_mode as MapInfo['moveMode'],
+        moveApproval: Boolean(m.move_approval),
         milesPerHex: m.miles_per_hex as number,
         encounterCheck: EncounterCheckConfigSchema.parse(safeJson(m.encounter_check as string)),
         sortOrder: m.sort_order as number,
@@ -200,6 +204,7 @@ export class CampaignRuntime {
       tokens: new Map(),
       markers: new Map(),
       contents: new Map(),
+      pendingMoves: new Map(),
     };
     for (const h of d.prepare('SELECT * FROM hex WHERE map_id = ?').all(mapId) as Array<
       Record<string, unknown>
@@ -295,6 +300,7 @@ export class CampaignRuntime {
       tokens: [...rt.tokens.values()],
       markers: [...rt.markers.values()],
       contents: [...rt.contents.values()],
+      pendingMoves: [...rt.pendingMoves.values()],
     };
   }
 
@@ -437,12 +443,13 @@ export class CampaignRuntime {
       tokens: new Map(),
       markers: new Map(),
       contents: new Map(),
+      pendingMoves: new Map(),
     });
     this.db
       .prepare(
         `INSERT INTO map (id, campaign_id, name, orientation, hex_size, origin_x, origin_y, grid_style,
-          sight_radius, fog_mode, fog_decay, move_mode, miles_per_hex, encounter_check, sort_order)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          sight_radius, fog_mode, fog_decay, move_mode, miles_per_hex, encounter_check, sort_order, move_approval)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         info.id,
@@ -460,6 +467,7 @@ export class CampaignRuntime {
         info.milesPerHex,
         JSON.stringify(info.encounterCheck),
         info.sortOrder,
+        info.moveApproval ? 1 : 0,
       );
   }
 
@@ -477,7 +485,7 @@ export class CampaignRuntime {
     this.db
       .prepare(
         `UPDATE map SET name=?, orientation=?, hex_size=?, origin_x=?, origin_y=?, grid_style=?,
-          sight_radius=?, fog_mode=?, fog_decay=?, move_mode=?, miles_per_hex=?, encounter_check=?, sort_order=?
+          sight_radius=?, fog_mode=?, fog_decay=?, move_mode=?, miles_per_hex=?, encounter_check=?, sort_order=?, move_approval=?
          WHERE id=?`,
       )
       .run(
@@ -494,6 +502,7 @@ export class CampaignRuntime {
         updated.milesPerHex,
         JSON.stringify(updated.encounterCheck),
         updated.sortOrder,
+        updated.moveApproval ? 1 : 0,
         mapId,
       );
     return updated;

@@ -80,6 +80,13 @@ export const ServerEventSchema = z.discriminatedUnion('kind', [
   ev('token.updated', { token: TokenSchema }),
   ev('token.moved', { tokenId: z.string(), q: z.number().int(), r: z.number().int() }),
   ev('token.removed', { tokenId: z.string() }),
+  ev('move.requested', {
+    tokenId: z.string(),
+    label: z.string(),
+    q: z.number().int(),
+    r: z.number().int(),
+  }),
+  ev('move.resolved', { tokenId: z.string(), label: z.string(), approved: z.boolean() }),
   ev('marker.added', { marker: MarkerSchema }),
   ev('marker.updated', { marker: MarkerSchema }),
   ev('marker.removed', { markerId: z.string() }),
