@@ -569,3 +569,54 @@ describe('settlement clue generation', () => {
     expect(byTitle('Smallville').clues).toHaveLength(0);
   });
 });
+
+describe('hex-targeted skill checks', () => {
+  it('a player search rolls against clue gates and reveals matching clues', () => {
+    const { mapId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 1, r: 0, type: 'cache', title: 'Hidden Cache', dmNotes: '', glyph: '',
+        clues: [
+          { id: null, text: 'Fresh-turned earth under a flat stone', gate: { kind: 'skill', skill: 'survival', dc: 2, maxDistance: 1, mode: 'active' }, sortOrder: 0 },
+          { id: null, text: 'Impossible to notice', gate: { kind: 'skill', skill: 'survival', dc: 39, maxDistance: 1, mode: 'active' }, sortOrder: 1 },
+          { id: null, text: 'Wrong sense entirely', gate: { kind: 'skill', skill: 'perception', dc: 2, maxDistance: 1, mode: 'active' }, sortOrder: 2 },
+        ],
+      },
+    } as never);
+    // Active gates never open passively.
+    expect(runtime.discoveries.size).toBe(0);
+
+    asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 1, r: 0 } } as never);
+    expect(runtime.discoveries.size).toBe(1);
+    const disc = [...runtime.discoveries.values()][0]!;
+    expect(disc.how.kind).toBe('roll');
+    expect(disc.locates).toBe(false); // searched from one hex away
+
+    // Re-rolling doesn't duplicate the discovery.
+    asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 1, r: 0 } } as never);
+    expect(runtime.discoveries.size).toBe(1);
+  });
+});
+
+describe('encounter table enable/disable', () => {
+  it('terrain matching skips disabled tables; explicit tableId still rolls', () => {
+    const mapId = activeMapId();
+    dm({ kind: 'terrain.paint', mapId, cells: [{ q: 0, r: 0 }], terrain: 'hills' } as never);
+    dm({
+      kind: 'encounterTable.upsert',
+      table: { id: 'tblA', name: 'Hills A', terrains: ['hills'], die: '1d4', entries: [{ min: 1, max: 4, text: 'wolves', quantity: '' }], enabled: true },
+    } as never);
+    const pick = () => rollEncounter(runtime, { mapId, q: 0, r: 0, tableId: null, skipCheck: true }, seededRng(3));
+    expect(pick().table?.id).toBe('tblA');
+
+    dm({
+      kind: 'encounterTable.upsert',
+      table: { id: 'tblA', name: 'Hills A', terrains: ['hills'], die: '1d4', entries: [{ min: 1, max: 4, text: 'wolves', quantity: '' }], enabled: false },
+    } as never);
+    expect(pick().table).toBeNull();
+    // Explicit choice overrides the disable.
+    const forced = rollEncounter(runtime, { mapId, q: 0, r: 0, tableId: 'tblA', skipCheck: true }, seededRng(3));
+    expect(forced.table?.id).toBe('tblA');
+  });
+});

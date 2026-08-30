@@ -562,10 +562,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 
   // -- checks ----------------------------------------------------------------
   'check.roll': ((cmd: Extract<ClientCommand, { kind: 'check.roll' }>, ctx: Ctx) => {
-    requireDm(ctx);
     let targets = cmd.characterIds;
+    if (ctx.seat.role !== 'dm') {
+      // Players roll for their own character only.
+      if (!ctx.seat.characterId) throw new Error('Claim a character first');
+      targets = [ctx.seat.characterId];
+    }
     if (!targets.length) {
-      const mapId = ctx.runtime.campaign.activeMapId;
+      const mapId = cmd.mapId ?? ctx.runtime.campaign.activeMapId;
       const rt = mapId ? ctx.runtime.mapStates.get(mapId) : null;
       targets = rt
         ? [...rt.tokens.values()]
@@ -589,6 +593,67 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         };
       })
       .filter((r) => r !== null);
+    // Hex-targeted search: the roll is compared against the clue gates of
+    // content on that hex. A matching-skill clue opens when the character is
+    // within the gate's range and the roll beats the clue's own DC (active
+    // and passive gates alike — a deliberate search can find what passive
+    // senses missed).
+    let found = 0;
+    if (cmd.hex && cmd.mapId) {
+      const rt = ctx.runtime.mapStates.get(cmd.mapId);
+      const map = ctx.runtime.maps.get(cmd.mapId);
+      if (rt && map) {
+        const created: NewDiscovery[] = [];
+        for (const r of results) {
+          const token = [...rt.tokens.values()].find(
+            (t) => t.kind === 'pc' && t.characterId === r.characterId,
+          );
+          if (!token) continue;
+          const character = ctx.runtime.characters.get(r.characterId)!;
+          for (const content of rt.contents.values()) {
+            if (content.q !== cmd.hex.q || content.r !== cmd.hex.r) continue;
+            const distance = hexDistance({ q: token.q, r: token.r }, cmd.hex);
+            for (const clue of content.clues) {
+              if (clue.gate.kind !== 'skill' || clue.gate.skill !== cmd.skill) continue;
+              if (distance > clue.gate.maxDistance) continue;
+              if (r.total < clue.gate.dc) continue;
+              if (ctx.runtime.hasDiscovery(clue.id, r.characterId)) continue;
+              const direction =
+                clue.indicatesDirection && distance > 0
+                  ? compassDirection({ q: token.q, r: token.r }, cmd.hex, map.orientation)
+                  : null;
+              const discovery = {
+                id: nanoid(12),
+                clueId: clue.id,
+                characterId: r.characterId,
+                at: Date.now(),
+                how: {
+                  kind: 'roll' as const,
+                  skill: cmd.skill,
+                  roll: r.roll,
+                  modifier: r.modifier,
+                  total: r.total,
+                  dc: clue.gate.dc,
+                },
+                direction,
+                locates: distance === 0,
+              };
+              if (ctx.runtime.addDiscovery(discovery)) {
+                created.push({
+                  discovery,
+                  contentId: content.id,
+                  contentTitle: content.title,
+                  clueText: clue.text,
+                  characterName: character.name,
+                });
+              }
+            }
+          }
+        }
+        found = created.length;
+        deliverDiscoveries(ctx, created);
+      }
+    }
     const summary = results
       .map(
         (r) =>
@@ -597,10 +662,12 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
           }`,
       )
       .join(' · ');
+    const where = cmd.hex ? ` on hex ${cmd.hex.q},${cmd.hex.r}` : '';
+    const outcome = cmd.hex ? (found ? ` — ${found} clue(s) uncovered` : ' — nothing new found') : '';
     const entry = ctx.runtime.appendLog(
       'check',
-      `${capitalize(cmd.skill)}${cmd.dc !== null ? ` DC ${cmd.dc}` : ''}: ${summary || 'no targets'}`,
-      'dm',
+      `${capitalize(cmd.skill)}${cmd.dc !== null ? ` DC ${cmd.dc}` : ''}${where}: ${summary || 'no targets'}${outcome}`,
+      ctx.seat.role === 'dm' ? 'dm' : 'all',
       { skill: cmd.skill, dc: cmd.dc, results },
     );
     notifyLog(ctx, entry);
@@ -628,7 +695,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 
   'encounterTable.upsert': ((cmd: Extract<ClientCommand, { kind: 'encounterTable.upsert' }>, ctx: Ctx) => {
     requireDm(ctx);
-    ctx.runtime.upsertEncounterTable({ ...cmd.table, id: cmd.table.id ?? nanoid(10) });
+    ctx.runtime.upsertEncounterTable({
+      ...cmd.table,
+      id: cmd.table.id ?? nanoid(10),
+      enabled: cmd.table.enabled ?? true,
+    });
   }) as Handler,
 
   'encounterTable.delete': ((cmd: Extract<ClientCommand, { kind: 'encounterTable.delete' }>, ctx: Ctx) => {

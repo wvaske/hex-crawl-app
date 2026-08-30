@@ -454,6 +454,8 @@ export const EncounterTableSchema = z.object({
   /** Dice rolled against the entries, e.g. "2d6" or "1d12". */
   die: z.string().default('1d12'),
   entries: z.array(EncounterEntrySchema),
+  /** Disabled tables are never picked by terrain matching (session curation). */
+  enabled: z.boolean().default(true),
 });
 export type EncounterTable = z.infer<typeof EncounterTableSchema>;
 

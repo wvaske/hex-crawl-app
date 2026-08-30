@@ -199,6 +199,7 @@ function migrate(d: DB): void {
   // Grandfather pre-existing discoveries as locating: players who could see a
   // pin before the senses rework keep seeing it.
   ensureColumn(d, 'discovery', 'locates', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn(d, 'enc_table', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {

@@ -379,6 +379,14 @@ export const CheckRollCommand = z.object({
   dc: z.number().int().min(1).max(40).nullable().default(null),
   /** Explicit character targets; empty = every character with a token on the active map. */
   characterIds: z.array(z.string()),
+  /**
+   * Search target: roll this check against the clue gates of content on this
+   * hex. Matching skill clues within their gate's range of the character are
+   * revealed when the roll beats the clue's own DC. Players may target their
+   * own character only.
+   */
+  mapId: z.string().nullable().default(null),
+  hex: z.object({ q: z.number().int(), r: z.number().int() }).nullable().default(null),
 });
 
 export const EncounterRollCommand = z.object({
