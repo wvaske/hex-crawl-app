@@ -262,6 +262,18 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     ctx.runtime.renameSeat(ctx.seat.id, cmd.name);
   }) as Handler,
 
+  'seat.releaseCharacter': ((cmd: Extract<ClientCommand, { kind: 'seat.releaseCharacter' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    ctx.runtime.claimCharacter(cmd.seatId, null);
+  }) as Handler,
+
+  'seat.delete': ((cmd: Extract<ClientCommand, { kind: 'seat.delete' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    if (cmd.seatId === ctx.seat.id) throw new Error('You cannot remove your own seat');
+    ctx.runtime.deleteSeat(cmd.seatId);
+    ctx.hub.dropSeat(ctx.runtime, cmd.seatId);
+  }) as Handler,
+
   // -- content & clues -------------------------------------------------------
   'content.upsert': ((cmd: Extract<ClientCommand, { kind: 'content.upsert' }>, ctx: Ctx) => {
     requireDm(ctx);

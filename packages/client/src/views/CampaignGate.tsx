@@ -121,6 +121,11 @@ function JoinForm({
           <Button type="submit" variant="primary" className="w-full" disabled={busy || !name.trim()}>
             {busy ? 'Joining…' : 'Join the table'}
           </Button>
+          <p className="text-xs text-ink-400 text-center">
+            Joined before? Your seat lives in the browser you used — open this link there and
+            you'll go straight in. If you're on a new device, join again and ask your DM to
+            release your character to you.
+          </p>
         </form>
       </div>
     </Centered>

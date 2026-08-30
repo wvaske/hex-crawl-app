@@ -234,6 +234,20 @@ export const SeatRenameCommand = z.object({
   name: z.string().min(1).max(60),
 });
 
+/** DM: release the character claimed by another seat (stale cookie recovery). */
+export const SeatReleaseCharacterCommand = z.object({
+  ...base,
+  kind: z.literal('seat.releaseCharacter'),
+  seatId: z.string(),
+});
+
+/** DM: remove a stale seat entirely. */
+export const SeatDeleteCommand = z.object({
+  ...base,
+  kind: z.literal('seat.delete'),
+  seatId: z.string(),
+});
+
 // --- content & clues --------------------------------------------------------
 
 export const ContentUpsertCommand = z.object({
@@ -345,6 +359,8 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   CharacterDeleteCommand,
   SeatClaimCharacterCommand,
   SeatRenameCommand,
+  SeatReleaseCharacterCommand,
+  SeatDeleteCommand,
   ContentUpsertCommand,
   ContentDeleteCommand,
   ClueRevealCommand,
