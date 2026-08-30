@@ -383,6 +383,12 @@ export const ContentSchema = z.object({
   scaleVisibility: z.number().int().min(0).max(2).default(1),
   /** Disabled content doesn't exist yet for players: no clues, no pin. */
   enabled: z.boolean().default(true),
+  /**
+   * Common knowledge: players always see this pin (name and place), even
+   * with no discoveries. Clues stay gated — they know WHERE it is, not
+   * what's true about it.
+   */
+  knownLocation: z.boolean().default(false),
   /** Free-form quest tag for grouping (enable/disable a whole quest). */
   quest: z.string().max(120).default(''),
   /** Wiki page title (or full URL) players can read for more information. */

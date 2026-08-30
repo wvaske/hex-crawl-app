@@ -269,6 +269,7 @@ export function createApp(store: Store, hub: Hub): Hono {
     showLabel: z.boolean().default(false),
     scaleVisibility: z.number().int().min(0).max(2).default(1),
     enabled: z.boolean().default(true),
+    knownLocation: z.boolean().default(false),
     quest: z.string().max(120).default(''),
     clues: z
       .array(
@@ -324,6 +325,7 @@ export function createApp(store: Store, hub: Hub): Hono {
       scaleVisibility: input.scaleVisibility,
       wikiPage: input.wikiPage || existing?.wikiPage || '',
       enabled: input.enabled ?? existing?.enabled ?? true,
+      knownLocation: input.knownLocation ?? existing?.knownLocation ?? false,
       quest: input.quest || existing?.quest || '',
       clues: input.clues.length
         ? input.clues.map((cl, i) => ({

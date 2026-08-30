@@ -444,6 +444,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       scaleVisibility: cmd.content.scaleVisibility ?? 1,
       wikiPage: cmd.content.wikiPage ?? '',
       enabled: cmd.content.enabled ?? true,
+      knownLocation: cmd.content.knownLocation ?? false,
       quest: cmd.content.quest ?? '',
       clues: cmd.content.clues.map((c, i) => ({
         id: c.id ?? nanoid(10),

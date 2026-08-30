@@ -311,6 +311,7 @@ export class CampaignRuntime {
         scaleVisibility: (c.scale_visibility as number) ?? 1,
         wikiPage: (c.wiki_page as string) ?? '',
         enabled: Boolean(c.enabled ?? 1),
+        knownLocation: Boolean(c.known_location),
         quest: (c.quest as string) ?? '',
         clues,
       });
@@ -812,10 +813,10 @@ export class CampaignRuntime {
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label, scale_visibility, wiki_page, enabled, quest) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label, scale_visibility=excluded.scale_visibility, wiki_page=excluded.wiki_page, enabled=excluded.enabled, quest=excluded.quest`,
+          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label, scale_visibility, wiki_page, enabled, quest, known_location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label, scale_visibility=excluded.scale_visibility, wiki_page=excluded.wiki_page, enabled=excluded.enabled, quest=excluded.quest, known_location=excluded.known_location`,
         )
-        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0, content.scaleVisibility, content.wikiPage, content.enabled ? 1 : 0, content.quest);
+        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0, content.scaleVisibility, content.wikiPage, content.enabled ? 1 : 0, content.quest, content.knownLocation ? 1 : 0);
       const keep = new Set(content.clues.map((c) => c.id));
       if (existing) {
         for (const old of existing.clues) {

@@ -318,6 +318,7 @@ export const ContentUpsertCommand = z.object({
     scaleVisibility: z.number().int().min(0).max(2).default(1),
     wikiPage: z.string().max(300).default(''),
     enabled: z.boolean().default(true),
+    knownLocation: z.boolean().default(false),
     quest: z.string().max(120).default(''),
     clues: z.array(
       ClueSchema.omit({ id: true, contentId: true }).extend({
