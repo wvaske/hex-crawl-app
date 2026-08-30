@@ -101,3 +101,33 @@ pnpm build      # production build
 - **Canvas**: plain PixiJS 8 engine class subscribed to Zustand — React never
   touches the scene graph. Fog is a dark sheet with per-hex holes cut out, so
   players physically cannot see under it.
+
+## Multi-scale hexes
+
+Maps operate at three hex scales built from 7-hex superclusters (H3-style):
+base (e.g. 6 mi), ×√7 (≈16 mi), and ×7 (42 mi). The scale follows your zoom
+automatically, or lock one with the top-bar control (travel at 16, search
+at 6). Fog and terrain brushes at coarse scales paint whole superclusters;
+each location's "Visible at hex scales" setting controls the coarsest level
+its pin appears at (cities and major regions show everywhere; hidden sites
+only when searching fine hexes).
+
+## Integration API + MCP
+
+Other tools (e.g. a DM-companion agent that maintains the campaign wiki) can
+manage map locations through `/api/integration/campaigns/:id/...` using the
+campaign DM key as a Bearer token — list maps, list locations, upsert by
+title (with pixel→hex conversion in the map-image frame the wiki DataMaps
+use), and delete. `mcp/hexcrawl-mcp.mjs` is a dependency-free stdio MCP
+server wrapping that API:
+
+```bash
+claude mcp add hexcrawl \
+  -e HEXCRAWL_URL=https://hex-crawl.example \
+  -e HEXCRAWL_CAMPAIGN=<campaignId> \
+  -e HEXCRAWL_TOKEN=<dm key> \
+  -- node /path/to/hex-crawl/mcp/hexcrawl-mcp.mjs
+```
+
+Locations can carry a `wikiPage`; players get a "wiki ↗" link on discovered
+content (base URL configurable in Setup).
