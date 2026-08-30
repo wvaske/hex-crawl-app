@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Content, ImageLayer } from '@hexcrawl/shared';
 import { ContentTypeSchema, GateSchema, pixelToHex } from '@hexcrawl/shared';
 import { evaluateKnowledge } from '../engine/knowledge.js';
+import { generateSettlementClues } from '../engine/settlements.js';
 import { MAX_UPLOAD_BYTES, UPLOADS_DIR } from '../config.js';
 import type { Store } from '../state/store.js';
 import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
@@ -305,6 +306,19 @@ export function createApp(store: Store, hub: Hub): Hono {
     evaluateKnowledge(runtime, input.mapId);
     hub.scheduleSync(runtime);
     return c.json({ contentId: id, q, r, updated: Boolean(existing) });
+  });
+
+  /** Generate the standard sensory clues for every settlement on a map. */
+  app.post('/api/integration/campaigns/:id/generate-settlement-clues', async (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    const body = (await c.req.json().catch(() => ({}))) as { mapId?: string };
+    const mapId = body.mapId;
+    if (!mapId || !runtime.maps.has(mapId)) return c.json({ error: 'Map not found' }, 404);
+    const touched = generateSettlementClues(runtime, mapId);
+    evaluateKnowledge(runtime, mapId);
+    hub.scheduleSync(runtime);
+    return c.json({ settlements: touched.length, titles: touched.map((t) => t.content.title) });
   });
 
   app.delete('/api/integration/campaigns/:id/content/:contentId', (c) => {

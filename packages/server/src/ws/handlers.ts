@@ -23,6 +23,7 @@ import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
 import type { Hub } from './hub.js';
 import { applyAutoReveal } from '../engine/fog.js';
 import { evaluateKnowledge, type NewDiscovery } from '../engine/knowledge.js';
+import { generateSettlementClues } from '../engine/settlements.js';
 import { rollEncounter } from '../engine/encounters.js';
 
 export interface Ctx {
@@ -478,6 +479,34 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     throw new Error('view.map is connection-scoped');
   }) as Handler,
 
+  'clues.generateSettlements': ((
+    cmd: Extract<ClientCommand, { kind: 'clues.generateSettlements' }>,
+    ctx: Ctx,
+  ) => {
+    requireDm(ctx);
+    const touched = generateSettlementClues(ctx.runtime, cmd.mapId);
+    if (touched.length) {
+      ctx.runtime.pushUndo({
+        at: Date.now(),
+        kind: 'clues.generate',
+        description: `remove generated clues from ${touched.length} settlement(s)`,
+        run: (runtime) => {
+          for (const t of touched) {
+            const current = runtime.mapStates.get(cmd.mapId)?.contents.get(t.content.id);
+            if (current) runtime.upsertContent({ ...current, clues: t.priorClues });
+          }
+        },
+      });
+      deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, cmd.mapId));
+    }
+    const entry = ctx.runtime.appendLog(
+      'note',
+      `Generated sensory clues for ${touched.length} settlement(s).`,
+      'dm',
+    );
+    notifyLog(ctx, entry);
+  }) as Handler,
+
   'content.delete': ((cmd: Extract<ClientCommand, { kind: 'content.delete' }>, ctx: Ctx) => {
     requireDm(ctx);
     const removed = ctx.runtime.deleteContent(cmd.contentId);
@@ -510,6 +539,8 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         at: Date.now(),
         how: { kind: 'manual' as const },
         direction: clueDirectionFor(ctx, clue, content, characterId),
+        // A deliberate DM reveal tells the player where it is.
+        locates: true,
       };
       if (ctx.runtime.addDiscovery(discovery)) {
         created.push({

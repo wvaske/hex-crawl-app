@@ -47,6 +47,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.selectHex(null);
         ui.set('measureStart', null);
         ui.set('movingTokenId', null);
+        ui.set('senseHighlight', null);
         return;
       }
       if (useSession.getState().role !== 'dm') return;

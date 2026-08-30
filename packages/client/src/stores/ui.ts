@@ -9,6 +9,7 @@ export type PanelTab =
   | 'characters'
   | 'tokens'
   | 'encounters'
+  | 'senses'
   | 'log'
   | 'journal'
   | 'settings';
@@ -38,6 +39,8 @@ interface UiStore {
   movingContentId: string | null;
   /** Armed "click a destination hex to send this token there" mode. */
   movingTokenId: string | null;
+  /** Sense triangulation: visited hexes a clicked clue is observable from. */
+  senseHighlight: { clueId: string; cells: HexCoord[] } | null;
   /** Player-chosen map for this session (null = follow the DM default). */
   viewedMapId: string | null;
   /** DM view aid: dim location pins on hexes the party hasn't explored. */
@@ -70,6 +73,7 @@ export const useUi = create<UiStore>((set) => ({
   currentScale: 0,
   movingContentId: null,
   movingTokenId: null,
+  senseHighlight: null,
   viewedMapId: null,
   dimUnexplored: false,
   altTeleport: false,

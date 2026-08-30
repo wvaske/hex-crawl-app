@@ -339,6 +339,17 @@ export const ViewMapCommand = z.object({
   mapId: z.string(),
 });
 
+/**
+ * DM: auto-generate sensory clues (smoke, din, smells) for every settlement
+ * on a map that doesn't already have them. Scaled by the pin's
+ * scaleVisibility (2 = city, 1 = town, 0 = village).
+ */
+export const CluesGenerateCommand = z.object({
+  ...base,
+  kind: z.literal('clues.generateSettlements'),
+  mapId: z.string(),
+});
+
 export const ContentDeleteCommand = z.object({
   ...base,
   kind: z.literal('content.delete'),
@@ -440,6 +451,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   ContentUpsertCommand,
   ContentMoveCommand,
   ViewMapCommand,
+  CluesGenerateCommand,
   ContentDeleteCommand,
   ClueRevealCommand,
   DiscoveryRevokeCommand,

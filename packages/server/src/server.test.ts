@@ -480,10 +480,27 @@ describe('directional clues', () => {
     const view = filterStateForViewer(runtime.buildFullState(), {
       seatId: playerSeat.id, role: 'player', characterId: charId,
     });
-    const camp = view.mapState!.contents.find((c) => c.title === 'Bandit Camp')!;
-    expect((camp as { discoveredClues: { text: string }[] }).discoveredClues[0]!.text).toBe(
-      'You smell woodsmoke — to the east',
+    // Sensed from afar: the pin is NOT revealed — the clue lives in senses.
+    expect(view.mapState!.contents.find((c) => c.title === 'Bandit Camp')).toBeUndefined();
+    const sense = view.senses.find((s) => s.text === 'You smell woodsmoke')!;
+    expect(sense.direction).toBe('east');
+    expect(sense.inRange).toBe(true);
+    expect(sense.located).toBe(false);
+    expect(sense.contentTitle).toBeNull();
+    // Triangulation cells: only hexes the character has been to.
+    const visited = new Set(
+      view.mapState!.fog.map((f) => `${f.q},${f.r}`),
     );
+    expect(sense.observableFrom.length).toBeGreaterThan(0);
+    for (const c of sense.observableFrom) expect(visited.has(`${c.q},${c.r}`)).toBe(true);
+
+    // Walking onto the hex locates the source and reveals the pin.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 4, r: -2 } as never);
+    const after = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    expect(after.mapState!.contents.find((c) => c.title === 'Bandit Camp')).toBeDefined();
+    expect(after.senses.find((s) => s.text === 'You smell woodsmoke')!.located).toBe(true);
   });
 
   it('leaves direction null when the flag is off', () => {
@@ -505,5 +522,46 @@ describe('directional clues', () => {
     asSeat(playerSeat, { kind: 'token.move', tokenId, q: 0, r: 0 } as never);
     const disc = [...runtime.discoveries.values()][0]!;
     expect(disc.direction).toBeNull();
+  });
+});
+
+describe('settlement clue generation', () => {
+  it('adds scaled sensory clues to settlements, idempotently', () => {
+    const mapId = activeMapId();
+    dm({
+      kind: 'content.upsert',
+      content: { id: null, mapId, q: 3, r: 0, type: 'settlement', title: 'Bigtown', dmNotes: '', glyph: '', scaleVisibility: 2, clues: [] },
+    } as never);
+    dm({
+      kind: 'content.upsert',
+      content: { id: null, mapId, q: 9, r: 0, type: 'settlement', title: 'Smallville', dmNotes: '', glyph: '', scaleVisibility: 0, clues: [] },
+    } as never);
+    dm({
+      kind: 'content.upsert',
+      content: { id: null, mapId, q: 6, r: 6, type: 'ruin', title: 'Old Fort', dmNotes: '', glyph: '', clues: [] },
+    } as never);
+
+    dm({ kind: 'clues.generateSettlements', mapId } as never);
+    const rt = runtime.requireMap(mapId);
+    const byTitle = (t: string) => [...rt.contents.values()].find((c) => c.title === t)!;
+    expect(byTitle('Bigtown').clues).toHaveLength(3);
+    expect(byTitle('Smallville').clues).toHaveLength(3);
+    expect(byTitle('Old Fort').clues).toHaveLength(0);
+    // City clues reach farther than village clues.
+    const cityMax = Math.max(...byTitle('Bigtown').clues.map((c) => (c.gate.kind === 'skill' ? c.gate.maxDistance : 0)));
+    const villageMax = Math.max(...byTitle('Smallville').clues.map((c) => (c.gate.kind === 'skill' ? c.gate.maxDistance : 0)));
+    expect(cityMax).toBeGreaterThan(villageMax);
+    expect(byTitle('Bigtown').clues.every((c) => c.indicatesDirection)).toBe(true);
+
+    // Re-running adds nothing.
+    dm({ kind: 'clues.generateSettlements', mapId } as never);
+    expect(byTitle('Bigtown').clues).toHaveLength(3);
+
+    // Undo strips the generated clues.
+    dm({ kind: 'undo' } as never);
+    // (second run touched nothing, so this undoes the log entry-less no-op? — the
+    // no-op run pushes no undo entry; this pops the first generation)
+    expect(byTitle('Bigtown').clues).toHaveLength(0);
+    expect(byTitle('Smallville').clues).toHaveLength(0);
   });
 });

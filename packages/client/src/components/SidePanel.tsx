@@ -9,6 +9,7 @@ import { TokensTab } from './panels/TokensTab.js';
 import { EncountersTab } from './panels/EncountersTab.js';
 import { LogTab } from './panels/LogTab.js';
 import { JournalTab } from './panels/JournalTab.js';
+import { SensesTab } from './panels/SensesTab.js';
 import { SettingsTab } from './panels/SettingsTab.js';
 
 const DM_TABS: { tab: PanelTab; icon: string; name: string }[] = [
@@ -23,6 +24,7 @@ const DM_TABS: { tab: PanelTab; icon: string; name: string }[] = [
 
 const PLAYER_TABS: { tab: PanelTab; icon: string; name: string }[] = [
   { tab: 'inspect', icon: '🔍', name: 'Inspect' },
+  { tab: 'senses', icon: '👁️', name: 'Senses' },
   { tab: 'characters', icon: '🧝', name: 'Party' },
   { tab: 'journal', icon: '📔', name: 'Journal' },
   { tab: 'log', icon: '📜', name: 'Log' },
@@ -59,6 +61,7 @@ export function SidePanel({ campaignId }: { campaignId: string }) {
         {active === 'maps' && <MapsTab campaignId={campaignId} />}
         {active === 'tokens' && <TokensTab />}
         {active === 'characters' && <CharactersTab />}
+        {active === 'senses' && <SensesTab />}
         {active === 'encounters' && <EncountersTab />}
         {active === 'log' && <LogTab />}
         {active === 'journal' && <JournalTab />}

@@ -406,6 +406,12 @@ export const DiscoverySchema = z.object({
   how: DiscoveryHowSchema,
   /** Compass bearing sensed at discovery time (clue's indicatesDirection). */
   direction: z.string().nullable().default(null),
+  /**
+   * Whether this discovery pins down the source's location (made on the hex
+   * itself, or DM-revealed). Distance discoveries start false and upgrade
+   * when the character later reaches the hex.
+   */
+  locates: z.boolean().default(false),
 });
 export type Discovery = z.infer<typeof DiscoverySchema>;
 
@@ -488,6 +494,31 @@ export const MapStateSchema = z.object({
 });
 export type MapState = z.infer<typeof MapStateSchema>;
 
+/**
+ * A player's sensed clue on the current map: the information itself, without
+ * the source's location. `observableFrom` is the set of hexes the character
+ * has already visited from which this clue can be sensed — the raw material
+ * for triangulating the source.
+ */
+export const SenseSchema = z.object({
+  clueId: z.string(),
+  /** Raw clue text (direction is carried separately). */
+  text: z.string(),
+  /** Bearing toward the source: live while in range, else the discovery snapshot. */
+  direction: z.string().nullable(),
+  /** Whether the clue is observable from the character's current hex. */
+  inRange: z.boolean(),
+  /** When it was first discovered (epoch ms). */
+  at: z.number(),
+  /** Visited hexes from which this clue can be sensed. */
+  observableFrom: z.array(z.object({ q: z.number().int(), r: z.number().int() })),
+  /** True once the source itself has been located (pin shown on the map). */
+  located: z.boolean(),
+  /** Source title, revealed only once located. */
+  contentTitle: z.string().nullable(),
+});
+export type Sense = z.infer<typeof SenseSchema>;
+
 export const CampaignStateSchema = z.object({
   campaign: CampaignSchema,
   seats: z.array(SeatPublicSchema),
@@ -496,6 +527,8 @@ export const CampaignStateSchema = z.object({
   mapState: MapStateSchema.nullable(),
   /** DM: all; player: own character's. */
   discoveries: z.array(DiscoverySchema),
+  /** Player only: sensed clues on the viewed map; empty for the DM. */
+  senses: z.array(SenseSchema).default([]),
   /** DM only; empty for players. */
   encounterTables: z.array(EncounterTableSchema),
   log: z.array(LogEntrySchema),

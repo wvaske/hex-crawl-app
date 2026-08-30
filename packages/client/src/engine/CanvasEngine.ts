@@ -87,6 +87,7 @@ export class CanvasEngine {
   private pinsC = new Container();
   private tokensC = new Container();
   private pendingC = new Container();
+  private senseG = new Graphics();
   private highlightG = new Graphics();
 
   private tokens = new Map<string, TokenView>();
@@ -162,6 +163,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.pendingC);
     this.viewport.addChild(this.exploredC);
     this.viewport.addChild(this.fogC);
+    this.viewport.addChild(this.senseG);
     this.viewport.addChild(this.highlightG);
 
     // Every layer except tokensC must be event-transparent: Pixi treats any
@@ -176,6 +178,7 @@ export class CanvasEngine {
       this.pendingC,
       this.exploredC,
       this.fogC,
+      this.senseG,
       this.highlightG,
     ]) {
       layer.eventMode = 'none';
@@ -222,6 +225,9 @@ export class CanvasEngine {
       }
       if (u.dimUnexplored !== prev.dimUnexplored) {
         this.drawPins();
+      }
+      if (u.senseHighlight !== prev.senseHighlight) {
+        this.drawSenseHighlight();
       }
       if (
         u.tool !== prev.tool ||
@@ -326,6 +332,9 @@ export class CanvasEngine {
     if (layoutChanged && this.lastMapIdForCenter !== map.id) {
       this.lastMapIdForCenter = map.id;
       this.recenter();
+      // Sense-highlight cells belong to the previous map.
+      useUi.getState().set('senseHighlight', null);
+      this.drawSenseHighlight();
     }
   }
 
@@ -338,6 +347,7 @@ export class CanvasEngine {
     this.fogSheetG.clear();
     this.fogEraseG.clear();
     this.exploredG.clear();
+    this.senseG.clear();
     this.highlightG.clear();
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.tokensReset();
@@ -624,6 +634,26 @@ export class CanvasEngine {
     for (const view of this.tokens.values()) {
       view.root.scale.set(tokenScale * view.crowdScale);
     }
+  }
+
+  /** Brass wash over the visited hexes a clicked sense can be observed from. */
+  private drawSenseHighlight(): void {
+    const g = this.senseG;
+    g.clear();
+    if (!this.layout) return;
+    const highlight = useUi.getState().senseHighlight;
+    if (!highlight) return;
+    const corners = this.corners();
+    for (const cell of highlight.cells) {
+      const center = hexToPixel(this.layout, cell);
+      g.poly(this.polyPoints(center, corners));
+    }
+    g.fill({ color: 0xd9b44f, alpha: 0.22 });
+    for (const cell of highlight.cells) {
+      const center = hexToPixel(this.layout, cell);
+      g.poly(this.polyPoints(center, corners));
+    }
+    g.stroke({ width: 1.5 / this.viewport.scale.x, color: 0xd9b44f, alpha: 0.55 });
   }
 
   private drawHighlight(): void {

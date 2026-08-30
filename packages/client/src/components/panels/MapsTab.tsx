@@ -153,6 +153,15 @@ function MapSettings({ map, campaignId }: { map: MapInfo; campaignId: string }) 
             onChange={(v) => patch({ moveApproval: v })}
             label="DM approves player movement (turn-based travel)"
           />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full"
+            title="Add smoke/din/smell clues (with auto compass bearings) to every settlement on this map that doesn't have them. Safe to run again."
+            onClick={() => send({ kind: 'clues.generateSettlements', mapId: map.id })}
+          >
+            🏘️ Generate settlement sensory clues
+          </Button>
         </div>
       </Section>
 
