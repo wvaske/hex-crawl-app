@@ -766,3 +766,36 @@ describe('content enable/disable + quests (issue #42)', () => {
     expect(runtime.requireMap(mapId).contents.get(ruin.id)!.quest).toBe('act3');
   });
 });
+
+describe('known-location content', () => {
+  it('players see the pin with no clues; clues still gate normally', () => {
+    const { mapId, charId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 6, r: 0, type: 'landmark', title: 'Famous Bridge', dmNotes: '', glyph: '',
+        knownLocation: true,
+        clues: [
+          { id: null, text: 'A secret smugglers cache under the third arch', gate: { kind: 'manual' }, sortOrder: 0 },
+        ],
+      },
+    } as never);
+
+    const view = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    const bridge = view.mapState!.contents.find((c) => c.title === 'Famous Bridge')!;
+    expect(bridge).toBeDefined();
+    expect((bridge as { discoveredClues: unknown[] }).discoveredClues).toHaveLength(0);
+
+    // Revealing the clue adds its text to the already-visible pin.
+    const clueId = [...runtime.requireMap(mapId).contents.values()]
+      .find((c) => c.title === 'Famous Bridge')!.clues[0]!.id;
+    dm({ kind: 'clue.reveal', clueId, characterIds: [charId] } as never);
+    const after = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    const bridgeAfter = after.mapState!.contents.find((c) => c.title === 'Famous Bridge')!;
+    expect((bridgeAfter as { discoveredClues: { text: string }[] }).discoveredClues[0]!.text).toContain('smugglers');
+  });
+});

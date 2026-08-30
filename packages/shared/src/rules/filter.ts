@@ -142,7 +142,9 @@ export function contentPlayerView(
   const mine = full.discoveries.filter(
     (d) => d.characterId === characterId && clueIds.has(d.clueId),
   );
-  if (!mine.some(discoveryLocates)) return null;
+  // Common-knowledge places show their pin with whatever clues (possibly
+  // none) the character has actually learned.
+  if (!content.knownLocation && !mine.some(discoveryLocates)) return null;
   const clueText = new Map(content.clues.map((c) => [c.id, c.text]));
   return {
     id: content.id,
@@ -193,10 +195,12 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
   const senses: Sense[] = [];
   for (const content of mapState.contents) {
     if (!isFullContent(content) || !content.enabled) continue;
-    const located = content.clues.some((clue) => {
-      const d = mine.get(clue.id);
-      return d ? discoveryLocates(d) : false;
-    });
+    const located =
+      content.knownLocation ||
+      content.clues.some((clue) => {
+        const d = mine.get(clue.id);
+        return d ? discoveryLocates(d) : false;
+      });
     for (const clue of content.clues) {
       const d = mine.get(clue.id);
       if (!d) continue;

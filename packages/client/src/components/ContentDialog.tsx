@@ -44,6 +44,7 @@ export function ContentDialog() {
   const [scaleVisibility, setScaleVisibility] = useState(existing?.scaleVisibility ?? 1);
   const [wikiPage, setWikiPage] = useState(existing?.wikiPage ?? '');
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
+  const [knownLocation, setKnownLocation] = useState(existing?.knownLocation ?? false);
   const [quest, setQuest] = useState(existing?.quest ?? '');
   const [clues, setClues] = useState<ClueDraft[]>(
     existing?.clues.map((c) => ({
@@ -79,6 +80,7 @@ export function ContentDialog() {
         scaleVisibility,
         wikiPage: wikiPage.trim(),
         enabled,
+        knownLocation,
         quest: quest.trim(),
         clues: clues
           .filter((c) => c.text.trim())
@@ -125,6 +127,15 @@ export function ContentDialog() {
         <label className="flex items-center gap-2 text-sm text-ink-200 cursor-pointer">
           <input type="checkbox" checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />
           Always show the name on the map (major towns and the like)
+        </label>
+        <label className="flex items-center gap-2 text-sm text-ink-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={knownLocation}
+            onChange={(e) => setKnownLocation(e.target.checked)}
+          />
+          Location known to players
+          <span className="text-xs text-ink-400">(pin always shown; clues stay gated)</span>
         </label>
         <div className="grid grid-cols-2 gap-2 items-end">
           <label className="flex items-center gap-2 text-sm text-ink-200 cursor-pointer pb-1.5">

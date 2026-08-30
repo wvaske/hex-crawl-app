@@ -226,6 +226,7 @@ function migrate(d: DB): void {
   ensureColumn(d, 'clue', 'reveals_location', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn(d, 'content', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn(d, 'content', 'quest', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(d, 'content', 'known_location', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {
