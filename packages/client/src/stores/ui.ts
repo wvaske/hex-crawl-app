@@ -43,6 +43,8 @@ interface UiStore {
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
   /** DM trail tool: cells of the trail being drawn, in click order. */
   trailDraft: HexCoord[];
+  /** DM trail tool: id of the trail whose nodes are being edited (null = new). */
+  editingTrailId: string | null;
   /** DM box-select: content ids selected for bulk enable/disable/quest. */
   contentSelection: string[] | null;
   /** Screen position (canvas coords) of the selected hex, for the pin popup. */
@@ -81,6 +83,7 @@ export const useUi = create<UiStore>((set) => ({
   movingTokenId: null,
   senseHighlight: null,
   trailDraft: [],
+  editingTrailId: null,
   contentSelection: null,
   pinPopup: null,
   viewedMapId: null,
