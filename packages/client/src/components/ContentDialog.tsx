@@ -17,6 +17,7 @@ interface ClueDraft {
   id: string | null;
   text: string;
   gate: Gate;
+  indicatesDirection: boolean;
 }
 
 /** DM editor for hex content and its gated clues. */
@@ -42,7 +43,12 @@ export function ContentDialog() {
   const [scaleVisibility, setScaleVisibility] = useState(existing?.scaleVisibility ?? 1);
   const [wikiPage, setWikiPage] = useState(existing?.wikiPage ?? '');
   const [clues, setClues] = useState<ClueDraft[]>(
-    existing?.clues.map((c) => ({ id: c.id, text: c.text, gate: c.gate })) ?? [],
+    existing?.clues.map((c) => ({
+      id: c.id,
+      text: c.text,
+      gate: c.gate,
+      indicatesDirection: c.indicatesDirection,
+    })) ?? [],
   );
 
   const close = () => {
@@ -70,7 +76,13 @@ export function ContentDialog() {
         wikiPage: wikiPage.trim(),
         clues: clues
           .filter((c) => c.text.trim())
-          .map((c, i) => ({ id: c.id, text: c.text.trim(), gate: c.gate, sortOrder: i })),
+          .map((c, i) => ({
+            id: c.id,
+            text: c.text.trim(),
+            gate: c.gate,
+            sortOrder: i,
+            indicatesDirection: c.indicatesDirection,
+          })),
       },
     });
     close();
@@ -143,6 +155,7 @@ export function ContentDialog() {
                     id: null,
                     text: '',
                     gate: { kind: 'skill', skill: 'perception', dc: 12, maxDistance: 1, mode: 'passive' },
+                    indicatesDirection: false,
                   },
                 ])
               }
@@ -309,6 +322,18 @@ function ClueEditor({
             </select>
           </>
         )}
+        <button
+          onClick={() => onChange({ ...clue, indicatesDirection: !clue.indicatesDirection })}
+          className={cx(
+            'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border',
+            clue.indicatesDirection
+              ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+              : 'border-ink-700 text-ink-300 hover:bg-ink-700',
+          )}
+          title='Append the sensed compass bearing when delivered, e.g. "… — to the north-east" (computed from where the character stands toward this hex)'
+        >
+          🧭 direction
+        </button>
       </div>
     </div>
   );

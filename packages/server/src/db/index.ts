@@ -194,6 +194,8 @@ function migrate(d: DB): void {
   ensureColumn(d, 'image_layer', 'visible', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn(d, 'map', 'move_approval', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'token', 'party_id', 'TEXT');
+  ensureColumn(d, 'clue', 'indicates_direction', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'discovery', 'direction', 'TEXT');
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {

@@ -453,3 +453,57 @@ describe('move undo restores fog', () => {
     expect(Object.fromEntries(rt.fog)).toEqual(Object.fromEntries(before));
   });
 });
+
+describe('directional clues', () => {
+  it('stores the sensed bearing on discovery and appends it to the player view', () => {
+    const { mapId, charId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 4, r: -2, type: 'camp', title: 'Bandit Camp', dmNotes: '', glyph: '',
+        clues: [
+          {
+            id: null,
+            text: 'You smell woodsmoke',
+            gate: { kind: 'skill', skill: 'survival', dc: 10, maxDistance: 6, mode: 'passive' },
+            sortOrder: 0,
+            indicatesDirection: true,
+          },
+        ],
+      },
+    } as never);
+    // Scout starts at (0,0); survival passive 12 >= 10 within 6 → immediate discovery.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 0, r: 0 } as never);
+    const disc = [...runtime.discoveries.values()][0]!;
+    expect(disc.direction).toBe('east');
+
+    const view = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    const camp = view.mapState!.contents.find((c) => c.title === 'Bandit Camp')!;
+    expect((camp as { discoveredClues: { text: string }[] }).discoveredClues[0]!.text).toBe(
+      'You smell woodsmoke — to the east',
+    );
+  });
+
+  it('leaves direction null when the flag is off', () => {
+    const { mapId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 4, r: -2, type: 'camp', title: 'Quiet Camp', dmNotes: '', glyph: '',
+        clues: [
+          {
+            id: null,
+            text: 'Something is near',
+            gate: { kind: 'skill', skill: 'survival', dc: 10, maxDistance: 6, mode: 'passive' },
+            sortOrder: 0,
+          },
+        ],
+      },
+    } as never);
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 0, r: 0 } as never);
+    const disc = [...runtime.discoveries.values()][0]!;
+    expect(disc.direction).toBeNull();
+  });
+});

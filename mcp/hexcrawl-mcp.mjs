@@ -77,7 +77,15 @@ const TOOLS = [
           type: 'array',
           items: {
             type: 'object',
-            properties: { text: { type: 'string' }, gate: { type: 'object' } },
+            properties: {
+              text: { type: 'string' },
+              gate: { type: 'object' },
+              indicatesDirection: {
+                type: 'boolean',
+                description:
+                  'Append an auto-computed compass bearing (from the character toward this location) to the delivered clue text, e.g. "… — to the north-east"',
+              },
+            },
             required: ['text'],
           },
         },

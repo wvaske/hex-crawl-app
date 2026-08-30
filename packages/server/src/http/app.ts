@@ -239,7 +239,13 @@ export function createApp(store: Store, hub: Hub): Hono {
     showLabel: z.boolean().default(false),
     scaleVisibility: z.number().int().min(0).max(2).default(1),
     clues: z
-      .array(z.object({ text: z.string().min(1).max(2000), gate: GateSchema.default({ kind: 'auto' }) }))
+      .array(
+        z.object({
+          text: z.string().min(1).max(2000),
+          gate: GateSchema.default({ kind: 'auto' }),
+          indicatesDirection: z.boolean().default(false),
+        }),
+      )
       .default([]),
   });
 
@@ -285,7 +291,14 @@ export function createApp(store: Store, hub: Hub): Hono {
       scaleVisibility: input.scaleVisibility,
       wikiPage: input.wikiPage || existing?.wikiPage || '',
       clues: input.clues.length
-        ? input.clues.map((cl, i) => ({ id: nanoid(10), contentId: id, text: cl.text, gate: cl.gate, sortOrder: i }))
+        ? input.clues.map((cl, i) => ({
+            id: nanoid(10),
+            contentId: id,
+            text: cl.text,
+            gate: cl.gate,
+            sortOrder: i,
+            indicatesDirection: cl.indicatesDirection,
+          }))
         : (existing?.clues ?? []),
     };
     runtime.upsertContent(content);

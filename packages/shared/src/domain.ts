@@ -350,6 +350,11 @@ export const ClueSchema = z.object({
   text: z.string().min(1).max(2000),
   gate: GateSchema,
   sortOrder: z.number().int().default(0),
+  /**
+   * Append an auto-computed compass bearing (from the discovering character
+   * toward this content's hex) to the delivered text: "… — to the north-east".
+   */
+  indicatesDirection: z.boolean().default(false),
 });
 export type Clue = z.infer<typeof ClueSchema>;
 
@@ -399,6 +404,8 @@ export const DiscoverySchema = z.object({
   characterId: z.string(),
   at: z.number(), // epoch ms
   how: DiscoveryHowSchema,
+  /** Compass bearing sensed at discovery time (clue's indicatesDirection). */
+  direction: z.string().nullable().default(null),
 });
 export type Discovery = z.infer<typeof DiscoverySchema>;
 

@@ -1,5 +1,5 @@
 import type { ClientCommand, CommandInput, ServerMessage } from '@hexcrawl/shared';
-import { ServerMessageSchema } from '@hexcrawl/shared';
+import { ServerMessageSchema, withDirection } from '@hexcrawl/shared';
 import { useSession } from './stores/session.js';
 
 let socket: WebSocket | null = null;
@@ -85,7 +85,7 @@ function handleMessage(msg: ServerMessage): void {
         session.pushToast({
           kind: 'discovery',
           title: mine ? 'You notice something…' : `${msg.characterName} noticed something`,
-          text: msg.clueText,
+          text: withDirection(msg.clueText, msg.discovery.direction),
         });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'narration') {
         session.pushToast({ kind: 'narration', title: 'The DM narrates', text: msg.entry.text });

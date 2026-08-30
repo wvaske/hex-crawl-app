@@ -8,6 +8,7 @@ import type {
 } from '../domain.js';
 import { isFullContent } from '../domain.js';
 import { hexKey } from '../hex/coords.js';
+import { withDirection } from '../hex/direction.js';
 
 export interface Viewer {
   seatId: string;
@@ -95,6 +96,10 @@ export function contentPlayerView(
     wikiPage: content.wikiPage,
     discoveredClues: mine
       .sort((a, b) => a.at - b.at)
-      .map((d) => ({ clueId: d.clueId, text: clueText.get(d.clueId) ?? '', at: d.at })),
+      .map((d) => ({
+        clueId: d.clueId,
+        text: withDirection(clueText.get(d.clueId) ?? '', d.direction),
+        at: d.at,
+      })),
   };
 }

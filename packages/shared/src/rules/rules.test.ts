@@ -105,20 +105,20 @@ function fullState(): CampaignState {
         {
           id: 'ct1', mapId: 'm1', q: 1, r: 0, type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false, scaleVisibility: 1, wikiPage: '',
           clues: [
-            { id: 'cl1', contentId: 'ct1', text: 'Dead vegetation', gate: { kind: 'auto' }, sortOrder: 0 },
-            { id: 'cl2', contentId: 'ct1', text: 'Acid scars', gate: { kind: 'manual' }, sortOrder: 1 },
+            { id: 'cl1', contentId: 'ct1', text: 'Dead vegetation', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false },
+            { id: 'cl2', contentId: 'ct1', text: 'Acid scars', gate: { kind: 'manual' }, sortOrder: 1, indicatesDirection: false },
           ],
         },
         {
           id: 'ct2', mapId: 'm1', q: 2, r: 0, type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false, scaleVisibility: 1, wikiPage: '',
-          clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0 }],
+          clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false }],
         },
       ],
       pendingMoves: [],
     },
     discoveries: [
-      { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' } },
-      { id: 'd2', clueId: 'cl3', characterId: 'char2', at: 1001, how: { kind: 'auto' } },
+      { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' }, direction: null },
+      { id: 'd2', clueId: 'cl3', characterId: 'char2', at: 1001, how: { kind: 'auto' }, direction: null },
     ],
     encounterTables: [{ id: 'et1', name: 'Forest', terrains: ['forest'], die: '1d12', entries: [] }],
     log: [
