@@ -3,6 +3,7 @@ import { CORE_SKILLS, passiveScore, type Character } from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
+import { SendTokenButton } from '../SendTokenButton.js';
 
 const CHARACTER_COLORS = [
   '#e05555', '#e08f3c', '#c9a24b', '#6fa06b', '#4a9d9c', '#5b8dd9', '#8b7fd4', '#c56bb8',
@@ -18,6 +19,7 @@ export function CharactersTab() {
   if (!state) return null;
   const mySeat = state.seats.find((s) => s.id === seatId);
   const isDm = role === 'dm';
+  const mapTokens = state.mapState?.tokens ?? [];
 
   return (
     <div>
@@ -40,29 +42,34 @@ export function CharactersTab() {
             const isMine = mySeat?.characterId === ch.id;
             const canEdit = isDm || isMine;
             const open = expanded === ch.id;
+            const token = mapTokens.find((t) => t.characterId === ch.id);
+            const canCommand = token && (isDm || isMine);
             return (
               <div key={ch.id} className="bg-ink-850 border border-ink-700 rounded-lg">
-                <button
-                  className="w-full flex items-center gap-2.5 p-2.5 cursor-pointer text-left"
-                  onClick={() => setExpanded(open ? null : ch.id)}
-                >
-                  <span
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 border border-white/20"
-                    style={{ background: ch.color }}
+                <div className="flex items-center">
+                  <button
+                    className="min-w-0 flex-1 flex items-center gap-2.5 p-2.5 cursor-pointer text-left"
+                    onClick={() => setExpanded(open ? null : ch.id)}
                   >
-                    {ch.glyph || ch.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-ink-100 truncate">
-                      {ch.name} {isMine && <span className="text-brass-400">(you)</span>}
+                    <span
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 border border-white/20"
+                      style={{ background: ch.color }}
+                    >
+                      {ch.glyph || ch.name.slice(0, 1).toUpperCase()}
                     </span>
-                    <span className="block text-xs text-ink-400 truncate">
-                      {claimedBy ? `Played by ${claimedBy.name}` : 'Unclaimed'} · Passive Perception{' '}
-                      {passiveScore(ch.skills, 'perception')}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-ink-100 truncate">
+                        {ch.name} {isMine && <span className="text-brass-400">(you)</span>}
+                      </span>
+                      <span className="block text-xs text-ink-400 truncate">
+                        {claimedBy ? `Played by ${claimedBy.name}` : 'Unclaimed'} · Passive Perception{' '}
+                        {passiveScore(ch.skills, 'perception')}
+                      </span>
                     </span>
-                  </span>
-                  <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
-                </button>
+                    <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
+                  </button>
+                  {canCommand && <SendTokenButton tokenId={token.id} name={ch.name} />}
+                </div>
                 {open && (
                   <div className="border-t border-ink-700 p-2.5">
                     {!claimedBy && !isDm && !mySeat?.characterId && (

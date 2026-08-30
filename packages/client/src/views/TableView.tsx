@@ -46,6 +46,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.set('editingContentId', null);
         ui.selectHex(null);
         ui.set('measureStart', null);
+        ui.set('movingTokenId', null);
         return;
       }
       if (useSession.getState().role !== 'dm') return;

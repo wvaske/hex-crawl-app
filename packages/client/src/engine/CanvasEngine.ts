@@ -214,8 +214,8 @@ export class CanvasEngine {
         this.updateDragMode();
         this.viewport.cursor = u.spacePan ? 'grab' : 'default';
       }
-      if (u.movingContentId !== prev.movingContentId) {
-        this.viewport.cursor = u.movingContentId ? 'crosshair' : 'default';
+      if (u.movingContentId !== prev.movingContentId || u.movingTokenId !== prev.movingTokenId) {
+        this.viewport.cursor = u.movingContentId || u.movingTokenId ? 'crosshair' : 'default';
       }
       if (u.scaleLock !== prev.scaleLock) {
         this.updateScaleLevel();
@@ -1088,6 +1088,20 @@ export class CanvasEngine {
         return;
       }
 
+      // Armed "send token here" mode (from the sidebar): next click is the
+      // destination — same rules as a drag, without the long mouse travel.
+      if (ui.movingTokenId) {
+        const view = this.tokens.get(ui.movingTokenId);
+        useUi.getState().set('movingTokenId', null);
+        this.viewport.cursor = 'default';
+        if (view && this.canMove(view.token)) {
+          if (!(hex.q === view.token.q && hex.r === view.token.r)) {
+            this.dispatchMove(view.token, hex);
+          }
+        }
+        return;
+      }
+
       switch (ui.tool) {
         case 'select':
           this.panning = true;
@@ -1225,42 +1239,45 @@ export class CanvasEngine {
       y: drag.view.root.position.y,
     });
     const token = drag.view.token;
-    if (dropHex.q === token.q && dropHex.r === token.r) {
+    const outcome =
+      dropHex.q === token.q && dropHex.r === token.r
+        ? 'denied'
+        : this.dispatchMove(token, dropHex);
+    if (outcome !== 'moved') {
+      // Snap home: the move became a request (ghost shows the destination)
+      // or didn't happen at all.
       const p = hexToPixel(this.layout, token);
       drag.view.targetX = p.x;
       drag.view.targetY = p.y;
-      return;
     }
+  }
+
+  /**
+   * Send `token` toward a destination hex, honoring the same rules as a drag:
+   * players on approval maps declare a request, step-mode limits players to
+   * one hex, and a DM holding Alt teleports (no explored trail).
+   */
+  private dispatchMove(token: Token, dropHex: HexCoord): 'moved' | 'requested' | 'denied' {
     const map = this.lastMap;
-    // DM-approved travel: the drag becomes a request; the token snaps home
-    // and a ghost shows the declared destination until the DM resolves it.
+    // DM-approved travel: the move becomes a request; a ghost shows the
+    // declared destination until the DM resolves it.
     if (this.role !== 'dm' && map?.moveApproval) {
-      const p = hexToPixel(this.layout, token);
-      drag.view.targetX = p.x;
-      drag.view.targetY = p.y;
       send({ kind: 'move.request', tokenId: token.id, q: dropHex.q, r: dropHex.r });
       useSession.getState().pushToast({
         kind: 'info',
         title: 'Travel declared',
         text: 'Waiting for the DM to resolve your move.',
       });
-      return;
+      return 'requested';
     }
     // Step-mode limit for players (server validates too).
-    if (
-      this.role !== 'dm' &&
-      map?.moveMode === 'step' &&
-      hexDistance(token, dropHex) > 1
-    ) {
-      const p = hexToPixel(this.layout, token);
-      drag.view.targetX = p.x;
-      drag.view.targetY = p.y;
+    if (this.role !== 'dm' && map?.moveMode === 'step' && hexDistance(token, dropHex) > 1) {
       useSession.getState().pushToast({
         kind: 'info',
         title: 'One hex at a time',
         text: 'This map only allows single-hex steps.',
       });
-      return;
+      return 'denied';
     }
     const teleport = this.role === 'dm' && useUi.getState().altTeleport;
     useSession.getState().optimisticTokenMove(token.id, dropHex.q, dropHex.r);
@@ -1280,6 +1297,7 @@ export class CanvasEngine {
     if (teleport) {
       useSession.getState().pushToast({ kind: 'info', title: 'Teleported', text: `${token.label || 'Token'} moved without leaving a trail.` });
     }
+    return 'moved';
   }
 
   // -- ticker ----------------------------------------------------------------

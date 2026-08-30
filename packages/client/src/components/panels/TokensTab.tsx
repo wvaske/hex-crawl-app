@@ -4,6 +4,7 @@ import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Field, Input, Section, Toggle } from '../../ui/kit.js';
+import { SendTokenButton } from '../SendTokenButton.js';
 
 export function TokensTab() {
   const state = useSession((s) => s.state);
@@ -134,6 +135,7 @@ function TokenRow({ token }: { token: Token }) {
           {token.q},{token.r}
         </span>
       </button>
+      <SendTokenButton tokenId={token.id} name={token.label || 'token'} />
       <button
         className={`text-xs cursor-pointer ${token.partyId ? '' : 'opacity-35 grayscale'}`}
         title={
