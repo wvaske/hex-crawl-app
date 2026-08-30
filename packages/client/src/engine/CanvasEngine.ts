@@ -830,6 +830,19 @@ export class CanvasEngine {
     return pin;
   }
 
+  /** Disabled content: dimmed with a red X — staged, not live for players. */
+  private markDisabled(pin: Container): void {
+    pin.alpha *= 0.45;
+    const x = new Text({
+      text: '❌',
+      style: { fontSize: PIN_BASE_FONT * 0.55 },
+      resolution: 2,
+    });
+    x.anchor.set(0.5);
+    x.position.set(0, 0);
+    pin.addChild(x);
+  }
+
   private drawPins(): void {
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
     if (!this.layout) return;
@@ -880,7 +893,7 @@ export class CanvasEngine {
             'clues' in content && content.clues.some((cl) => discoveredClues.has(cl.id));
           pin.alpha *= known ? 1 : 0.25;
         }
-        if ('enabled' in content && content.enabled === false) pin.alpha *= 0.3;
+        if ('enabled' in content && content.enabled === false) this.markDisabled(pin);
         this.pinsC.addChild(pin);
         continue;
       }
@@ -904,7 +917,7 @@ export class CanvasEngine {
           'clues' in content && content.clues.some((cl) => discoveredClues.has(cl.id));
         pin.alpha *= known ? 1 : 0.25;
       }
-      if ('enabled' in content && content.enabled === false) pin.alpha *= 0.3;
+      if ('enabled' in content && content.enabled === false) this.markDisabled(pin);
       this.pinsC.addChild(pin);
     }
 

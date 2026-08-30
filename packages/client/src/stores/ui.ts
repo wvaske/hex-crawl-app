@@ -87,7 +87,7 @@ export const useUi = create<UiStore>((set) => ({
   contentSelection: null,
   pinPopup: null,
   viewedMapId: null,
-  dimUnexplored: false,
+  dimUnexplored: true,
   altTeleport: false,
 
   set: (key, value) => set({ [key]: value } as Partial<UiStore>),
