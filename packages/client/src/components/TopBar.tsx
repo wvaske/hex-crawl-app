@@ -39,6 +39,26 @@ function ScaleControl({ baseMiles }: { baseMiles: number }) {
   );
 }
 
+function DimToggle() {
+  const dim = useUi((s) => s.dimUnexplored);
+  const setUi = useUi((s) => s.set);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setUi('dimUnexplored', !dim)}
+      className={dim ? '!text-brass-300' : ''}
+      title={
+        dim
+          ? 'Dimming pins on unexplored hexes — click to show all pins at full strength'
+          : 'Dim pins the party has not uncovered (hidden hexes faint, explored dimmed)'
+      }
+    >
+      {dim ? '◐' : '○'}
+    </Button>
+  );
+}
+
 export function TopBar({
   campaignId: _campaignId,
   onRecenter,
@@ -116,6 +136,7 @@ export function TopBar({
         title={status === 'open' ? 'Connected' : status}
       />
 
+      {role === 'dm' && <DimToggle />}
       <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
         ⌖
       </Button>

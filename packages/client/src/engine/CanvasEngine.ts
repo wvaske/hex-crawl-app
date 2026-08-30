@@ -194,6 +194,9 @@ export class CanvasEngine {
       if (u.scaleLock !== prev.scaleLock) {
         this.updateScaleLevel();
       }
+      if (u.dimUnexplored !== prev.dimUnexplored) {
+        this.drawPins();
+      }
       if (
         u.tool !== prev.tool ||
         u.selectedHex !== prev.selectedHex ||
@@ -266,6 +269,7 @@ export class CanvasEngine {
     if (layoutChanged || !fogCellsEqual(ms.fog, this.lastFog)) {
       this.lastFog = ms.fog;
       this.viewDirty = true; // fog drawn with view-dependent cover
+      if (useUi.getState().dimUnexplored && this.role === 'dm') this.drawPins();
     }
     if (styleChanged) this.viewDirty = true;
 
@@ -703,6 +707,12 @@ export class CanvasEngine {
     const size = this.layout.size;
     const hexWidth = size * 2; // flat-top hex width; the "covers a hex" yardstick
 
+    // DM aid: dim pins the party has not uncovered yet.
+    const dimUnexplored = useUi.getState().dimUnexplored && this.role === 'dm';
+    const fogByKey = dimUnexplored
+      ? new Map(this.lastFog.map((f) => [hexKey(f.q, f.r), f.state]))
+      : null;
+
     for (const content of this.lastContents) {
       if (content.scaleVisibility < this.scaleLevel) continue;
       const glyph = content.glyph || CONTENT_TYPE_GLYPHS[content.type];
@@ -720,6 +730,10 @@ export class CanvasEngine {
       });
       const center = hexToPixel(this.layout, { q: content.q, r: content.r });
       pin.position.set(center.x, center.y);
+      if (fogByKey) {
+        const fog = fogByKey.get(hexKey(content.q, content.r)) ?? 'hidden';
+        pin.alpha *= fog === 'visible' ? 1 : fog === 'explored' ? 0.6 : 0.25;
+      }
       this.pinsC.addChild(pin);
     }
 
