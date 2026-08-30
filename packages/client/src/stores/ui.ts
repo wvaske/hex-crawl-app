@@ -38,6 +38,8 @@ interface UiStore {
   movingContentId: string | null;
   /** Player-chosen map for this session (null = follow the DM default). */
   viewedMapId: string | null;
+  /** DM view aid: dim location pins on hexes the party hasn't explored. */
+  dimUnexplored: boolean;
 
   set<K extends keyof UiStore>(key: K, value: UiStore[K]): void;
   setTool(tool: Tool): void;
@@ -64,6 +66,7 @@ export const useUi = create<UiStore>((set) => ({
   currentScale: 0,
   movingContentId: null,
   viewedMapId: null,
+  dimUnexplored: false,
 
   set: (key, value) => set({ [key]: value } as Partial<UiStore>),
   setTool: (tool) => set({ tool, measureStart: null }),
