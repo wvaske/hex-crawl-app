@@ -50,8 +50,8 @@ function DimToggle() {
       className={dim ? '!text-brass-300' : ''}
       title={
         dim
-          ? 'Dimming pins on unexplored hexes — click to show all pins at full strength'
-          : 'Dim pins the party has not uncovered (hidden hexes faint, explored dimmed)'
+          ? "Dimming what players can't see — full-strength pins are the party's knowledge. Click to disable."
+          : "See what the players see: dim undiscovered locations and hidden markers"
       }
     >
       {dim ? '◐' : '○'}
@@ -136,6 +136,16 @@ export function TopBar({
         title={status === 'open' ? 'Connected' : status}
       />
 
+      {role === 'dm' && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => send({ kind: 'undo' })}
+          title="Undo the last change (fog, terrain, moves, deletes) — or press Ctrl/Cmd+Z"
+        >
+          ↶
+        </Button>
+      )}
       {role === 'dm' && <DimToggle />}
       <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
         ⌖

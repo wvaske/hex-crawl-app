@@ -228,6 +228,14 @@ function ApplyFogToAll() {
           // Image failed to load; skip its footprint.
         }
       }
+      if (
+        cells.size > 0 &&
+        !confirm(
+          `Set ${cells.size.toLocaleString()} hexes to "${fogTarget}"? This replaces the fog state of the whole map (you can Undo afterwards).`,
+        )
+      ) {
+        return;
+      }
       if (cells.size === 0) {
         session.pushToast({
           kind: 'info',
@@ -238,9 +246,8 @@ function ApplyFogToAll() {
       }
       const all = [...cells.values()];
       session.optimisticFog(map.id, all, fogTarget);
-      for (let i = 0; i < all.length; i += 5000) {
-        send({ kind: 'fog.set', mapId: map.id, cells: all.slice(i, i + 5000), state: fogTarget });
-      }
+      // One command = one undo step (the server accepts large cell batches).
+      send({ kind: 'fog.set', mapId: map.id, cells: all, state: fogTarget });
       session.pushToast({
         kind: 'info',
         title: 'Fog updated',

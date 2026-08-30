@@ -271,6 +271,79 @@ describe('seat recovery', () => {
   });
 });
 
+describe('undo', () => {
+  it('one undo reverts an entire bulk fog change (the apply-to-all disaster case)', () => {
+    const mapId = activeMapId();
+    // Months of hand-tuning: a mixed fog landscape.
+    dm({ kind: 'fog.set', mapId, cells: [{ q: 0, r: 0 }, { q: 1, r: 0 }], state: 'visible' } as never);
+    // New undo entry (outside the merge window).
+    runtime.undoStack[runtime.undoStack.length - 1]!.at -= 10000;
+    dm({ kind: 'fog.set', mapId, cells: [{ q: 2, r: 0 }], state: 'explored' } as never);
+    runtime.undoStack[runtime.undoStack.length - 1]!.at -= 10000;
+    const rt = runtime.requireMap(mapId);
+    expect(rt.fog.get(hexKey(0, 0))).toBe('visible');
+    expect(rt.fog.get(hexKey(2, 0))).toBe('explored');
+
+    // Disaster: set EVERYTHING visible in one bulk command.
+    const all = [];
+    for (let q = -3; q <= 3; q++) for (let r = -3; r <= 3; r++) all.push({ q, r });
+    dm({ kind: 'fog.set', mapId, cells: all, state: 'visible' } as never);
+    expect(rt.fog.get(hexKey(2, 0))).toBe('visible');
+    expect(rt.fog.size).toBeGreaterThan(20);
+
+    // One undo restores the hand-tuned landscape exactly.
+    dm({ kind: 'undo' } as never);
+    expect(rt.fog.get(hexKey(0, 0))).toBe('visible');
+    expect(rt.fog.get(hexKey(1, 0))).toBe('visible');
+    expect(rt.fog.get(hexKey(2, 0))).toBe('explored');
+    expect(rt.fog.get(hexKey(3, 0))).toBeUndefined(); // back to hidden
+    expect(rt.fog.size).toBe(3);
+  });
+
+  it('brush-stroke chunks merge into one undo entry; terrain restores priors', () => {
+    const mapId = activeMapId();
+    dm({ kind: 'terrain.paint', mapId, cells: [{ q: 0, r: 0 }], terrain: 'forest' } as never);
+    runtime.undoStack[runtime.undoStack.length - 1]!.at -= 10000;
+    const before = runtime.undoStack.length;
+    // Two chunks of the same stroke, close in time -> one entry.
+    dm({ kind: 'terrain.paint', mapId, cells: [{ q: 0, r: 0 }, { q: 1, r: 0 }], terrain: 'swamp' } as never);
+    dm({ kind: 'terrain.paint', mapId, cells: [{ q: 2, r: 0 }], terrain: 'swamp' } as never);
+    expect(runtime.undoStack.length).toBe(before + 1);
+    dm({ kind: 'undo' } as never);
+    const rt = runtime.requireMap(mapId);
+    expect(rt.hexes.get(hexKey(0, 0))).toBe('forest'); // earliest prior wins
+    expect(rt.hexes.get(hexKey(1, 0))).toBeUndefined();
+    expect(rt.hexes.get(hexKey(2, 0))).toBeUndefined();
+  });
+
+  it('token moves, content deletes, and empty-stack behave', () => {
+    const { mapId, tokenId } = setupPartyWithScout();
+    const token = runtime.findToken(tokenId)!;
+    const home = { q: token.q, r: token.r };
+    dm({ kind: 'token.move', tokenId, q: 3, r: -1 } as never);
+    dm({ kind: 'undo' } as never);
+    expect(runtime.findToken(tokenId)).toMatchObject(home);
+
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 8, r: 0, type: 'ruin', title: 'Doomed Fort', dmNotes: 'x', glyph: '',
+        clues: [{ id: null, text: 'rubble', gate: { kind: 'auto' }, sortOrder: 0 }],
+      },
+    } as never);
+    const content = [...runtime.requireMap(mapId).contents.values()].find((c) => c.title === 'Doomed Fort')!;
+    dm({ kind: 'content.delete', contentId: content.id } as never);
+    expect(runtime.requireMap(mapId).contents.has(content.id)).toBe(false);
+    dm({ kind: 'undo' } as never);
+    expect(runtime.requireMap(mapId).contents.get(content.id)?.title).toBe('Doomed Fort');
+
+    runtime.undoStack.length = 0;
+    expect(() => dm({ kind: 'undo' } as never)).toThrow(/Nothing to undo/);
+    const player = runtime.createSeat('player', 'Nope');
+    expect(() => asSeat(player, { kind: 'undo' } as never)).toThrow(/DM/);
+  });
+});
+
 describe('narration', () => {
   it('narrate to all is visible to players; dm log entries are not', () => {
     const { playerSeat } = setupPartyWithScout();

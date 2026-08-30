@@ -48,6 +48,18 @@ export interface MapRuntime {
 }
 
 const LOG_MEMORY_LIMIT = 500;
+const UNDO_STACK_LIMIT = 100;
+
+/** One undoable change. Held in memory only (drops on server restart). */
+export interface UndoEntry {
+  at: number;
+  kind: string;
+  mapId?: string;
+  description: string;
+  /** For mergeable cell ops: cell key -> value to restore. */
+  restore?: Map<string, unknown>;
+  run: (runtime: CampaignRuntime) => void;
+}
 
 /**
  * All state for one campaign, held in memory and written through to SQLite
@@ -69,6 +81,8 @@ export class CampaignRuntime {
   log: LogEntry[] = [];
   /** Seat ids currently connected (managed by the hub). */
   online = new Set<string>();
+  /** DM undo history (in-memory; newest last). */
+  undoStack: UndoEntry[] = [];
 
   constructor(
     private db: DB,
@@ -573,15 +587,23 @@ export class CampaignRuntime {
 
   // -- terrain & fog ---------------------------------------------------------
 
-  paintTerrain(mapId: string, cells: { q: number; r: number }[], terrain: TerrainId | null): void {
+  paintTerrain(
+    mapId: string,
+    cells: { q: number; r: number }[],
+    terrain: TerrainId | null,
+  ): { q: number; r: number; prev: TerrainId | null }[] {
     const rt = this.requireMap(mapId);
     const del = this.db.prepare('DELETE FROM hex WHERE map_id = ? AND q = ? AND r = ?');
     const put = this.db.prepare(
       'INSERT INTO hex (map_id, q, r, terrain) VALUES (?,?,?,?) ON CONFLICT(map_id,q,r) DO UPDATE SET terrain=excluded.terrain',
     );
+    const changed: { q: number; r: number; prev: TerrainId | null }[] = [];
     const tx = this.db.transaction(() => {
       for (const c of cells) {
         const key = hexKey(c.q, c.r);
+        const prev = rt.hexes.get(key) ?? null;
+        if (prev === terrain) continue;
+        changed.push({ q: c.q, r: c.r, prev });
         if (terrain === null) {
           rt.hexes.delete(key);
           del.run(mapId, c.q, c.r);
@@ -592,6 +614,7 @@ export class CampaignRuntime {
       }
     });
     tx();
+    return changed;
   }
 
   /** Set fog state; returns only the cells that actually changed. */
@@ -599,9 +622,9 @@ export class CampaignRuntime {
     mapId: string,
     cells: { q: number; r: number }[],
     state: FogState,
-  ): { q: number; r: number; state: FogState }[] {
+  ): { q: number; r: number; state: FogState; prev: FogState }[] {
     const rt = this.requireMap(mapId);
-    const changed: { q: number; r: number; state: FogState }[] = [];
+    const changed: { q: number; r: number; state: FogState; prev: FogState }[] = [];
     const del = this.db.prepare('DELETE FROM fog WHERE map_id = ? AND q = ? AND r = ?');
     const put = this.db.prepare(
       'INSERT INTO fog (map_id, q, r, state) VALUES (?,?,?,?) ON CONFLICT(map_id,q,r) DO UPDATE SET state=excluded.state',
@@ -618,7 +641,7 @@ export class CampaignRuntime {
           rt.fog.set(key, state);
           put.run(mapId, c.q, c.r, state);
         }
-        changed.push({ q: c.q, r: c.r, state });
+        changed.push({ q: c.q, r: c.r, state, prev });
       }
     });
     tx();
@@ -833,6 +856,11 @@ export class CampaignRuntime {
   }
 
   // -- log -------------------------------------------------------------------
+
+  pushUndo(entry: UndoEntry): void {
+    this.undoStack.push(entry);
+    if (this.undoStack.length > UNDO_STACK_LIMIT) this.undoStack.shift();
+  }
 
   appendLog(kind: string, text: string, visibility: string, data: Record<string, unknown> = {}): LogEntry {
     const entry: LogEntry = { id: nanoid(12), at: Date.now(), kind, text, visibility, data };
