@@ -90,6 +90,8 @@ export function contentPlayerView(
     title: content.title,
     glyph: content.glyph,
     showLabel: content.showLabel,
+    scaleVisibility: content.scaleVisibility,
+    wikiPage: content.wikiPage,
     discoveredClues: mine
       .sort((a, b) => a.at - b.at)
       .map((d) => ({ clueId: d.clueId, text: clueText.get(d.clueId) ?? '', at: d.at })),

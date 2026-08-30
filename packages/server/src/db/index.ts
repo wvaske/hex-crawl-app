@@ -189,6 +189,8 @@ function migrate(d: DB): void {
   `);
   // Additive migrations for columns introduced after first release.
   ensureColumn(d, 'content', 'show_label', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'content', 'scale_visibility', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn(d, 'content', 'wiki_page', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(d, 'image_layer', 'visible', 'INTEGER NOT NULL DEFAULT 1');
 }
 

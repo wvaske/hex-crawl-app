@@ -80,6 +80,17 @@ wss.on(
         return;
       }
       const cmd = result.data;
+      // view.map is per-connection state, not campaign state.
+      if (cmd.kind === 'view.map') {
+        if (!runtime.maps.has(cmd.mapId)) {
+          hub.send(conn, { type: 'error', commandId: cmd.id, message: 'Map not found' });
+          return;
+        }
+        conn.viewedMapId = cmd.mapId;
+        hub.sendSnapshot(conn);
+        hub.send(conn, { type: 'ack', commandId: cmd.id });
+        return;
+      }
       try {
         // Re-resolve the seat each command: character claims may have changed.
         dispatchCommand(cmd, { runtime, seat: ctx.seat, hub, rng });

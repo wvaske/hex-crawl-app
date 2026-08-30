@@ -10,6 +10,15 @@ import {
   parseHexKey,
 } from './coords.js';
 import { hexCorners, hexToPixel, pixelToHex, type HexLayout } from './layout.js';
+import {
+  SUPER_SCALE,
+  clusterIndex,
+  fineToIndex,
+  superCenter,
+  superCornerOffsets,
+  superMembers,
+  superMembersOf,
+} from './super.js';
 
 describe('hex keys', () => {
   it('round-trips', () => {
@@ -100,5 +109,71 @@ describe('layout pixel conversion', () => {
         expect(d).toBeCloseTo(layout.size, 6);
       }
     }
+  });
+});
+
+describe('7-hex superclusters', () => {
+  it('every hex belongs to exactly one cluster whose center is within distance 1', () => {
+    for (let q = -12; q <= 12; q++) {
+      for (let r = -12; r <= 12; r++) {
+        const c = superCenter({ q, r }, 1);
+        expect(hexDistance({ q, r }, c)).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('clusters partition the plane into cells of exactly 7', () => {
+    const byCluster = new Map<string, number>();
+    for (let q = -20; q <= 20; q++) {
+      for (let r = -20; r <= 20; r++) {
+        const idx = clusterIndex({ q, r });
+        const key = `${idx.q},${idx.r}`;
+        byCluster.set(key, (byCluster.get(key) ?? 0) + 1);
+      }
+    }
+    // Interior clusters (away from the scan edge) must have exactly 7 members.
+    for (const [key, count] of byCluster) {
+      const [i, r] = key.split(',').map(Number);
+      const center = superCenter({ q: 2 * i! - r!, r: i! + 3 * r! }, 0);
+      if (Math.abs(center.q) <= 12 && Math.abs(center.r) <= 12) {
+        expect(count).toBe(7);
+      }
+    }
+  });
+
+  it('superMembers returns 7 at level 1 and 49 at level 2, consistent with membership', () => {
+    const h = { q: 5, r: -3 };
+    const idx1 = fineToIndex(h, 1);
+    const members1 = superMembers(idx1, 1);
+    expect(members1).toHaveLength(7);
+    expect(members1.some((m) => m.q === h.q && m.r === h.r)).toBe(true);
+    for (const m of members1) {
+      expect(fineToIndex(m, 1)).toEqual(idx1);
+    }
+    const members2 = superMembersOf(h, 2);
+    expect(members2).toHaveLength(49);
+    const idx2 = fineToIndex(h, 2);
+    for (const m of members2) {
+      expect(fineToIndex(m, 2)).toEqual(idx2);
+    }
+  });
+
+  it('level-2 centers agree between chain and direct computation', () => {
+    for (let q = -9; q <= 9; q += 3) {
+      for (let r = -9; r <= 9; r += 3) {
+        const c2 = superCenter({ q, r }, 2);
+        // The level-2 center must itself be in the same level-2 cell.
+        expect(fineToIndex(c2, 2)).toEqual(fineToIndex({ q, r }, 2));
+      }
+    }
+  });
+
+  it('corner offsets scale by sqrt(7) per level', () => {
+    const layout = { orientation: 'flat' as const, size: 12, origin: { x: 0, y: 0 } };
+    const c1 = superCornerOffsets(layout, 1);
+    const r1 = Math.hypot(c1[0]!.x, c1[0]!.y);
+    expect(r1).toBeCloseTo(12 * SUPER_SCALE, 6);
+    const c2 = superCornerOffsets(layout, 2);
+    expect(Math.hypot(c2[0]!.x, c2[0]!.y)).toBeCloseTo(12 * 7, 6);
   });
 });

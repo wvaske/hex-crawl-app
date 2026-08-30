@@ -7,6 +7,8 @@ export interface Conn {
   ws: WebSocket;
   runtime: CampaignRuntime;
   seat: SeatRecord;
+  /** Map this connection is browsing; null follows the campaign default. */
+  viewedMapId?: string | null;
 }
 
 const SYNC_COALESCE_MS = 40;
@@ -49,7 +51,7 @@ export class Hub {
   }
 
   sendSnapshot(conn: Conn): void {
-    const full = conn.runtime.buildFullState();
+    const full = conn.runtime.buildFullState(conn.viewedMapId);
     const state = filterStateForViewer(full, this.viewerFor(conn.seat));
     this.send(conn, { type: 'snapshot', seatId: conn.seat.id, role: conn.seat.role, state });
   }
@@ -102,8 +104,15 @@ export class Hub {
         this.pendingSync.delete(runtime.id);
         const room = this.rooms.get(runtime.id);
         if (!room) return;
-        const full = runtime.buildFullState();
+        // Connections may be browsing different maps; build one full state per map.
+        const fullByMap = new Map<string, ReturnType<CampaignRuntime['buildFullState']>>();
         for (const conn of room) {
+          const key = conn.viewedMapId ?? '__default__';
+          let full = fullByMap.get(key);
+          if (!full) {
+            full = runtime.buildFullState(conn.viewedMapId);
+            fullByMap.set(key, full);
+          }
           const state = filterStateForViewer(full, this.viewerFor(conn.seat));
           this.send(conn, { type: 'snapshot', seatId: conn.seat.id, role: conn.seat.role, state });
         }

@@ -85,6 +85,8 @@ export type FogState = z.infer<typeof FogStateSchema>;
 export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
   description: z.string().max(2000).default(''),
+  /** Base URL for wiki links on content (page titles are appended). */
+  wikiBaseUrl: z.string().max(300).default('https://wiki.deeznuts.wiki/wiki/'),
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 
@@ -342,6 +344,10 @@ export const ContentSchema = z.object({
   glyph: z.string().max(8).default(''),
   /** Render the title as an always-on map label (major towns and the like). */
   showLabel: z.boolean().default(false),
+  /** Coarsest hex scale the pin is visible at: 0=fine only, 1=+mid, 2=all. */
+  scaleVisibility: z.number().int().min(0).max(2).default(1),
+  /** Wiki page title (or full URL) players can read for more information. */
+  wikiPage: z.string().max(300).default(''),
   clues: z.array(ClueSchema),
 });
 export type Content = z.infer<typeof ContentSchema>;
@@ -386,6 +392,8 @@ export const ContentPlayerViewSchema = z.object({
   title: z.string(),
   glyph: z.string(),
   showLabel: z.boolean().default(false),
+  scaleVisibility: z.number().int().min(0).max(2).default(1),
+  wikiPage: z.string().default(''),
   discoveredClues: z.array(
     z.object({ clueId: z.string(), text: z.string(), at: z.number() }),
   ),

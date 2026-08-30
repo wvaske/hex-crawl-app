@@ -22,6 +22,16 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
               }
             />
           </Field>
+          <Field label="Wiki base URL (for content wiki links)">
+            <Input
+              defaultValue={state.campaign.settings.wikiBaseUrl}
+              key={state.campaign.settings.wikiBaseUrl}
+              onBlur={(e) =>
+                e.target.value !== state.campaign.settings.wikiBaseUrl &&
+                send({ kind: 'campaign.update', settings: { wikiBaseUrl: e.target.value } })
+              }
+            />
+          </Field>
           <Field label="Description (shown on the join page)">
             <TextArea
               rows={3}
