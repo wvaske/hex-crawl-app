@@ -36,6 +36,8 @@ interface UiStore {
   currentScale: 0 | 1 | 2;
   /** DM armed "click to move this content" mode. */
   movingContentId: string | null;
+  /** Armed "click a destination hex to send this token there" mode. */
+  movingTokenId: string | null;
   /** Player-chosen map for this session (null = follow the DM default). */
   viewedMapId: string | null;
   /** DM view aid: dim location pins on hexes the party hasn't explored. */
@@ -67,6 +69,7 @@ export const useUi = create<UiStore>((set) => ({
   scaleLock: 'auto',
   currentScale: 0,
   movingContentId: null,
+  movingTokenId: null,
   viewedMapId: null,
   dimUnexplored: false,
   altTeleport: false,
