@@ -3,6 +3,7 @@ import {
   CONTENT_TYPE_GLYPHS,
   CORE_SKILLS,
   TERRAINS,
+  compassDirection,
   isFullContent,
   describeGate,
   hexKey,
@@ -161,6 +162,8 @@ export function InspectTab() {
         </div>
       </Section>
 
+      <TrailInfo hex={hex} isDm={isDm} />
+
       {(isDm || myCharacterId) && <SearchHex mapId={map.id} hex={hex} isDm={isDm} />}
 
       {!isDm && !myCharacterId && (
@@ -169,6 +172,68 @@ export function InspectTab() {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Trail knowledge for the inspected hex. Players see the signs their
+ * character has found (where the tracks lead and came from); the DM sees
+ * every trail crossing the hex with its position along the route.
+ */
+function TrailInfo({ hex, isDm }: { hex: { q: number; r: number }; isDm: boolean }) {
+  const state = useSession((s) => s.state);
+  const map = activeMap(state);
+  if (!state?.mapState || !map) return null;
+
+  if (!isDm) {
+    const signs = state.mapState.trailSigns.filter((s) => s.q === hex.q && s.r === hex.r);
+    if (signs.length === 0) return null;
+    return (
+      <Section title="Tracks">
+        <ul className="space-y-1.5">
+          {signs.map((s, i) => (
+            <li key={i} className="text-sm text-ink-100">
+              {s.glyph}{' '}
+              {s.forward
+                ? <>The trail continues <span className="text-brass-300">to the {s.forward}</span></>
+                : 'The trail ends here'}
+              {s.backward && (
+                <span className="text-ink-400"> · back-trail {s.backward}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </Section>
+    );
+  }
+
+  const crossing = state.mapState.trails
+    .map((t) => ({ trail: t, idx: t.cells.findIndex((c) => c.q === hex.q && c.r === hex.r) }))
+    .filter((x) => x.idx >= 0);
+  if (crossing.length === 0) return null;
+  return (
+    <Section title="Trails here">
+      <ul className="space-y-1.5">
+        {crossing.map(({ trail, idx }) => {
+          const next = trail.cells[idx + 1];
+          const prev = trail.cells[idx - 1];
+          return (
+            <li key={trail.id} className="text-sm text-ink-100">
+              {trail.glyph} <span className="font-medium">{trail.name}</span>
+              <span className="block text-xs text-ink-400">
+                cell {idx + 1}/{trail.cells.length}
+                {next && ` · onward ${compassDirection(hex, next, map.orientation)}`}
+                {prev && ` · back ${compassDirection(hex, prev, map.orientation)}`}
+                {' · '}
+                {trail.gate.kind === 'skill'
+                  ? `${trail.gate.skill} DC ${trail.gate.dc}`
+                  : 'obvious'}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
   );
 }
 

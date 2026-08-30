@@ -186,16 +186,42 @@ export function Toolbar() {
  * A saved trail "pushes": each walked cell tells its finder the way onward
  * and back, never the whole route.
  */
+const TRAIL_SKILLS = ['survival', 'nature', 'perception', 'investigation'] as const;
+
 function TrailOptions() {
   const draft = useUi((s) => s.trailDraft);
+  const editingTrailId = useUi((s) => s.editingTrailId);
   const state = useSession((s) => s.state);
   const map = activeMap(state);
   const trails = state?.mapState?.trails ?? [];
   const [name, setName] = useState('');
-  const [mode, setMode] = useState<'auto' | 'survival'>('auto');
+  const [skill, setSkill] = useState<'auto' | (typeof TRAIL_SKILLS)[number]>('auto');
   const [dc, setDc] = useState('12');
 
   if (!map) return null;
+  const editing = editingTrailId ? trails.find((t) => t.id === editingTrailId) : undefined;
+
+  const reset = () => {
+    useUi.getState().set('trailDraft', []);
+    useUi.getState().set('editingTrailId', null);
+    setName('');
+    setSkill('auto');
+    setDc('12');
+  };
+
+  const startEdit = (trailId: string) => {
+    const t = trails.find((x) => x.id === trailId);
+    if (!t) return;
+    useUi.getState().set('editingTrailId', t.id);
+    useUi.getState().set('trailDraft', [...t.cells]);
+    setName(t.name);
+    if (t.gate.kind === 'skill') {
+      setSkill((TRAIL_SKILLS as readonly string[]).includes(t.gate.skill) ? (t.gate.skill as (typeof TRAIL_SKILLS)[number]) : 'survival');
+      setDc(String(t.gate.dc));
+    } else {
+      setSkill('auto');
+    }
+  };
 
   const save = () => {
     if (draft.length < 2 || !name.trim()) return;
@@ -203,30 +229,30 @@ function TrailOptions() {
     send({
       kind: 'trail.upsert',
       trail: {
-        id: null,
+        id: editingTrailId,
         mapId: map.id,
         name: name.trim(),
-        glyph: '👣',
-        dmNotes: '',
+        glyph: editing?.glyph ?? '👣',
+        dmNotes: editing?.dmNotes ?? '',
         gate:
-          mode === 'auto'
+          skill === 'auto'
             ? { kind: 'auto' }
-            : { kind: 'skill', skill: 'survival', dc: dcNum, maxDistance: 0, mode: 'passive' },
+            : { kind: 'skill', skill, dc: dcNum, maxDistance: 0, mode: 'passive' },
         cells: draft,
       },
     });
-    useUi.getState().set('trailDraft', []);
-    setName('');
+    reset();
   };
 
   return (
     <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-52 overflow-y-auto space-y-2">
       <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">
-        Trail — {draft.length} cell{draft.length === 1 ? '' : 's'}
+        {editing ? `Editing: ${editing.name}` : 'New trail'} — {draft.length} cell
+        {draft.length === 1 ? '' : 's'}
       </p>
       <p className="text-[11px] text-ink-400">
-        Click hexes in order. Click the last cell again to step back. Walkers learn the direction
-        onward and back — never the whole route.
+        Click hexes in order; click the last cell again to step back. Walkers learn only the
+        direction onward and back.
       </p>
       <input
         className="w-full bg-ink-950 border border-ink-600 rounded px-2 py-1 text-xs text-ink-100"
@@ -237,14 +263,19 @@ function TrailOptions() {
       />
       <div className="flex items-center gap-1.5 text-[11px] text-ink-300">
         <select
-          className="flex-1 bg-ink-950 border border-ink-600 rounded px-1 py-0.5 cursor-pointer"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as 'auto' | 'survival')}
+          className="flex-1 bg-ink-950 border border-ink-600 rounded px-1 py-0.5 cursor-pointer capitalize"
+          value={skill}
+          onChange={(e) => setSkill(e.target.value as typeof skill)}
+          title="How each cell is noticed: obvious (walking on it), or a passive skill DC"
         >
           <option value="auto">Obvious (auto)</option>
-          <option value="survival">Survival check</option>
+          {TRAIL_SKILLS.map((s) => (
+            <option key={s} value={s}>
+              {s} check
+            </option>
+          ))}
         </select>
-        {mode === 'survival' && (
+        {skill !== 'auto' && (
           <input
             type="number"
             min={1}
@@ -252,7 +283,7 @@ function TrailOptions() {
             className="w-12 bg-ink-950 border border-ink-600 rounded px-1 py-0.5"
             value={dc}
             onChange={(e) => setDc(e.target.value)}
-            title="Passive Survival DC to notice each cell"
+            title={`Passive ${skill} DC to notice each cell (searchable via Search this hex too)`}
           />
         )}
       </div>
@@ -262,13 +293,13 @@ function TrailOptions() {
           disabled={draft.length < 2 || !name.trim()}
           onClick={save}
         >
-          Save trail
+          {editing ? 'Save changes' : 'Save trail'}
         </button>
         <button
           className="px-2 py-1 rounded text-xs cursor-pointer text-ink-300 border border-ink-600 hover:bg-ink-700"
-          onClick={() => useUi.getState().set('trailDraft', [])}
+          onClick={reset}
         >
-          Clear
+          {editing ? 'Cancel' : 'Clear'}
         </button>
       </div>
       {trails.length > 0 && (
@@ -277,8 +308,19 @@ function TrailOptions() {
             <div key={t.id} className="flex items-center gap-1.5 text-xs text-ink-200">
               <span className="truncate flex-1">
                 {t.glyph} {t.name}
-                <span className="text-ink-400"> · {t.cells.length}</span>
+                <span className="text-ink-400">
+                  {' '}
+                  · {t.cells.length} ·{' '}
+                  {t.gate.kind === 'skill' ? `${t.gate.skill} ${t.gate.dc}` : 'auto'}
+                </span>
               </span>
+              <button
+                className="text-ink-400 hover:text-brass-300 cursor-pointer"
+                title="Edit this trail: nodes load into the draft; adjust, then Save changes"
+                onClick={() => startEdit(t.id)}
+              >
+                ✎
+              </button>
               <button
                 className="text-ink-400 hover:text-ember-500 cursor-pointer"
                 title="Delete trail"

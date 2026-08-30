@@ -1331,12 +1331,35 @@ export class CanvasEngine {
         case 'trail': {
           if (!isDm) return;
           const draft = useUi.getState().trailDraft;
-          const last = draft[draft.length - 1];
-          // Clicking the last cell again removes it (undo one step).
-          if (last && last.q === hex.q && last.r === hex.r) {
-            useUi.getState().set('trailDraft', draft.slice(0, -1));
-          } else {
+          const idx = draft.findIndex((c) => c.q === hex.q && c.r === hex.r);
+          if (idx >= 0) {
+            // Clicking an existing node removes it (neighbors reconnect).
+            useUi.getState().set('trailDraft', draft.filter((_, i) => i !== idx));
+          } else if (draft.length < 2) {
             useUi.getState().set('trailDraft', [...draft, hex]);
+          } else {
+            // Insert into whichever segment grows the least — so clicking
+            // between two nodes bends that segment, and clicking past the
+            // end extends the trail.
+            let best = draft.length; // append
+            let bestCost = hexDistance(draft[draft.length - 1]!, hex);
+            const prependCost = hexDistance(hex, draft[0]!);
+            if (prependCost < bestCost) {
+              best = 0;
+              bestCost = prependCost;
+            }
+            for (let i = 0; i < draft.length - 1; i++) {
+              const a = draft[i]!;
+              const b = draft[i + 1]!;
+              const cost = hexDistance(a, hex) + hexDistance(hex, b) - hexDistance(a, b);
+              if (cost < bestCost) {
+                best = i + 1;
+                bestCost = cost;
+              }
+            }
+            const next = [...draft];
+            next.splice(best, 0, hex);
+            useUi.getState().set('trailDraft', next);
           }
           this.drawHighlight();
           break;
