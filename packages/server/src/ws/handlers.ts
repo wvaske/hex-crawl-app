@@ -11,8 +11,11 @@ import {
   EncounterCheckConfigSchema,
   GridStyleSchema,
   hexDistance,
+  hexKey,
+  parseHexKey,
   rollD20,
 } from '@hexcrawl/shared';
+import type { FogState, TerrainId } from '@hexcrawl/shared';
 import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
 import type { Hub } from './hub.js';
 import { applyAutoReveal } from '../engine/fog.js';
@@ -27,6 +30,61 @@ export interface Ctx {
 }
 
 type Handler = (cmd: never, ctx: Ctx) => void;
+
+/**
+ * Record an undoable cell operation (fog/terrain). Consecutive strokes of the
+ * same kind within a short window merge into one entry, keeping the EARLIEST
+ * prior value per cell — so one undo reverts a whole brush stroke or an
+ * apply-to-entire-map, not just its last chunk.
+ */
+function recordCellUndo(
+  ctx: Ctx,
+  kind: 'fog' | 'terrain',
+  mapId: string,
+  changed: { q: number; r: number; prev: unknown }[],
+): void {
+  if (!changed.length) return;
+  const top = ctx.runtime.undoStack[ctx.runtime.undoStack.length - 1];
+  const now = Date.now();
+  if (top && top.kind === kind && top.mapId === mapId && now - top.at < 3000 && top.restore) {
+    for (const c of changed) {
+      const key = hexKey(c.q, c.r);
+      if (!top.restore.has(key)) top.restore.set(key, c.prev);
+    }
+    top.at = now;
+    top.description = `${kind} change (${top.restore.size} hexes)`;
+    return;
+  }
+  const restore = new Map<string, unknown>(changed.map((c) => [hexKey(c.q, c.r), c.prev]));
+  ctx.runtime.pushUndo({
+    at: now,
+    kind,
+    mapId,
+    description: `${kind} change (${restore.size} hexes)`,
+    restore,
+    run: (runtime) => {
+      if (kind === 'fog') {
+        const byState = new Map<FogState, { q: number; r: number }[]>();
+        for (const [key, prev] of restore) {
+          const cell = parseHexKey(key);
+          const list = byState.get(prev as FogState) ?? [];
+          list.push(cell);
+          byState.set(prev as FogState, list);
+        }
+        for (const [state, cells] of byState) runtime.setFog(mapId, cells, state);
+      } else {
+        const byTerrain = new Map<TerrainId | null, { q: number; r: number }[]>();
+        for (const [key, prev] of restore) {
+          const cell = parseHexKey(key);
+          const list = byTerrain.get(prev as TerrainId | null) ?? [];
+          list.push(cell);
+          byTerrain.set(prev as TerrainId | null, list);
+        }
+        for (const [terrain, cells] of byTerrain) runtime.paintTerrain(mapId, cells, terrain);
+      }
+    },
+  });
+}
 
 function requireDm(ctx: Ctx): void {
   if (ctx.seat.role !== 'dm') throw new Error('Only the DM can do that');
@@ -146,12 +204,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   // -- terrain & fog ---------------------------------------------------------
   'terrain.paint': ((cmd: Extract<ClientCommand, { kind: 'terrain.paint' }>, ctx: Ctx) => {
     requireDm(ctx);
-    ctx.runtime.paintTerrain(cmd.mapId, cmd.cells, cmd.terrain);
+    const changed = ctx.runtime.paintTerrain(cmd.mapId, cmd.cells, cmd.terrain);
+    recordCellUndo(ctx, 'terrain', cmd.mapId, changed);
   }) as Handler,
 
   'fog.set': ((cmd: Extract<ClientCommand, { kind: 'fog.set' }>, ctx: Ctx) => {
     requireDm(ctx);
-    ctx.runtime.setFog(cmd.mapId, cmd.cells, cmd.state);
+    const changed = ctx.runtime.setFog(cmd.mapId, cmd.cells, cmd.state);
+    recordCellUndo(ctx, 'fog', cmd.mapId, changed);
   }) as Handler,
 
   // -- tokens ----------------------------------------------------------------
@@ -201,7 +261,21 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         if (dist > 1) throw new Error('You can only move one hex at a time');
       }
     }
+    const prevQ = token.q;
+    const prevR = token.r;
     const moved = ctx.runtime.updateToken(token.mapId, cmd.tokenId, { q: cmd.q, r: cmd.r });
+    if (ctx.seat.role === 'dm') {
+      ctx.runtime.pushUndo({
+        at: Date.now(),
+        kind: 'token.move',
+        description: `move ${token.label || 'token'} back to ${prevQ},${prevR}`,
+        run: (runtime) => {
+          if (runtime.findToken(cmd.tokenId)) {
+            runtime.updateToken(token.mapId, cmd.tokenId, { q: prevQ, r: prevR });
+          }
+        },
+      });
+    }
     afterPartyMoved(ctx, token.mapId, moved);
   }) as Handler,
 
@@ -227,7 +301,15 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 
   'marker.delete': ((cmd: Extract<ClientCommand, { kind: 'marker.delete' }>, ctx: Ctx) => {
     requireDm(ctx);
-    ctx.runtime.deleteMarker(cmd.markerId);
+    const removed = ctx.runtime.deleteMarker(cmd.markerId);
+    if (removed) {
+      ctx.runtime.pushUndo({
+        at: Date.now(),
+        kind: 'marker.delete',
+        description: `restore ${removed.glyph} marker`,
+        run: (runtime) => runtime.placeMarker(removed),
+      });
+    }
   }) as Handler,
 
   // -- characters & seats ----------------------------------------------------
@@ -310,7 +392,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       if (c) { found = c; break; }
     }
     if (!found) throw new Error('Content not found');
+    const prev = { ...found };
     ctx.runtime.upsertContent({ ...found, q: cmd.q, r: cmd.r });
+    ctx.runtime.pushUndo({
+      at: Date.now(),
+      kind: 'content.move',
+      description: `move "${found.title}" back`,
+      run: (runtime) => runtime.upsertContent(prev),
+    });
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, found.mapId));
   }) as Handler,
 
@@ -321,7 +410,15 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 
   'content.delete': ((cmd: Extract<ClientCommand, { kind: 'content.delete' }>, ctx: Ctx) => {
     requireDm(ctx);
-    ctx.runtime.deleteContent(cmd.contentId);
+    const removed = ctx.runtime.deleteContent(cmd.contentId);
+    if (removed) {
+      ctx.runtime.pushUndo({
+        at: Date.now(),
+        kind: 'content.delete',
+        description: `restore "${removed.title}"`,
+        run: (runtime) => runtime.upsertContent(removed),
+      });
+    }
   }) as Handler,
 
   'clue.reveal': ((cmd: Extract<ClientCommand, { kind: 'clue.reveal' }>, ctx: Ctx) => {
@@ -435,6 +532,17 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   'encounterTable.delete': ((cmd: Extract<ClientCommand, { kind: 'encounterTable.delete' }>, ctx: Ctx) => {
     requireDm(ctx);
     ctx.runtime.deleteEncounterTable(cmd.tableId);
+  }) as Handler,
+
+  // -- undo ------------------------------------------------------------------
+  undo: ((_cmd: Extract<ClientCommand, { kind: 'undo' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const entry = ctx.runtime.undoStack.pop();
+    if (!entry) throw new Error('Nothing to undo');
+    entry.run(ctx.runtime);
+    const summary = `Undid: ${entry.description}`;
+    const log = ctx.runtime.appendLog('undo', summary, 'dm');
+    notifyLog(ctx, log);
   }) as Handler,
 
   // -- narration -------------------------------------------------------------

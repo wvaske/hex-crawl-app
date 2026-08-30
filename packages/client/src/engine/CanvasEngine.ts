@@ -96,6 +96,7 @@ export class CanvasEngine {
   private lastMarkers: Marker[] = [];
   private lastContents: (Content | ContentPlayerView)[] = [];
   private lastImages: ImageLayer[] = [];
+  private lastDiscoveriesRef: unknown = null;
   private role: SeatRole = 'player';
   private myCharacterId: string | null = null;
 
@@ -269,6 +270,10 @@ export class CanvasEngine {
     if (layoutChanged || !fogCellsEqual(ms.fog, this.lastFog)) {
       this.lastFog = ms.fog;
       this.viewDirty = true; // fog drawn with view-dependent cover
+      if (useUi.getState().dimUnexplored && this.role === 'dm') this.drawPins();
+    }
+    if (state.discoveries !== this.lastDiscoveriesRef) {
+      this.lastDiscoveriesRef = state.discoveries;
       if (useUi.getState().dimUnexplored && this.role === 'dm') this.drawPins();
     }
     if (styleChanged) this.viewDirty = true;
@@ -707,11 +712,17 @@ export class CanvasEngine {
     const size = this.layout.size;
     const hexWidth = size * 2; // flat-top hex width; the "covers a hex" yardstick
 
-    // DM aid: dim pins the party has not uncovered yet.
+    // DM aid: dim what the players cannot see. For locations the player
+    // filter is discovery-based (a pin shows once a character has discovered
+    // at least one clue), so that's the signal — not fog.
     const dimUnexplored = useUi.getState().dimUnexplored && this.role === 'dm';
-    const fogByKey = dimUnexplored
-      ? new Map(this.lastFog.map((f) => [hexKey(f.q, f.r), f.state]))
-      : null;
+    let discoveredClues: Set<string> | null = null;
+    let fogByKey: Map<string, FogCell['state']> | null = null;
+    if (dimUnexplored) {
+      const st = useSession.getState().state;
+      discoveredClues = new Set((st?.discoveries ?? []).map((d) => d.clueId));
+      fogByKey = new Map(this.lastFog.map((f) => [hexKey(f.q, f.r), f.state]));
+    }
 
     for (const content of this.lastContents) {
       if (content.scaleVisibility < this.scaleLevel) continue;
@@ -730,9 +741,10 @@ export class CanvasEngine {
       });
       const center = hexToPixel(this.layout, { q: content.q, r: content.r });
       pin.position.set(center.x, center.y);
-      if (fogByKey) {
-        const fog = fogByKey.get(hexKey(content.q, content.r)) ?? 'hidden';
-        pin.alpha *= fog === 'visible' ? 1 : fog === 'explored' ? 0.6 : 0.25;
+      if (discoveredClues) {
+        const known =
+          'clues' in content && content.clues.some((cl) => discoveredClues.has(cl.id));
+        pin.alpha *= known ? 1 : 0.25;
       }
       this.pinsC.addChild(pin);
     }
@@ -757,6 +769,11 @@ export class CanvasEngine {
           minScreen: 19,
         });
         pin.position.set(center.x + spread, center.y + size * 0.55);
+        if (fogByKey) {
+          const fog = fogByKey.get(hexKey(m.q, m.r)) ?? 'hidden';
+          const playerVisible = !m.dmOnly && fog !== 'hidden';
+          pin.alpha *= playerVisible ? 1 : 0.35;
+        }
         this.pinsC.addChild(pin);
       });
     }

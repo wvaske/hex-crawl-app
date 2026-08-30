@@ -51,7 +51,7 @@ const CharacterPatchSchema = z
 const CellsSchema = z
   .array(z.object({ q: z.number().int(), r: z.number().int() }))
   .min(1)
-  .max(5000);
+  .max(80000);
 
 // --- campaign ---------------------------------------------------------------
 
@@ -372,6 +372,12 @@ export const EncounterTableDeleteCommand = z.object({
   tableId: z.string(),
 });
 
+/** DM: undo the most recent undoable change (fog, terrain, moves, edits). */
+export const UndoCommand = z.object({
+  ...base,
+  kind: z.literal('undo'),
+});
+
 export const NarrateCommand = z.object({
   ...base,
   kind: z.literal('narrate'),
@@ -416,6 +422,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   EncounterRollCommand,
   EncounterTableUpsertCommand,
   EncounterTableDeleteCommand,
+  UndoCommand,
   NarrateCommand,
 ]);
 

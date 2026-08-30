@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { connectWs, disconnectWs } from '../ws.js';
+import { connectWs, disconnectWs, send } from '../ws.js';
 import { CanvasEngine } from '../engine/CanvasEngine.js';
 import { useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
@@ -45,6 +45,11 @@ export function TableView({ campaignId }: { campaignId: string }) {
         return;
       }
       if (useSession.getState().role !== 'dm') return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        send({ kind: 'undo' });
+        return;
+      }
       const tools = { v: 'select', b: 'paint', f: 'fog', m: 'marker', c: 'content', r: 'measure' } as const;
       const tool = tools[e.key.toLowerCase() as keyof typeof tools];
       if (tool && !e.metaKey && !e.ctrlKey && !e.altKey) ui.setTool(tool);
