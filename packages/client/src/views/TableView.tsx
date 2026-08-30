@@ -38,6 +38,9 @@ export function TableView({ campaignId }: { campaignId: string }) {
         if (!ui.spacePan) ui.set('spacePan', true);
         return;
       }
+      if (e.key === 'Alt') {
+        ui.set('altTeleport', true);
+      }
       if (e.key === 'Escape') {
         ui.set('contentDialogHex', null);
         ui.set('editingContentId', null);
@@ -57,8 +60,12 @@ export function TableView({ campaignId }: { campaignId: string }) {
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ' || e.code === 'Space') useUi.getState().set('spacePan', false);
+      if (e.key === 'Alt') useUi.getState().set('altTeleport', false);
     };
-    const onBlur = () => useUi.getState().set('spacePan', false);
+    const onBlur = () => {
+      useUi.getState().set('spacePan', false);
+      useUi.getState().set('altTeleport', false);
+    };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);

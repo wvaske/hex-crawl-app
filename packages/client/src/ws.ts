@@ -111,6 +111,10 @@ function currentCharacterId(): string | null {
   return s.state?.seats.find((seat) => seat.id === s.seatId)?.characterId ?? null;
 }
 
+if (import.meta.env.DEV) {
+  (window as unknown as { __send: typeof send }).__send = (cmd) => send(cmd);
+}
+
 /** Fire a command at the server. Queued while disconnected. */
 export function send(cmd: CommandInput): void {
   const withId = { ...cmd, id: `cmd-${commandCounter++}` } as ClientCommand;

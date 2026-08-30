@@ -36,14 +36,21 @@ export function PendingMoves() {
             </span>
             <button
               className="px-2.5 py-1 rounded-md text-xs font-medium bg-moss-500/20 text-moss-500 border border-moss-500/50 hover:bg-moss-500/35 cursor-pointer"
-              onClick={() => send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: true })}
+              onClick={() => send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: true, teleport: false })}
               title="Approve: the move happens, the trail is explored, discoveries fire"
             >
               ✓ Approve
             </button>
             <button
+              className="px-2 py-1 rounded-md text-xs font-medium bg-arcane-500/15 text-arcane-500 border border-arcane-500/40 hover:bg-arcane-500/30 cursor-pointer"
+              onClick={() => send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: true, teleport: true })}
+              title="Teleport: the move happens instantly with no explored trail along the path"
+            >
+              ⚡
+            </button>
+            <button
               className="px-2.5 py-1 rounded-md text-xs font-medium bg-ember-500/15 text-ember-500 border border-ember-500/40 hover:bg-ember-500/30 cursor-pointer"
-              onClick={() => send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: false })}
+              onClick={() => send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: false, teleport: false })}
               title="Hold: the token stays put (roll an encounter first if something intervenes)"
             >
               ✗ Hold
