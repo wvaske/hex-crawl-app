@@ -7,7 +7,12 @@ import { CampaignRuntime, type SeatRecord } from './runtime.js';
 export class Store {
   private runtimes = new Map<string, CampaignRuntime>();
 
-  constructor(private db: DB) {}
+  constructor(readonly db: DB) {}
+
+  /** Drop a cached runtime so the next `getCampaign` reloads it from SQLite. */
+  forget(campaignId: string): void {
+    this.runtimes.delete(campaignId);
+  }
 
   getCampaign(campaignId: string): CampaignRuntime | null {
     const cached = this.runtimes.get(campaignId);

@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { filterStateForViewer, seededRng, hexKey } from '@hexcrawl/shared';
 import type { ClientCommand } from '@hexcrawl/shared';
 import { createTestDb } from './db/index.js';
@@ -7,6 +10,8 @@ import { CampaignRuntime, type SeatRecord } from './state/runtime.js';
 import { Hub } from './ws/hub.js';
 import { dispatchCommand } from './ws/handlers.js';
 import { rollEncounter } from './engine/encounters.js';
+import { createApp } from './http/app.js';
+import { exportCampaign, importCampaign } from './http/portability.js';
 
 let store: Store;
 let runtime: CampaignRuntime;
@@ -963,5 +968,325 @@ describe('prep mode (pause player map sync)', () => {
     });
     expect(resumed.mapState!.hexes.some((h) => h.q === 1 && h.terrain === 'swamp')).toBe(true);
     expect(resumed.mapState!.markers).toHaveLength(1);
+  });
+});
+
+describe('campaign export / import (issue #76)', () => {
+  /**
+   * Canonical form for deep comparison: ids replaced by a placeholder, null /
+   * absent treated alike, and every array sorted — a reload rebuilds the
+   * in-memory Maps in SQL row order, which is not the original insert order.
+   */
+  const ID_KEYS = /^(id|.*Id)$/;
+  function scrubIds(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value
+        .map(scrubIds)
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    }
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (v === null || v === undefined) continue;
+        out[k] = ID_KEYS.test(k) && typeof v === 'string' ? '<id>' : scrubIds(v);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  /** Full state for every map, keyed by map name, with ids scrubbed. */
+  function stateByMapName(rt: CampaignRuntime): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const map of rt.maps.values()) {
+      const full = rt.buildFullState(map.id);
+      // Seats are deliberately not restored (fresh DM seat, fresh token), and
+      // entries whispered to one seat come back DM-only (asserted separately).
+      const { seats: _seats, ...rest } = full;
+      out[map.name] = scrubIds({
+        ...rest,
+        // Same-millisecond log ties reorder on any reload (the load query
+        // breaks ties by id), so compare the log as a sorted list.
+        log: [...rest.log]
+          .map((e) => ({ ...e, visibility: e.visibility === 'all' ? 'all' : '<private>' }))
+          .sort((a, b) => a.at - b.at || a.kind.localeCompare(b.kind) || a.text.localeCompare(b.text)),
+      });
+    }
+    return out;
+  }
+
+  function seedRichCampaign(): { mapId: string; charId: string } {
+    const { mapId, charId, tokenId, playerSeat } = setupPartyWithScout();
+    dm({ kind: 'terrain.paint', mapId, cells: [{ q: 0, r: 0 }, { q: 1, r: 0 }], terrain: 'forest' } as never);
+    dm({
+      kind: 'marker.place',
+      marker: { mapId, q: 2, r: 2, glyph: '⭐', label: 'Camp', dmOnly: true },
+    } as never);
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 3, r: 0, type: 'lair', title: 'Wyrm Hollow', dmNotes: 'secret', glyph: '🐉',
+        clues: [
+          { id: null, text: 'Scorched trees', gate: { kind: 'auto' }, sortOrder: 0 },
+          { id: null, text: 'A hoard glitters', gate: { kind: 'manual' }, sortOrder: 1 },
+        ],
+      },
+    } as never);
+    const content = [...runtime.requireMap(mapId).contents.values()].find(
+      (c) => c.title === 'Wyrm Hollow',
+    )!;
+    dm({ kind: 'clue.reveal', clueId: content.clues[1]!.id, characterIds: [] } as never);
+    dm({
+      kind: 'trail.upsert',
+      trail: {
+        id: null, mapId, name: 'Scaled tracks', glyph: '👣', dmNotes: 'wyrm',
+        gate: { kind: 'auto' },
+        cells: [{ q: 1, r: 0 }, { q: 2, r: 0 }, { q: 3, r: 0 }],
+      },
+    } as never);
+    dm({
+      kind: 'encounterTable.upsert',
+      table: {
+        id: null, name: 'Forest', terrains: ['forest'], die: '1d12',
+        entries: [{ min: 1, max: 12, text: 'Wolves' }], enabled: true,
+      },
+    } as never);
+    // Travel: fog reveal, auto clue discovery, trail discovery, log entries.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 2, r: 0 } as never);
+    dm({ kind: 'narrate', text: 'Ash drifts on the wind.', seatIds: [] } as never);
+    return { mapId, charId };
+  }
+
+  function tmpUploads(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'hexcrawl-portability-'));
+  }
+
+  it('exports every table for the campaign and no secrets', () => {
+    seedRichCampaign();
+    const uploads = tmpUploads();
+    const exported = exportCampaign(store.db, runtime.id, uploads);
+
+    expect(exported.formatVersion).toBe(1);
+    expect(exported.secrets).toBe(false);
+    expect(exported.campaign.dm_secret).toBeUndefined();
+    expect(exported.campaign.player_secret).toBeUndefined();
+    expect(exported.seats.length).toBeGreaterThan(0);
+    expect(exported.seats.every((s) => s.token === undefined)).toBe(true);
+    // Nothing anywhere in the archive leaks an invite key or a seat token.
+    const blob = JSON.stringify(exported);
+    expect(blob.includes(runtime.dmSecret)).toBe(false);
+    expect(blob.includes(runtime.playerSecret)).toBe(false);
+    expect(blob.includes(dmSeat.token)).toBe(false);
+
+    expect(exported.maps).toHaveLength(runtime.maps.size);
+    expect(exported.contents).toHaveLength(1);
+    expect(exported.clues).toHaveLength(2);
+    expect(exported.trails).toHaveLength(1);
+    expect(exported.discoveries.length).toBeGreaterThan(0);
+    expect(exported.trailDiscoveries.length).toBeGreaterThan(0);
+    expect(exported.encTables).toHaveLength(1);
+    expect(exported.log.length).toBeGreaterThan(0);
+    expect(exported.hexes).toHaveLength(2);
+    expect(exported.fog.length).toBeGreaterThan(0);
+    fs.rmSync(uploads, { recursive: true, force: true });
+  });
+
+  it('imports as a new campaign whose runtime state deep-matches the original', () => {
+    seedRichCampaign();
+    const uploads = tmpUploads();
+    const exported = exportCampaign(store.db, runtime.id, uploads);
+    const before = stateByMapName(runtime);
+
+    const result = importCampaign(store.db, exported, { uploadsDir: uploads });
+    expect(result.campaignId).not.toBe(runtime.id);
+    expect(result.dmSecret).not.toBe(runtime.dmSecret);
+    expect(result.playerSecret).not.toBe(runtime.playerSecret);
+
+    // Loads cleanly through the Store / CampaignRuntime path.
+    const restored = store.getCampaign(result.campaignId)!;
+    expect(restored.id).toBe(result.campaignId);
+    expect(stateByMapName(restored)).toEqual(before);
+
+    // Ids really were remapped, not reused.
+    const oldContentId = [...runtime.requireMap(runtime.campaign.activeMapId!).contents.keys()][0]!;
+    expect([...restored.maps.keys()].some((id) => runtime.maps.has(id))).toBe(false);
+    for (const rt of restored.mapStates.values()) {
+      expect(rt.contents.has(oldContentId)).toBe(false);
+    }
+    // Cross-table references still resolve inside the new campaign.
+    for (const disc of restored.discoveries.values()) {
+      expect(restored.findContentByClue(disc.clueId)).not.toBeNull();
+      expect(restored.characters.has(disc.characterId)).toBe(true);
+    }
+    for (const td of restored.trailDiscoveries.values()) {
+      expect(restored.findTrail(td.trailId)).not.toBeNull();
+      expect(restored.characters.has(td.characterId)).toBe(true);
+    }
+    // Ordered collections keep their order (the deep compare sorts arrays).
+    const oldTrail = [...runtime.requireMap(runtime.campaign.activeMapId!).trails.values()][0];
+    const newTrail = [...restored.mapStates.values()].flatMap((rt) => [...rt.trails.values()])[0]!;
+    expect(newTrail.cells).toEqual(oldTrail?.cells);
+    const newContent = [...restored.mapStates.values()].flatMap((rt) => [...rt.contents.values()])[0]!;
+    expect(newContent.clues.map((cl) => cl.text)).toEqual(['Scorched trees', 'A hoard glitters']);
+
+    // Seat-scoped log visibility has no audience after import: it lands DM-only.
+    expect(runtime.log.some((e) => e.visibility !== 'dm' && e.visibility !== 'all')).toBe(true);
+    expect(restored.log.every((e) => e.visibility === 'dm' || e.visibility === 'all')).toBe(true);
+    fs.rmSync(uploads, { recursive: true, force: true });
+  });
+
+  it('round-trips uploaded image files into the new campaign uploads dir', () => {
+    const mapId = activeMapId();
+    const uploads = tmpUploads();
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    fs.mkdirSync(path.join(uploads, runtime.id), { recursive: true });
+    fs.writeFileSync(path.join(uploads, runtime.id, 'abc123.png'), bytes);
+    runtime.addImageLayer({
+      id: 'img1', mapId, path: `/uploads/${runtime.id}/abc123.png`, name: 'Region.png',
+      x: 5, y: 6, scale: 2, opacity: 0.5, z: 0, dmOnly: true, visible: true,
+    });
+
+    const exported = exportCampaign(store.db, runtime.id, uploads);
+    expect(exported.images).toHaveLength(1);
+    expect(exported.images[0]!.dataBase64).toBe(bytes.toString('base64'));
+
+    const result = importCampaign(store.db, exported, { uploadsDir: uploads });
+    const restored = store.getCampaign(result.campaignId)!;
+    const mapName = runtime.maps.get(mapId)!.name;
+    const newMapId = [...restored.maps.values()].find((m) => m.name === mapName)!.id;
+    const layers = restored.imageLayersFor(newMapId);
+    expect(layers).toHaveLength(1);
+    const layer = layers[0]!;
+    expect(layer.name).toBe('Region.png');
+    expect(layer.dmOnly).toBe(true);
+    expect(layer.scale).toBe(2);
+    expect(layer.path).toMatch(new RegExp(`^/uploads/${result.campaignId}/[\\w-]+\\.png$`));
+    expect(layer.path).not.toBe(`/uploads/${runtime.id}/abc123.png`);
+    const onDisk = path.join(uploads, ...layer.path.replace('/uploads/', '').split('/'));
+    expect(fs.readFileSync(onDisk).equals(bytes)).toBe(true);
+    fs.rmSync(uploads, { recursive: true, force: true });
+  });
+
+  it('rejects junk and unsupported format versions', () => {
+    const uploads = tmpUploads();
+    expect(() => importCampaign(store.db, { nope: true }, { uploadsDir: uploads })).toThrow(
+      /Not a HexCrawl backup/,
+    );
+    const exported = exportCampaign(store.db, runtime.id, uploads);
+    expect(() =>
+      importCampaign(store.db, { ...exported, formatVersion: 99 }, { uploadsDir: uploads }),
+    ).toThrow(/Unsupported backup format/);
+    fs.rmSync(uploads, { recursive: true, force: true });
+  });
+
+  describe('HTTP routes', () => {
+    it('GET /export requires the DM seat or the dm key', async () => {
+      const app = createApp(store, hub);
+      expect((await app.request(`/api/campaigns/${runtime.id}/export`)).status).toBe(403);
+      expect(
+        (await app.request(`/api/campaigns/${runtime.id}/export?key=${runtime.playerSecret}`)).status,
+      ).toBe(403);
+      expect((await app.request('/api/campaigns/nope/export')).status).toBe(404);
+
+      const withKey = await app.request(`/api/campaigns/${runtime.id}/export?key=${runtime.dmSecret}`);
+      expect(withKey.status).toBe(200);
+      expect(withKey.headers.get('Content-Disposition')).toContain(`hexcrawl-${runtime.id}-`);
+      const body = JSON.parse(await withKey.text()) as {
+        formatVersion: number;
+        campaign: { name: string };
+      };
+      expect(body.formatVersion).toBe(1);
+      expect(body.campaign.name).toBe('Test Campaign');
+
+      const withCookie = await app.request(`/api/campaigns/${runtime.id}/export`, {
+        headers: { Cookie: `hc_seat_${runtime.id}=${dmSeat.token}` },
+      });
+      expect(withCookie.status).toBe(200);
+    });
+
+    it('POST /api/campaigns/import restores a JSON body and seats the caller as DM', async () => {
+      seedRichCampaign();
+      const app = createApp(store, hub);
+      const exported = await (
+        await app.request(`/api/campaigns/${runtime.id}/export?key=${runtime.dmSecret}`)
+      ).text();
+
+      const res = await app.request('/api/campaigns/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: exported,
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { campaignId: string; dmKey: string; playerKey: string };
+      expect(body.campaignId).not.toBe(runtime.id);
+      expect(body.dmKey).not.toBe(runtime.dmSecret);
+      expect(res.headers.get('Set-Cookie')).toContain(`hc_seat_${body.campaignId}=`);
+
+      const restored = store.getCampaign(body.campaignId)!;
+      expect(restored.campaign.name).toBe('Test Campaign');
+      expect([...restored.seats.values()].filter((s) => s.role === 'dm')).toHaveLength(1);
+      // The seat cookie the response set really authenticates.
+      const token = [...restored.seats.values()][0]!.token;
+      const me = await app.request(`/api/campaigns/${body.campaignId}/me`, {
+        headers: { Cookie: `hc_seat_${body.campaignId}=${token}` },
+      });
+      expect(((await me.json()) as { role: string }).role).toBe('dm');
+    });
+
+    it('accepts a multipart upload and rejects non-JSON', async () => {
+      const app = createApp(store, hub);
+      const exported = await (
+        await app.request(`/api/campaigns/${runtime.id}/export?key=${runtime.dmSecret}`)
+      ).text();
+      const form = new FormData();
+      form.append('file', new File([exported], 'backup.json', { type: 'application/json' }));
+      form.append('dmName', 'Restorer');
+      const res = await app.request('/api/campaigns/import', { method: 'POST', body: form });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { campaignId: string };
+      const restored = store.getCampaign(body.campaignId)!;
+      expect([...restored.seats.values()][0]!.name).toBe('Restorer');
+
+      const bad = await app.request('/api/campaigns/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json at all',
+      });
+      expect(bad.status).toBe(400);
+      const wrongShape = await app.request('/api/campaigns/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hello: 'world' }),
+      });
+      expect(wrongShape.status).toBe(400);
+    });
+
+    it('never lets an API path fall through to the SPA index.html', async () => {
+      const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'hexcrawl-dist-'));
+      fs.writeFileSync(path.join(dist, 'index.html'), '<html>spa</html>');
+      const prev = process.env.CLIENT_DIST;
+      process.env.CLIENT_DIST = dist;
+      try {
+        const app = createApp(store, hub);
+        // Deep links still serve the SPA…
+        const spa = await app.request(`/c/${runtime.id}`);
+        expect(spa.status).toBe(200);
+        expect(await spa.text()).toContain('spa');
+        // …but a wrong method or a typo'd API path 404s as JSON.
+        for (const url of [
+          '/api/campaigns/import', // GET on a POST-only route
+          '/api/campaigns/typo/exprot',
+          '/api/does-not-exist',
+        ]) {
+          const res = await app.request(url);
+          expect(res.status).toBe(404);
+          expect(res.headers.get('Content-Type')).toContain('application/json');
+        }
+      } finally {
+        if (prev === undefined) delete process.env.CLIENT_DIST;
+        else process.env.CLIENT_DIST = prev;
+        fs.rmSync(dist, { recursive: true, force: true });
+      }
+    });
   });
 });
