@@ -593,14 +593,21 @@ describe('hex-targeted skill checks', () => {
     // Active gates never open passively.
     expect(runtime.discoveries.size).toBe(0);
 
+    // A player's success is a proposal now (issue #107): nothing is revealed
+    // until the DM shares it.
     asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 1, r: 0 } } as never);
+    expect(runtime.discoveries.size).toBe(0);
+    expect(runtime.pendingReveals.size).toBe(1);
+    dm({ kind: 'search.resolve', pendingIds: [...runtime.pendingReveals.keys()], approve: true } as never);
     expect(runtime.discoveries.size).toBe(1);
     const disc = [...runtime.discoveries.values()][0]!;
     expect(disc.how.kind).toBe('roll');
     expect(disc.locates).toBe(false); // searched from one hex away
 
-    // Re-rolling doesn't duplicate the discovery.
-    asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 1, r: 0 } } as never);
+    // One attempt per skill per hex: the same skill is spent here.
+    expect(() =>
+      asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 1, r: 0 } } as never),
+    ).toThrow(/already searched/);
     expect(runtime.discoveries.size).toBe(1);
   });
 });
@@ -718,8 +725,10 @@ describe('skill-gated items (issue #41)', () => {
     asSeat(playerSeat, { kind: 'token.move', tokenId, q: 3, r: 0 } as never);
     expect(playerView().mapState!.contents.find((c) => c.title === 'Goblin Cave')).toBeUndefined();
 
-    // A Survival search on the hex finds the cave and reveals the item.
+    // A Survival search on the hex finds the cave — once the DM shares it.
     asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 3, r: 0 } } as never);
+    expect(playerView().mapState!.contents.find((c) => c.title === 'Goblin Cave')).toBeUndefined();
+    dm({ kind: 'search.resolve', pendingIds: [...runtime.pendingReveals.keys()], approve: true } as never);
     const cave = playerView().mapState!.contents.find((c) => c.title === 'Goblin Cave');
     expect(cave).toBeDefined();
   });

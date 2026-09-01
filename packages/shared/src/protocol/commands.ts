@@ -527,6 +527,25 @@ export const CheckRollCommand = z.object({
   hex: z.object({ q: z.number().int(), r: z.number().int() }).nullable().default(null),
 });
 
+/**
+ * The DM's call on search results a player's roll turned up (issue #107):
+ * share them (they become normal discoveries and reach the player through
+ * the usual toast/log/senses path) or withhold them.
+ */
+export const SearchResolveCommand = z.object({
+  ...base,
+  kind: z.literal('search.resolve'),
+  pendingIds: z.array(z.string()).min(1).max(100),
+  approve: z.boolean(),
+});
+
+/** Clear one search attempt so its character may roll that skill here again. */
+export const SearchClearAttemptCommand = z.object({
+  ...base,
+  kind: z.literal('search.clearAttempt'),
+  attemptId: z.string(),
+});
+
 export const EncounterRollCommand = z.object({
   ...base,
   kind: z.literal('encounter.roll'),
@@ -656,6 +675,8 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   DiscoveryRevokeCommand,
   ClueShareCommand,
   CheckRollCommand,
+  SearchResolveCommand,
+  SearchClearAttemptCommand,
   EncounterRollCommand,
   EncounterTableUpsertCommand,
   EncounterTableDeleteCommand,

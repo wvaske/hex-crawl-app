@@ -245,6 +245,38 @@ export function migrate(d: DB): void {
     );
     CREATE INDEX IF NOT EXISTS trail_discovery_campaign ON trail_discovery(campaign_id);
     CREATE UNIQUE INDEX IF NOT EXISTS trail_discovery_unique ON trail_discovery(trail_id, cell_index, character_id);
+
+    CREATE TABLE IF NOT EXISTS search_attempt (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      map_id TEXT NOT NULL REFERENCES map(id) ON DELETE CASCADE,
+      q INTEGER NOT NULL,
+      r INTEGER NOT NULL,
+      character_id TEXT NOT NULL,
+      skill TEXT NOT NULL,
+      roll INTEGER NOT NULL,
+      modifier INTEGER NOT NULL,
+      total INTEGER NOT NULL,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS search_attempt_map ON search_attempt(map_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS search_attempt_unique ON search_attempt(map_id, q, r, character_id, skill);
+
+    CREATE TABLE IF NOT EXISTS pending_reveal (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      clue_id TEXT NOT NULL REFERENCES clue(id) ON DELETE CASCADE,
+      character_id TEXT NOT NULL,
+      attempt_id TEXT NOT NULL REFERENCES search_attempt(id) ON DELETE CASCADE,
+      direction TEXT,
+      locates INTEGER NOT NULL DEFAULT 0,
+      roll INTEGER NOT NULL,
+      modifier INTEGER NOT NULL,
+      total INTEGER NOT NULL,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS pending_reveal_campaign ON pending_reveal(campaign_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS pending_reveal_unique ON pending_reveal(clue_id, character_id);
   `,
   );
   // Additive migrations for columns introduced after first release.

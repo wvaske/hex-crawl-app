@@ -209,6 +209,38 @@ export const POSTGRES_SCHEMA = `
     );
     CREATE INDEX IF NOT EXISTS trail_discovery_campaign ON trail_discovery(campaign_id);
     CREATE UNIQUE INDEX IF NOT EXISTS trail_discovery_unique ON trail_discovery(trail_id, cell_index, character_id);
+
+    CREATE TABLE IF NOT EXISTS search_attempt (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      map_id TEXT NOT NULL REFERENCES map(id) ON DELETE CASCADE,
+      q BIGINT NOT NULL,
+      r BIGINT NOT NULL,
+      character_id TEXT NOT NULL,
+      skill TEXT NOT NULL,
+      roll BIGINT NOT NULL,
+      modifier BIGINT NOT NULL,
+      total BIGINT NOT NULL,
+      at BIGINT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS search_attempt_map ON search_attempt(map_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS search_attempt_unique ON search_attempt(map_id, q, r, character_id, skill);
+
+    CREATE TABLE IF NOT EXISTS pending_reveal (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      clue_id TEXT NOT NULL REFERENCES clue(id) ON DELETE CASCADE,
+      character_id TEXT NOT NULL,
+      attempt_id TEXT NOT NULL REFERENCES search_attempt(id) ON DELETE CASCADE,
+      direction TEXT,
+      locates BIGINT NOT NULL DEFAULT 0,
+      roll BIGINT NOT NULL,
+      modifier BIGINT NOT NULL,
+      total BIGINT NOT NULL,
+      at BIGINT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS pending_reveal_campaign ON pending_reveal(campaign_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS pending_reveal_unique ON pending_reveal(clue_id, character_id);
 `;
 
 /**

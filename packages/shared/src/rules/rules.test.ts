@@ -156,6 +156,11 @@ function fullState(): CampaignState {
         // Hex 2,0 has no fog record (hidden) — the visit must not leak it.
         { q: 2, r: 0, firstArrived: 60, lastArrived: 60, totalMinutes: 0 },
       ],
+      // Issue #107: one attempt from the viewer's character, one from another.
+      searchAttempts: [
+        { id: 'sa1', mapId: 'm1', q: 1, r: 0, characterId: 'char1', skill: 'perception', roll: 14, modifier: 4, total: 18, at: 2000 },
+        { id: 'sa2', mapId: 'm1', q: 1, r: 0, characterId: 'char2', skill: 'survival', roll: 9, modifier: 1, total: 10, at: 2001 },
+      ],
     },
     discoveries: [
       { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' }, direction: null, locates: true },
@@ -163,6 +168,9 @@ function fullState(): CampaignState {
     ],
     trailDiscoveries: [],
     senses: [],
+    pendingReveals: [
+      { id: 'pr1', clueId: 'cl2', characterId: 'char1', attemptId: 'sa1', direction: null, locates: true, roll: 14, modifier: 4, total: 18, at: 2000 },
+    ],
     encounterTables: [{ id: 'et1', name: 'Forest', terrains: ['forest'], die: '1d12', entries: [], enabled: true }],
     log: [
       { id: 'l1', at: 1, kind: 'roll', text: 'dm secret roll', visibility: 'dm', data: {} },
@@ -193,6 +201,12 @@ describe('filterStateForViewer', () => {
   it('filters tokens: pc always; npc only playerVisible on visible hexes', () => {
     const s = filterStateForViewer(fullState(), viewer);
     expect(s.mapState!.tokens.map((t) => t.id).sort()).toEqual(['t1', 't2']);
+  });
+
+  it('shows a player only their own search attempts, and never a pending reveal', () => {
+    const s = filterStateForViewer(fullState(), viewer);
+    expect(s.mapState!.searchAttempts.map((a) => a.id)).toEqual(['sa1']);
+    expect(s.pendingReveals).toEqual([]);
   });
 
   it('filters markers by dmOnly and fog', () => {

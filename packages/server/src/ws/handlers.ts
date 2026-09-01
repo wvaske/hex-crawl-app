@@ -776,6 +776,26 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
             .map((t) => t.characterId!)
         : [];
     }
+    // One attempt per skill per hex per character (issue #107) — checked
+    // BEFORE the dice come out, so a rejected search costs nothing. The DM is
+    // exempt: they re-run group checks, and their rolls reveal instantly
+    // anyway.
+    const dmRoll = ctx.seat.role === 'dm';
+    if (cmd.hex && cmd.mapId && !dmRoll) {
+      for (const characterId of targets) {
+        const prior = ctx.runtime.findSearchAttempt(
+          cmd.mapId,
+          cmd.hex.q,
+          cmd.hex.r,
+          characterId,
+          cmd.skill,
+        );
+        if (prior) {
+          const name = ctx.runtime.characters.get(characterId)?.name ?? 'That character';
+          throw new Error(`${name} already searched this hex with ${cmd.skill}`);
+        }
+      }
+    }
     const results = targets
       .map((characterId) => {
         const character = ctx.runtime.characters.get(characterId);
@@ -798,11 +818,33 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     // and passive gates alike — a deliberate search can find what passive
     // senses missed).
     let found = 0;
+    let pending = 0;
     if (cmd.hex && cmd.mapId) {
       const rt = ctx.runtime.mapStates.get(cmd.mapId);
       const map = ctx.runtime.maps.get(cmd.mapId);
       if (rt && map) {
         const created: NewDiscovery[] = [];
+        // Every roll is written down, DM- or player-initiated: the DM's
+        // investigation view is a history of who tried what, not just of
+        // what is still outstanding.
+        const attempts = new Map<string, string>();
+        for (const r of results) {
+          attempts.set(
+            r.characterId,
+            ctx.runtime.recordSearchAttempt({
+              id: nanoid(12),
+              mapId: cmd.mapId,
+              q: cmd.hex.q,
+              r: cmd.hex.r,
+              characterId: r.characterId,
+              skill: cmd.skill,
+              roll: r.roll,
+              modifier: r.modifier,
+              total: r.total,
+              at: Date.now(),
+            }).id,
+          );
+        }
         for (const r of results) {
           const token = [...rt.tokens.values()].find(
             (t) => t.kind === 'pc' && t.characterId === r.characterId,
@@ -823,6 +865,30 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
                 clue.indicatesDirection && distance > 0
                   ? compassDirection({ q: token.q, r: token.r }, cmd.hex, map.orientation)
                   : null;
+              const locates = distance === 0 && clue.revealsLocation;
+              // A player's success is a proposal, not a reveal (issue #107):
+              // the DM decides whether the character actually finds it. The
+              // bearing and locates flag are frozen here, at roll time, so the
+              // approval describes what they saw from where they stood.
+              if (!dmRoll) {
+                if (
+                  ctx.runtime.addPendingReveal({
+                    id: nanoid(12),
+                    clueId: clue.id,
+                    characterId: r.characterId,
+                    attemptId: attempts.get(r.characterId) ?? '',
+                    direction,
+                    locates,
+                    roll: r.roll,
+                    modifier: r.modifier,
+                    total: r.total,
+                    at: Date.now(),
+                  })
+                ) {
+                  pending++;
+                }
+                continue;
+              }
               const discovery = {
                 id: nanoid(12),
                 clueId: clue.id,
@@ -837,7 +903,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
                   dc: clue.gate.dc,
                 },
                 direction,
-                locates: distance === 0 && clue.revealsLocation,
+                locates,
               };
               if (ctx.runtime.addDiscovery(discovery)) {
                 created.push({
@@ -892,6 +958,23 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         deliverTrailFinds(ctx, trailFinds);
         found = created.length + trailFinds.length;
         deliverDiscoveries(ctx, created);
+        if (pending > 0) {
+          // Nudge the DM: results are sitting in Inspect waiting on them.
+          ctx.hub.sendTo(
+            ctx.runtime,
+            {
+              type: 'event',
+              kind: 'search.pending',
+              characterName: results.map((r) => r.name).join(', '),
+              skill: cmd.skill,
+              total: Math.max(...results.map((r) => r.total)),
+              q: cmd.hex.q,
+              r: cmd.hex.r,
+              count: pending,
+            },
+            { dm: true },
+          );
+        }
       }
     }
     const summary = results
@@ -903,20 +986,57 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       )
       .join(' · ');
     const where = cmd.hex ? ` on hex ${cmd.hex.q},${cmd.hex.r}` : '';
+    const headline = `${capitalize(cmd.skill)}${cmd.dc !== null ? ` DC ${cmd.dc}` : ''}${where}: ${summary || 'no targets'}`;
+    const rolled = new Set(results.map((r) => r.characterId));
+    const ownerSeats = [...ctx.runtime.seats.values()]
+      .filter((s) => s.characterId && rolled.has(s.characterId))
+      .map((s) => s.id);
+
+    // A player's hex search gets TWO entries (issue #107). The outcome string
+    // is baked into `text`, and one row cannot say different things to
+    // different readers — so the DM's row carries the full accounting (what
+    // opened, what is waiting on them) and the player's row says only that
+    // the DM will narrate. Counts of found/not-found never reach a player:
+    // "nothing new found" is itself information about the hex.
+    if (ctx.seat.role !== 'dm' && cmd.hex) {
+      const dmOutcome = [
+        found ? `${found} clue(s) uncovered` : null,
+        pending ? `${pending} awaiting your approval` : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+      const dmEntry = ctx.runtime.appendLog('check', `${headline} — ${dmOutcome || 'nothing found'}`, 'dm', {
+        skill: cmd.skill,
+        dc: cmd.dc,
+        results,
+        hex: { q: cmd.hex.q, r: cmd.hex.r },
+        pending,
+      });
+      ctx.hub.sendTo(ctx.runtime, { type: 'event', kind: 'log.appended', entry: dmEntry }, { dm: true });
+      const playerEntry = ctx.runtime.appendLog(
+        'check',
+        `${headline} — the DM will describe what you find`,
+        'all',
+        { skill: cmd.skill, dc: cmd.dc, results },
+      );
+      ctx.hub.sendTo(
+        ctx.runtime,
+        { type: 'event', kind: 'log.appended', entry: playerEntry },
+        { seatIds: ownerSeats },
+      );
+      return;
+    }
+
     const outcome = cmd.hex ? (found ? ` — ${found} clue(s) uncovered` : ' — nothing new found') : '';
     const entry = ctx.runtime.appendLog(
       'check',
-      `${capitalize(cmd.skill)}${cmd.dc !== null ? ` DC ${cmd.dc}` : ''}${where}: ${summary || 'no targets'}${outcome}`,
+      `${headline}${outcome}`,
       ctx.seat.role === 'dm' ? 'dm' : 'all',
       { skill: cmd.skill, dc: cmd.dc, results },
     );
     if (entry.visibility === 'all') {
       // A character's rolls are theirs alone: notify only the seats owning a
       // character that rolled (the snapshot filter applies the same rule).
-      const rolled = new Set(results.map((r) => r.characterId));
-      const ownerSeats = [...ctx.runtime.seats.values()]
-        .filter((s) => s.characterId && rolled.has(s.characterId))
-        .map((s) => s.id);
       ctx.hub.sendTo(
         ctx.runtime,
         { type: 'event', kind: 'log.appended', entry },
@@ -925,6 +1045,90 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     } else {
       notifyLog(ctx, entry);
     }
+  }) as Handler,
+
+  /**
+   * The DM's call on pending search results (issue #107). Approving runs them
+   * through the normal discovery path — same toast, same log lines, same
+   * senses — so an approved find is indistinguishable from an instant one.
+   */
+  'search.resolve': ((cmd: Extract<ClientCommand, { kind: 'search.resolve' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const created: NewDiscovery[] = [];
+    let withheld = 0;
+    let hex: { q: number; r: number } | null = null;
+    for (const pendingId of cmd.pendingIds) {
+      const pending = ctx.runtime.pendingReveals.get(pendingId);
+      if (!pending) continue;
+      const attempt = ctx.runtime.getSearchAttempt(pending.attemptId);
+      if (attempt) hex = { q: attempt.q, r: attempt.r };
+      if (!cmd.approve) {
+        ctx.runtime.deletePendingReveal(pendingId);
+        withheld++;
+        continue;
+      }
+      const content = ctx.runtime.findContentByClue(pending.clueId);
+      const clue = content?.clues.find((c) => c.id === pending.clueId);
+      // The clue went away under the DM's feet: drop the stale row.
+      if (!content || !clue) {
+        ctx.runtime.deletePendingReveal(pendingId);
+        continue;
+      }
+      const character = ctx.runtime.characters.get(pending.characterId);
+      const discovery = {
+        id: nanoid(12),
+        clueId: pending.clueId,
+        characterId: pending.characterId,
+        at: Date.now(),
+        how: {
+          kind: 'roll' as const,
+          skill: attempt?.skill ?? 'search',
+          roll: pending.roll,
+          modifier: pending.modifier,
+          total: pending.total,
+          dc: clue.gate.kind === 'skill' ? clue.gate.dc : 0,
+        },
+        direction: pending.direction,
+        locates: pending.locates,
+      };
+      // addDiscovery consumes the pending row itself; the explicit delete
+      // covers the already-known case, where it returns false.
+      if (ctx.runtime.addDiscovery(discovery)) {
+        created.push({
+          discovery,
+          contentId: content.id,
+          contentTitle: content.title,
+          clueText: clue.text,
+          characterName: character?.name ?? 'Someone',
+        });
+      }
+      ctx.runtime.deletePendingReveal(pendingId);
+    }
+    deliverDiscoveries(ctx, created);
+    if (withheld > 0) {
+      const where = hex ? ` at hex ${hex.q},${hex.r}` : '';
+      notifyLog(ctx, ctx.runtime.appendLog('check', `Withheld ${withheld} result(s)${where}`, 'dm', {}));
+    }
+  }) as Handler,
+
+  /** Let a character search this hex with this skill again (issue #107). */
+  'search.clearAttempt': ((
+    cmd: Extract<ClientCommand, { kind: 'search.clearAttempt' }>,
+    ctx: Ctx,
+  ) => {
+    requireDm(ctx);
+    const attempt = ctx.runtime.deleteSearchAttempt(cmd.attemptId);
+    if (!attempt) throw new Error('That search attempt is already gone');
+    const name = ctx.runtime.characters.get(attempt.characterId)?.name ?? 'Someone';
+    notifyLog(
+      ctx,
+      ctx.runtime.appendLog(
+        'check',
+        `${name} may search hex ${attempt.q},${attempt.r} with ${attempt.skill} again`,
+        'dm',
+        {},
+      ),
+    );
   }) as Handler,
 
   // -- encounters ------------------------------------------------------------

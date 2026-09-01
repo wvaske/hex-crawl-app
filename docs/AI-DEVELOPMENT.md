@@ -221,6 +221,23 @@ player-facing data).
   the app cannot hide a wiki section from a player who opens the page in a
   browser, so DM secrets belong in `dmNotes` or on unlinked pages. Page layout
   conventions: `docs/WIKI-TEMPLATE.md`.
+- **Hex search is DM-adjudicated** (#107): a player's `check.roll` against a
+  hex writes a `search_attempt` (unique per map/hex/character/skill — the row
+  IS the once-per-skill limit, and the handler checks it *before* rolling) and
+  turns each beaten clue into a `pending_reveal` instead of a discovery. The
+  DM's `search.resolve` turns approved pendings into discoveries through
+  `runtime.addDiscovery` + `deliverDiscoveries`, so an approved find is
+  indistinguishable from an instant one. DM-initiated hex rolls keep the old
+  instant behaviour and skip the limit; `addDiscovery` consumes any pending
+  for that clue+character, which is how instant reveals dedupe against a
+  queued one. Trails still reveal instantly on a search — follow-up.
+  Two consequences worth remembering: **a log entry's outcome is baked into
+  its `text`**, so a hex search writes *two* entries (a `'dm'` one with the
+  full accounting, an `'all'` one saying only that the DM will describe it) —
+  one row cannot say different things to different readers, and counts of
+  found/not-found are themselves information about the hex. And
+  `pendingReveals` is DM-only in `filterStateForViewer` while
+  `mapState.searchAttempts` is filtered to the viewer's own character.
 - CI (`.github/workflows/ci.yml`) runs typecheck + test on PRs; pnpm is
   pinned there and in the Dockerfile — keep the versions in sync.
 
