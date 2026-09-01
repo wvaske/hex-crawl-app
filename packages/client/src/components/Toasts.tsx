@@ -13,11 +13,12 @@ export function Toasts() {
   const toasts = useSession((s) => s.toasts);
   const dismiss = useSession((s) => s.dismissToast);
   if (!toasts.length) return null;
-  // Compact stack pinned to the bottom of the sidebar; never covers the map.
+  // Compact stack in the bottom-right corner, clear of the panel rail (#61);
+  // never covers the middle of the map.
   const visible = toasts.slice(-3);
   const hidden = toasts.length - visible.length;
   return (
-    <div className="absolute bottom-2 right-2 z-40 flex flex-col gap-1.5 w-[19rem] pointer-events-none">
+    <div className="absolute bottom-2 right-16 z-40 flex flex-col gap-1.5 w-[19rem] pointer-events-none">
       {hidden > 0 && (
         <p className="text-[10px] text-ink-400 text-right pr-1">+{hidden} more…</p>
       )}

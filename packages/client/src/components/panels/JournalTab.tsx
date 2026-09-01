@@ -57,7 +57,7 @@ export function JournalTab() {
       <Section title="Party notes">
         {partyNotes.length === 0 && (
           <EmptyNote>
-            No party notes on this map yet — pin one from a hex in the Inspect tab.
+            No party notes on this map yet — click a hex and pin one from the Information panel.
           </EmptyNote>
         )}
         <div className="space-y-1.5">

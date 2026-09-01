@@ -126,7 +126,7 @@ function TokenRow({ token }: { token: Token }) {
         onClick={() => {
           setUi('selectedHex', { q: token.q, r: token.r });
           setUi('selectedTokenId', token.id);
-          setUi('panelTab', 'inspect');
+          setUi('openPanel', 'information');
         }}
         title="Jump to token"
       >

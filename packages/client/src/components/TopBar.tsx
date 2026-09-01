@@ -294,8 +294,6 @@ export function TopBar({
   const state = useSession((s) => s.state);
   const role = useSession((s) => s.role);
   const status = useSession((s) => s.status);
-  const panelOpen = useUi((s) => s.panelOpen);
-  const setUi = useUi((s) => s.set);
   const map = activeMap(state);
 
   const online = state?.seats.filter((s) => s.online) ?? [];
@@ -385,16 +383,13 @@ export function TopBar({
           🎯 Me
         </Button>
       )}
+      {/*
+        No panel show/hide button here any more (#61): the pop-out headings
+        live on the rail down the right edge, and clicking the open one closes
+        it — one affordance instead of two competing ones.
+      */}
       <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
         ⌖
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setUi('panelOpen', !panelOpen)}
-        title={panelOpen ? 'Hide panel' : 'Show panel'}
-      >
-        {panelOpen ? '⇥' : '⇤'}
       </Button>
     </header>
   );
