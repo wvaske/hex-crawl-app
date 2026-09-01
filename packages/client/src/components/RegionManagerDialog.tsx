@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CONTENT_TYPE_GLYPHS,
   TERRAINS,
   TERRAIN_IDS,
   contentCells,
+  hexCornerOffsets,
   hexKey,
+  hexToPixel,
   isFullContent,
   type Content,
   type HexCoord,
@@ -135,24 +137,27 @@ export function RegionManagerDialog() {
             ))}
           </div>
 
-          <div className="flex-1 min-w-0 overflow-y-auto p-4">
-            {selected ? (
-              <RegionDetail
-                key={selected.id}
-                region={selected}
-                map={map}
-                terrainAt={terrainAt}
-                regions={regions}
-                detect={detect}
-                setDetect={setDetect}
-                highlighted={
-                  areaHighlight?.contentId === selected.id && !areaHighlight.proposal
-                }
-                onClose={close}
-              />
-            ) : (
-              <EmptyNote>Pick a region on the left.</EmptyNote>
-            )}
+          <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
+              {selected ? (
+                <RegionDetail
+                  key={selected.id}
+                  region={selected}
+                  map={map}
+                  terrainAt={terrainAt}
+                  regions={regions}
+                  detect={detect}
+                  setDetect={setDetect}
+                  highlighted={
+                    areaHighlight?.contentId === selected.id && !areaHighlight.proposal
+                  }
+                  onClose={close}
+                />
+              ) : (
+                <EmptyNote>Pick a region on the left.</EmptyNote>
+              )}
+            </div>
+            {selected && <RegionPreview map={map} region={selected} terrainAt={terrainAt} />}
           </div>
         </div>
       </div>
@@ -606,6 +611,185 @@ function ProposalBar({
       <Button size="sm" variant="ghost" onClick={cancel}>
         Cancel
       </Button>
+    </div>
+  );
+}
+
+/**
+ * Bottom-right preview: the map art cropped to the region's neighbourhood
+ * with the footprint overlaid, so the DM sees what a region covers without
+ * closing the dialog. Falls back to painted-terrain tiles when the map has
+ * no image layer. Pure canvas — redraws when the footprint or map changes.
+ */
+function RegionPreview({
+  map,
+  region,
+  terrainAt,
+}: {
+  map: MapInfo;
+  region: Content;
+  terrainAt: Map<string, TerrainId>;
+}) {
+  const imageLayers = useSession((s) => s.state?.mapState?.imageLayers) ?? [];
+  const baseLayer = baseImageLayer(imageLayers);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cells = contentCells(region);
+  // Stable identity for the footprint so the effect reruns only on real change.
+  const cellsKey = cells.map((c) => hexKey(c.q, c.r)).sort().join(';');
+
+  useEffect(() => {
+    let live = true;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const layout: HexLayout = {
+      orientation: map.orientation,
+      size: map.hexSize,
+      origin: { x: map.originX, y: map.originY },
+    };
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    // Same layout-settling trap as the Pixi canvas (see the ResizeObserver in
+    // CanvasEngine): on first mount the flex column may not have widths yet,
+    // and a 2px measurement here bakes a 4px backing store that CSS then
+    // smears across the panel. Draw only at real sizes, and redraw whenever
+    // the panel is resized.
+    const draw = (): boolean => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 24 || rect.height < 24) return false;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+
+    // World-space bounding box of the footprint, padded for context.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const cell of cells) {
+      const p = hexToPixel(layout, cell);
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    const pad = map.hexSize * 2.5;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const scale = Math.min(canvas.width / (maxX - minX), canvas.height / (maxY - minY));
+    const ox = (canvas.width - (maxX - minX) * scale) / 2 - minX * scale;
+    const oy = (canvas.height - (maxY - minY) * scale) / 2 - minY * scale;
+    const toCanvas = (p: { x: number; y: number }) => ({ x: p.x * scale + ox, y: p.y * scale + oy });
+
+    const corners = hexCornerOffsets(layout);
+    const tracePath = (center: { x: number; y: number }) => {
+      ctx.beginPath();
+      corners.forEach((o, i) => {
+        const pt = toCanvas({ x: center.x + o.x, y: center.y + o.y });
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.closePath();
+    };
+
+    const drawOverlay = () => {
+      // Footprint tint + outline, then a ring on the anchor.
+      for (const cell of cells) {
+        tracePath(hexToPixel(layout, cell));
+        ctx.fillStyle = 'rgba(217, 180, 79, 0.26)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(217, 180, 79, 0.85)';
+        ctx.lineWidth = Math.max(1, dpr);
+        ctx.stroke();
+      }
+      const anchor = toCanvas(hexToPixel(layout, { q: region.q, r: region.r }));
+      ctx.beginPath();
+      ctx.arc(anchor.x, anchor.y, Math.max(3, map.hexSize * scale * 0.3), 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(242, 237, 221, 0.95)';
+      ctx.lineWidth = Math.max(1.5, 1.5 * dpr);
+      ctx.stroke();
+    };
+
+    const drawTerrainBackground = () => {
+      // No map art: painted terrain gives the footprint its context.
+      for (const [key, terrain] of terrainAt) {
+        const [q, r] = key.split(',').map(Number);
+        const center = hexToPixel(layout, { q: q!, r: r! });
+        if (
+          center.x < minX || center.x > maxX || center.y < minY || center.y > maxY
+        ) continue;
+        tracePath(center);
+        ctx.fillStyle = TERRAINS[terrain].color;
+        ctx.globalAlpha = 0.55;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    };
+
+    ctx.fillStyle = '#0b0d12';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (baseLayer) {
+      const img = new Image();
+      img.src = baseLayer.path;
+      void img
+        .decode()
+        .then(() => {
+          if (!live) return false;
+          const tl = toCanvas({ x: baseLayer.x, y: baseLayer.y });
+          ctx.drawImage(
+            img,
+            tl.x,
+            tl.y,
+            img.naturalWidth * baseLayer.scale * scale,
+            img.naturalHeight * baseLayer.scale * scale,
+          );
+          drawOverlay();
+        })
+        .catch(() => {
+          if (!live) return false;
+          drawTerrainBackground();
+          drawOverlay();
+        });
+    } else {
+      drawTerrainBackground();
+      drawOverlay();
+    }
+    return true;
+    };
+
+    // The ResizeObserver's initial notification is not reliable in every
+    // embedding (a hidden/pre-layout pane can swallow it), so retry the first
+    // draw briefly until the canvas has real dimensions.
+    let drawn = draw();
+    let tries = 0;
+    const retry = setInterval(() => {
+      if (drawn || !live || tries++ > 20) {
+        clearInterval(retry);
+        return;
+      }
+      drawn = draw();
+    }, 150);
+    const ro = new ResizeObserver(() => {
+      if (live) drawn = draw() || drawn;
+    });
+    ro.observe(canvas);
+
+    return () => {
+      live = false;
+      clearInterval(retry);
+      ro.disconnect();
+    };
+    // terrainAt is derived from the same snapshot as the contents; cellsKey
+    // covers the footprint, map fields cover the layout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map.id, map.orientation, map.hexSize, map.originX, map.originY, cellsKey, baseLayer?.path, baseLayer?.x, baseLayer?.y, baseLayer?.scale, region.q, region.r]);
+
+  return (
+    <div className="h-52 shrink-0 border-t border-ink-700 px-4 py-2.5 flex flex-col">
+      <p className="text-[11px] uppercase tracking-wider text-ink-400 mb-1.5 shrink-0">
+        Preview — {cells.length} hex{cells.length === 1 ? '' : 'es'}
+      </p>
+      <canvas
+        ref={canvasRef}
+        className="flex-1 min-h-0 w-full rounded-md border border-ink-700 bg-ink-900"
+      />
     </div>
   );
 }
