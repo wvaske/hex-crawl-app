@@ -1,16 +1,23 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { createCampaign } from '../api.js';
+import { createCampaign, fetchInstanceInfo } from '../api.js';
 import { Button, Field, Input } from '../ui/kit.js';
 
 export function Landing() {
   const [name, setName] = useState('');
   const [dmName, setDmName] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
+  /** Set by the operator via CREATE_PASSWORD; probed from /api/instance. */
+  const [createGated, setCreateGated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    void fetchInstanceInfo().then((info) => setCreateGated(info.createGated));
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,7 +25,7 @@ export function Landing() {
     setBusy(true);
     setError(null);
     try {
-      const result = await createCampaign(name.trim(), dmName.trim() || 'DM');
+      const result = await createCampaign(name.trim(), dmName.trim() || 'DM', createPassword);
       navigate(`/c/${result.campaignId}?key=${result.dmKey}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create campaign');
@@ -37,6 +44,8 @@ export function Landing() {
       const form = new FormData();
       form.append('file', file);
       form.append('dmName', dmName.trim() || 'DM');
+      // Restore creates a campaign, so it passes the same instance gate.
+      if (createPassword) form.append('createPassword', createPassword);
       const res = await fetch('/api/campaigns/import', { method: 'POST', body: form });
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -83,12 +92,23 @@ export function Landing() {
               maxLength={60}
             />
           </Field>
+          {createGated && (
+            <Field label="Instance password">
+              <Input
+                type="password"
+                value={createPassword}
+                onChange={(e) => setCreatePassword(e.target.value)}
+                placeholder="Set by whoever runs this server"
+                maxLength={200}
+              />
+            </Field>
+          )}
           {error && <p className="text-sm text-ember-500">{error}</p>}
           <Button
             type="submit"
             variant="primary"
             className="w-full"
-            disabled={busy || restoring || !name.trim()}
+            disabled={busy || restoring || !name.trim() || (createGated && !createPassword)}
           >
             {busy ? 'Creating…' : 'Create campaign'}
           </Button>
@@ -106,7 +126,7 @@ export function Landing() {
             <Button
               type="button"
               className="w-full"
-              disabled={busy || restoring}
+              disabled={busy || restoring || (createGated && !createPassword)}
               onClick={() => fileInput.current?.click()}
             >
               {restoring ? 'Restoring…' : 'Restore from backup'}

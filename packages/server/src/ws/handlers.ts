@@ -192,6 +192,15 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     if (!nowPaused && wasPaused) ctx.runtime.clearPlayerFreeze();
   }) as Handler,
 
+  /**
+   * DM only: rotate an invite secret. Nothing player-visible changes, so the
+   * Settings tab re-reads /api/campaigns/:id/keys after sending this.
+   */
+  'campaign.rotateKey': ((cmd: Extract<ClientCommand, { kind: 'campaign.rotateKey' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    ctx.runtime.rotateSecret(cmd.which);
+  }) as Handler,
+
   // -- maps ------------------------------------------------------------------
   'map.create': ((cmd: Extract<ClientCommand, { kind: 'map.create' }>, ctx: Ctx) => {
     requireDm(ctx);
@@ -1006,6 +1015,18 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         notifyLog(ctx, entry);
       }
     }
+  }) as Handler,
+
+  // -- sessions (issue #78) ---------------------------------------------------
+  'session.mark': ((cmd: Extract<ClientCommand, { kind: 'session.mark' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const atMinutes = ctx.runtime.campaign.time.minutes;
+    const label = cmd.action === 'start' ? 'Session started' : 'Session ended';
+    const entry = ctx.runtime.appendLog('session', `${label} — ${formatClock(atMinutes)}`, 'all', {
+      action: cmd.action,
+      atMinutes,
+    });
+    notifyLog(ctx, entry);
   }) as Handler,
 };
 
