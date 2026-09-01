@@ -96,11 +96,23 @@ export function RegionManagerDialog() {
     setUi('regionManagerOpen', false);
   };
 
+  // A detection proposal previews inside the dialog by default; "View on
+  // map" collapses to the floating bar for full-map context.
+  const [proposalOnMap, setProposalOnMap] = useState(false);
+  useEffect(() => {
+    if (!areaProposal) setProposalOnMap(false);
+  }, [areaProposal]);
+
   if (!map) return null;
 
-  // Collapsed: a proposal is on the map and the dialog is in the way.
-  if (areaProposal) {
-    return <ProposalBar proposal={areaProposal} regions={regions} />;
+  if (areaProposal && proposalOnMap) {
+    return (
+      <ProposalBar
+        proposal={areaProposal}
+        regions={regions}
+        onBack={() => setProposalOnMap(false)}
+      />
+    );
   }
 
   return (
@@ -157,7 +169,26 @@ export function RegionManagerDialog() {
                 <EmptyNote>Pick a region on the left.</EmptyNote>
               )}
             </div>
-            {selected && <RegionPreview map={map} region={selected} terrainAt={terrainAt} />}
+            {selected && (
+              <RegionPreview
+                map={map}
+                region={selected}
+                terrainAt={terrainAt}
+                proposal={
+                  areaProposal?.contentId === selected.id ? areaProposal.cells : null
+                }
+                onAcceptProposal={() => {
+                  if (areaProposal) acceptProposalCells(selected, areaProposal.cells);
+                  setUi('areaProposal', null);
+                  setUi('areaHighlight', null);
+                }}
+                onCancelProposal={() => {
+                  setUi('areaProposal', null);
+                  setUi('areaHighlight', null);
+                }}
+                onViewOnMap={() => setProposalOnMap(true)}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -379,10 +410,34 @@ function RegionDetail({
           {highlighted ? '◉ Highlighted' : '◎ Highlight'}
         </Button>
       </div>
-      <p className="text-xs text-ink-400">
-        Anchor {region.q}, {region.r} · {size} hex{size === 1 ? '' : 'es'} ·{' '}
-        {summaryText(rows) || 'unpainted'}
-      </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-xs text-ink-400">
+          Anchor {region.q}, {region.r} · {size} hex{size === 1 ? '' : 'es'} ·{' '}
+          {summaryText(rows) || 'unpainted'}
+        </p>
+        <span className="flex-1" />
+        <button
+          className="text-[11px] text-brass-400 hover:text-brass-300 cursor-pointer"
+          onClick={() => {
+            setUi('contentDialogHex', { q: region.q, r: region.r });
+            setUi('editingContentId', region.id);
+            onClose();
+          }}
+        >
+          Open full editor
+        </button>
+        <button
+          className="text-[11px] text-ink-400 hover:text-ember-500 cursor-pointer disabled:opacity-30 disabled:cursor-default"
+          disabled={region.area.length === 0}
+          onClick={() => {
+            if (confirm(`Clear the ${region.area.length}-hex area of "${region.title}"?`)) {
+              send({ kind: 'content.area', contentId: region.id, remove: region.area });
+            }
+          }}
+        >
+          Clear area
+        </button>
+      </div>
 
       <section className="border border-ink-700 rounded-lg p-3 space-y-2">
         <h3 className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
@@ -519,32 +574,6 @@ function RegionDetail({
         </label>
       </section>
 
-      <div className="flex gap-2 flex-wrap">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setUi('contentDialogHex', { q: region.q, r: region.r });
-            setUi('editingContentId', region.id);
-            onClose();
-          }}
-        >
-          Open full editor
-        </Button>
-        <Button
-          size="sm"
-          variant="danger"
-          className="ml-auto"
-          disabled={region.area.length === 0}
-          onClick={() => {
-            if (confirm(`Clear the ${region.area.length}-hex area of "${region.title}"?`)) {
-              send({ kind: 'content.area', contentId: region.id, remove: region.area });
-            }
-          }}
-        >
-          Clear area
-        </Button>
-      </div>
     </div>
   );
 }
@@ -559,6 +588,20 @@ function countOverlap(region: Content, regions: Content[]): number {
   return contentCells(region).filter((c) => others.has(hexKey(c.q, c.r))).length;
 }
 
+/** The proposal cells a region does not already hold. */
+function proposalAdditions(region: Content, cells: HexCoord[]): HexCoord[] {
+  const existing = new Set(contentCells(region).map((c) => hexKey(c.q, c.r)));
+  return cells.filter((c) => !existing.has(hexKey(c.q, c.r)));
+}
+
+/** Apply a detection proposal: chunked `content.area` adds of the new cells. */
+function acceptProposalCells(region: Content, cells: HexCoord[]): void {
+  const add = proposalAdditions(region, cells);
+  for (let i = 0; i < add.length; i += AREA_CHUNK) {
+    send({ kind: 'content.area', contentId: region.id, add: add.slice(i, i + AREA_CHUNK) });
+  }
+}
+
 /**
  * The collapsed state: the proposal is drawn on the map (amber, through the
  * area-highlight layer) and this bar is all that's left of the dialog.
@@ -566,9 +609,11 @@ function countOverlap(region: Content, regions: Content[]): number {
 function ProposalBar({
   proposal,
   regions,
+  onBack,
 }: {
   proposal: { contentId: string; cells: HexCoord[] };
   regions: Content[];
+  onBack: () => void;
 }) {
   const setUi = useUi((s) => s.set);
   const region = regions.find((r) => r.id === proposal.contentId) ?? null;
@@ -578,21 +623,10 @@ function ProposalBar({
     setUi('areaHighlight', null);
   };
 
-  // What Accept would actually send: the proposal minus what the footprint
-  // already holds (the anchor included — the server ignores it either way).
-  const existing = new Set(region ? contentCells(region).map((c) => hexKey(c.q, c.r)) : []);
-  const add = proposal.cells.filter((c) => !existing.has(hexKey(c.q, c.r)));
+  const add = region ? proposalAdditions(region, proposal.cells) : [];
 
   const accept = () => {
-    if (region) {
-      for (let i = 0; i < add.length; i += AREA_CHUNK) {
-        send({
-          kind: 'content.area',
-          contentId: region.id,
-          add: add.slice(i, i + AREA_CHUNK),
-        });
-      }
-    }
+    if (region) acceptProposalCells(region, proposal.cells);
     cancel();
   };
 
@@ -607,6 +641,9 @@ function ProposalBar({
       </span>
       <Button size="sm" variant="primary" onClick={accept} disabled={add.length === 0}>
         Accept
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onBack} title="Back to the region manager">
+        Back
       </Button>
       <Button size="sm" variant="ghost" onClick={cancel}>
         Cancel
@@ -625,17 +662,30 @@ function RegionPreview({
   map,
   region,
   terrainAt,
+  proposal,
+  onAcceptProposal,
+  onCancelProposal,
+  onViewOnMap,
 }: {
   map: MapInfo;
   region: Content;
   terrainAt: Map<string, TerrainId>;
+  /** A pending auto-detect proposal for THIS region (full cell list). */
+  proposal: HexCoord[] | null;
+  onAcceptProposal: () => void;
+  onCancelProposal: () => void;
+  onViewOnMap: () => void;
 }) {
   const imageLayers = useSession((s) => s.state?.mapState?.imageLayers) ?? [];
   const baseLayer = baseImageLayer(imageLayers);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cells = contentCells(region);
+  const additions = proposal ? proposalAdditions(region, proposal) : [];
   // Stable identity for the footprint so the effect reruns only on real change.
-  const cellsKey = cells.map((c) => hexKey(c.q, c.r)).sort().join(';');
+  const cellsKey =
+    cells.map((c) => hexKey(c.q, c.r)).sort().join(';') +
+    '|' +
+    additions.map((c) => hexKey(c.q, c.r)).sort().join(';');
 
   useEffect(() => {
     let live = true;
@@ -663,7 +713,7 @@ function RegionPreview({
 
     // World-space bounding box of the footprint, padded for context.
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const cell of cells) {
+    for (const cell of [...cells, ...additions]) {
       const p = hexToPixel(layout, cell);
       minX = Math.min(minX, p.x);
       minY = Math.min(minY, p.y);
@@ -695,6 +745,16 @@ function RegionPreview({
         ctx.fillStyle = 'rgba(217, 180, 79, 0.26)';
         ctx.fill();
         ctx.strokeStyle = 'rgba(217, 180, 79, 0.85)';
+        ctx.lineWidth = Math.max(1, dpr);
+        ctx.stroke();
+      }
+      // Proposed additions render in green over the committed amber, so the
+      // DM sees exactly what Accept would change.
+      for (const cell of additions) {
+        tracePath(hexToPixel(layout, cell));
+        ctx.fillStyle = 'rgba(112, 214, 134, 0.32)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(112, 214, 134, 0.95)';
         ctx.lineWidth = Math.max(1, dpr);
         ctx.stroke();
       }
@@ -783,9 +843,30 @@ function RegionPreview({
 
   return (
     <div className="h-52 shrink-0 border-t border-ink-700 px-4 py-2.5 flex flex-col">
-      <p className="text-[11px] uppercase tracking-wider text-ink-400 mb-1.5 shrink-0">
-        Preview — {cells.length} hex{cells.length === 1 ? '' : 'es'}
-      </p>
+      <div className="flex items-center gap-2 mb-1.5 shrink-0">
+        <p className="text-[11px] uppercase tracking-wider text-ink-400">
+          Preview — {cells.length} hex{cells.length === 1 ? '' : 'es'}
+          {proposal && (
+            <span className="text-emerald-400 normal-case tracking-normal">
+              {' '}
+              · +{additions.length} proposed
+            </span>
+          )}
+        </p>
+        {proposal && (
+          <span className="ml-auto flex items-center gap-1.5">
+            <Button size="sm" variant="primary" className="!py-0.5" onClick={onAcceptProposal} disabled={additions.length === 0}>
+              Accept
+            </Button>
+            <Button size="sm" variant="ghost" className="!py-0.5" onClick={onCancelProposal}>
+              Cancel
+            </Button>
+            <Button size="sm" variant="ghost" className="!py-0.5" onClick={onViewOnMap} title="See the proposal on the full map">
+              🗺 On map
+            </Button>
+          </span>
+        )}
+      </div>
       <canvas
         ref={canvasRef}
         className="flex-1 min-h-0 w-full rounded-md border border-ink-700 bg-ink-900"
