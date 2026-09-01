@@ -119,6 +119,25 @@ player-facing data).
   `MapDefaultsSchema` in shared `domain.ts` and the propagation follows.
 - Shell scripting: `grep -c` exits 1 on zero matches and silently breaks
   `&&` chains; never name a variable `GZIP` (gzip reads it as options).
+- **Storage drivers** (#73): `state/runtime.ts` writes through the `DB`
+  interface in `db/driver.ts` — SQLite by default, Postgres when
+  `DATABASE_URL` is set. **The runtime is the cache: never read the database
+  at request time** (on Postgres a sync read outside `withReadCache` throws
+  by design; new per-map data belongs in `MapRuntime`, loaded in
+  `loadMapRuntime`). A new column goes in the shared `ensureColumn` block
+  (serves both dialects; `db/schema-parity.test.ts` fails loudly otherwise).
+  Booleans stay `0/1` integers in both dialects — `Boolean(row.x)` /
+  `x ? 1 : 0` are load-bearing. `HEXCRAWL_TEST_DATABASE_URL` enables the
+  live Postgres suite; CI passes without one.
+- **Hono middleware widens `c.req.param()`** to `string | undefined` once a
+  route chains middleware — `?? ''` at the call site.
+- **Responsive shell**: `MOBILE_MAX_WIDTH` in `client/src/ui/responsive.ts`
+  and Tailwind's `md:` breakpoint must stay in step; below it the panel rail
+  becomes a bottom tab bar and pop-outs become bottom sheets.
+- Region content (#69): footprint helpers (`contentCells`,
+  `contentCoversHex`, `distanceToContent`) in shared `domain.ts` are the
+  single source of area truth — never compare `c.q === hex.q` directly for
+  content-on-hex checks.
 - **Seat cookies are per-hostname.** To run a DM and a player session against
   one dev server, open one on `localhost` and one on `127.0.0.1` — separate
   cookie jars.
