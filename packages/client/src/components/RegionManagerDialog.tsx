@@ -150,7 +150,8 @@ export function RegionManagerDialog() {
           </div>
 
           <div className="flex-1 min-w-0 flex flex-col">
-            <div className="flex-1 min-h-0 overflow-y-auto p-4">
+            {/* Natural height, scrolls when tall; the preview soaks up the rest. */}
+            <div className="min-h-0 shrink overflow-y-auto p-4">
               {selected ? (
                 <RegionDetail
                   key={selected.id}
@@ -294,6 +295,16 @@ function RegionDetail({
     (rows[0]?.terrain ?? anchorTerrain ?? 'plains') as TerrainId,
   );
   const [skipOtherRegions, setSkipOtherRegions] = useState(true);
+
+  // What Apply would actually repaint: eligible footprint hexes whose current
+  // terrain differs from the chosen fill (erase counts painted hexes).
+  const othersSet = otherRegionCellKeys(region, regions);
+  const changing = contentCells(region).filter((c) => {
+    const key = hexKey(c.q, c.r);
+    if (skipOtherRegions && othersSet.has(key)) return false;
+    const t = terrainAt.get(key) ?? null;
+    return fill === 'erase' ? t !== null : t !== fill;
+  }).length;
 
   const toggleTerrain = (id: TerrainId) =>
     setDetect((d) => ({
@@ -557,9 +568,16 @@ function RegionDetail({
             ))}
             <option value="erase">⌫ Erase terrain</option>
           </Select>
-          <Button size="sm" variant="primary" onClick={applyFill}>
-            Apply to {size} hex{size === 1 ? '' : 'es'}
+          <Button size="sm" variant="primary" onClick={applyFill} disabled={changing === 0}>
+            Apply — {changing} hex{changing === 1 ? '' : 'es'} change
           </Button>
+          <span className="text-[11px] text-ink-400">
+            {changing === 0
+              ? fill === 'erase'
+                ? 'nothing to erase'
+                : `everything already ${TERRAINS[fill as TerrainId].label.toLowerCase()}`
+              : `of ${size} in the footprint`}
+          </span>
         </div>
         <label className="flex items-center gap-2 text-sm text-ink-200 cursor-pointer">
           <input
@@ -578,13 +596,19 @@ function RegionDetail({
   );
 }
 
-/** How many of this region's hexes another region also claims. */
-function countOverlap(region: Content, regions: Content[]): number {
+/** Hex keys claimed by any OTHER region's footprint. */
+function otherRegionCellKeys(region: Content, regions: Content[]): Set<string> {
   const others = new Set<string>();
   for (const other of regions) {
     if (other.id === region.id || other.area.length === 0) continue;
     for (const cell of contentCells(other)) others.add(hexKey(cell.q, cell.r));
   }
+  return others;
+}
+
+/** How many of this region's hexes another region also claims. */
+function countOverlap(region: Content, regions: Content[]): number {
+  const others = otherRegionCellKeys(region, regions);
   return contentCells(region).filter((c) => others.has(hexKey(c.q, c.r))).length;
 }
 
@@ -842,7 +866,7 @@ function RegionPreview({
   }, [map.id, map.orientation, map.hexSize, map.originX, map.originY, cellsKey, baseLayer?.path, baseLayer?.x, baseLayer?.y, baseLayer?.scale, region.q, region.r]);
 
   return (
-    <div className="h-52 shrink-0 border-t border-ink-700 px-4 py-2.5 flex flex-col">
+    <div className="flex-1 min-h-52 border-t border-ink-700 px-4 py-2.5 flex flex-col">
       <div className="flex items-center gap-2 mb-1.5 shrink-0">
         <p className="text-[11px] uppercase tracking-wider text-ink-400">
           Preview — {cells.length} hex{cells.length === 1 ? '' : 'es'}
