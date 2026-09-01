@@ -11,11 +11,15 @@ import type {
 import {
   compassDirection,
   EncounterCheckConfigSchema,
+  formatClock,
+  formatDuration,
   GridStyleSchema,
   hexDistance,
   hexKey,
   hexLine,
+  minutesPerHex,
   parseHexKey,
+  resolveTravelMode,
   rollD20,
 } from '@hexcrawl/shared';
 import type { FogState, TerrainId } from '@hexcrawl/shared';
@@ -250,6 +254,15 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       token.glyph = token.glyph || character.glyph;
     }
     ctx.runtime.createToken(token);
+    // The first PC on the board establishes where "the party" stands, so
+    // lingering time is credited from the moment they exist.
+    if (token.kind === 'pc' && !ctx.runtime.campaign.time.partyHex) {
+      const now = ctx.runtime.campaign.time.minutes;
+      ctx.runtime.recordHexArrival(token.mapId, token.q, token.r, now);
+      ctx.runtime.updateTime({
+        partyHex: { mapId: token.mapId, q: token.q, r: token.r, arrivedMinutes: now },
+      });
+    }
     afterPartyMoved(ctx, cmd.mapId, token);
   }) as Handler,
 
@@ -284,6 +297,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     const teleport = cmd.teleport && ctx.seat.role === 'dm';
     const fogDelta = executePartyMove(ctx, token, cmd.q, cmd.r, teleport);
     autoEncounterChecks(ctx, map, token, { q: fromQ, r: fromR }, { q: cmd.q, r: cmd.r }, teleport);
+    advanceTravelClock(ctx, map, token, { q: fromQ, r: fromR }, { q: cmd.q, r: cmd.r }, teleport);
     if (ctx.seat.role === 'dm') {
       ctx.runtime.pushUndo({
         at: Date.now(),
@@ -342,6 +356,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       const map = ctx.runtime.maps.get(token.mapId);
       if (map) {
         autoEncounterChecks(ctx, map, token, from, { q: pending.toQ, r: pending.toR }, cmd.teleport);
+        advanceTravelClock(ctx, map, token, from, { q: pending.toQ, r: pending.toR }, cmd.teleport);
       }
       ctx.runtime.pushUndo({
         at: Date.now(),
@@ -874,6 +889,36 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     ctx.runtime.deleteEncounterTable(cmd.tableId);
   }) as Handler,
 
+  // -- campaign clock --------------------------------------------------------
+  'time.advance': ((cmd: Extract<ClientCommand, { kind: 'time.advance' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const time = ctx.runtime.advanceTime(cmd.minutes);
+    const entry = ctx.runtime.appendLog(
+      'time',
+      `Time advances ${formatDuration(cmd.minutes)} — ${formatClock(time.minutes)}`,
+      'all',
+      { minutes: time.minutes, advancedBy: cmd.minutes },
+    );
+    notifyLog(ctx, entry);
+  }) as Handler,
+
+  'time.set': ((cmd: Extract<ClientCommand, { kind: 'time.set' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const time = ctx.runtime.setTime(cmd.minutes);
+    const entry = ctx.runtime.appendLog('time', `Clock set to ${formatClock(time.minutes)}`, 'dm', {
+      minutes: time.minutes,
+    });
+    notifyLog(ctx, entry);
+  }) as Handler,
+
+  'time.config': ((cmd: Extract<ClientCommand, { kind: 'time.config' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const patch: Parameters<CampaignRuntime['updateTime']>[0] = {};
+    if (cmd.travelMode !== undefined) patch.travelMode = cmd.travelMode;
+    if (cmd.pace !== undefined) patch.pace = cmd.pace;
+    ctx.runtime.updateTime(patch);
+  }) as Handler,
+
   // -- undo ------------------------------------------------------------------
   undo: ((_cmd: Extract<ClientCommand, { kind: 'undo' }>, ctx: Ctx) => {
     requireDm(ctx);
@@ -1058,6 +1103,40 @@ function autoEncounterChecks(
   ctx.runtime.updateMap(map.id, {
     encounterCheck: { hexesSinceCheck: count },
   } as unknown as Partial<MapInfo>);
+}
+
+/**
+ * Campaign clock + per-hex visit accounting for a party move.
+ *
+ * Travel costs `hexes crossed × minutesPerHex(map scale, mode, pace)`. The hex
+ * the party leaves is credited with the time they lingered there — the clock
+ * delta since they arrived, which excludes this move's travel time because the
+ * credit is taken before the clock advances. Teleports move the party without
+ * spending time (but still re-stamp where they now stand). "The party" is the
+ * moved PC token; NPC tokens don't move the clock.
+ */
+function advanceTravelClock(
+  ctx: Ctx,
+  map: MapInfo,
+  token: Token,
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+  teleport: boolean,
+): void {
+  if (token.kind !== 'pc') return;
+  const time = ctx.runtime.campaign.time;
+  const mode = resolveTravelMode(time.travelMode, ctx.runtime.campaign.settings.customTravelModes);
+  const hexes = teleport ? 0 : Math.max(0, hexLine(from, to).length - 1);
+  const travelMinutes = hexes * minutesPerHex(map.milesPerHex, mode, time.pace);
+
+  const parked = time.partyHex;
+  if (parked) {
+    ctx.runtime.addHexTime(parked.mapId, parked.q, parked.r, time.minutes - parked.arrivedMinutes);
+  }
+  if (travelMinutes > 0) ctx.runtime.advanceTime(travelMinutes);
+  const arrivedMinutes = ctx.runtime.campaign.time.minutes;
+  ctx.runtime.recordHexArrival(map.id, to.q, to.r, arrivedMinutes);
+  ctx.runtime.updateTime({ partyHex: { mapId: map.id, q: to.q, r: to.r, arrivedMinutes } });
 }
 
 function capitalize(s: string): string {

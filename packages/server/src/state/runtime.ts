@@ -4,6 +4,7 @@ import type {
   PendingMove,
   CampaignSettings,
   CampaignState,
+  CampaignTime,
   Character,
   Content,
   Discovery,
@@ -12,6 +13,7 @@ import type {
   EncounterTable,
   FogState,
   HexCell,
+  HexVisit,
   ImageLayer,
   LogEntry,
   MapInfo,
@@ -24,6 +26,7 @@ import type {
 } from '@hexcrawl/shared';
 import {
   CampaignSettingsSchema,
+  CampaignTimeSchema,
   EncounterCheckConfigSchema,
   GateSchema,
   GridStyleSchema,
@@ -51,6 +54,8 @@ export interface MapRuntime {
   /** In-memory only: player moves awaiting DM approval, by tokenId. */
   pendingMoves: Map<string, PendingMove>;
   trails: Map<string, Trail>;
+  /** Party visit accounting per hex, keyed by hexKey. */
+  visits: Map<string, HexVisit>;
 }
 
 const LOG_MEMORY_LIMIT = 500;
@@ -109,7 +114,16 @@ export class CampaignRuntime {
 
   constructor(
     private db: DB,
-    row: { id: string; name: string; dm_secret: string; player_secret: string; active_map_id: string | null; settings: string },
+    row: {
+      id: string;
+      name: string;
+      dm_secret: string;
+      player_secret: string;
+      active_map_id: string | null;
+      settings: string;
+      /** Added after first release; absent on rows selected before the column. */
+      time?: string | null;
+    },
   ) {
     this.id = row.id;
     this.dmSecret = row.dm_secret;
@@ -119,6 +133,7 @@ export class CampaignRuntime {
       name: row.name,
       activeMapId: row.active_map_id,
       settings: CampaignSettingsSchema.parse(safeJson(row.settings)),
+      time: CampaignTimeSchema.parse(safeJson(row.time)),
     };
     this.load();
     if (this.campaign.settings.pausePlayerMapSync) this.capturePlayerFreeze();
@@ -244,7 +259,19 @@ export class CampaignRuntime {
       contents: new Map(),
       pendingMoves: new Map(),
       trails: new Map(),
+      visits: new Map(),
     };
+    for (const v of d.prepare('SELECT * FROM hex_visit WHERE map_id = ?').all(mapId) as Array<
+      Record<string, unknown>
+    >) {
+      rt.visits.set(hexKey(v.q as number, v.r as number), {
+        q: v.q as number,
+        r: v.r as number,
+        firstArrived: v.first_arrived as number,
+        lastArrived: v.last_arrived as number,
+        totalMinutes: v.total_minutes as number,
+      });
+    }
     for (const t of d.prepare('SELECT * FROM trail WHERE map_id = ?').all(mapId) as Array<
       Record<string, unknown>
     >) {
@@ -361,6 +388,7 @@ export class CampaignRuntime {
       pendingMoves: [...rt.pendingMoves.values()],
       trails: [...rt.trails.values()],
       trailSigns: [],
+      visits: [...rt.visits.values()],
     };
   }
 
@@ -462,6 +490,73 @@ export class CampaignRuntime {
       .run(this.campaign.name, JSON.stringify(this.campaign.settings), this.id);
   }
 
+  // -- campaign clock --------------------------------------------------------
+
+  /** Patch the clock blob and write it through. */
+  updateTime(patch: Partial<CampaignTime>): CampaignTime {
+    this.campaign.time = { ...this.campaign.time, ...patch };
+    this.db
+      .prepare('UPDATE campaign SET time = ? WHERE id = ?')
+      .run(JSON.stringify(this.campaign.time), this.id);
+    return this.campaign.time;
+  }
+
+  /** Push the clock forward by whole minutes (never backwards). */
+  advanceTime(minutes: number): CampaignTime {
+    const delta = Math.max(0, Math.round(minutes));
+    if (delta === 0) return this.campaign.time;
+    return this.updateTime({ minutes: this.campaign.time.minutes + delta });
+  }
+
+  setTime(minutes: number): CampaignTime {
+    return this.updateTime({ minutes: Math.max(0, Math.round(minutes)) });
+  }
+
+  // -- hex visits ------------------------------------------------------------
+
+  hexVisit(mapId: string, q: number, r: number): HexVisit | null {
+    return this.mapStates.get(mapId)?.visits.get(hexKey(q, r)) ?? null;
+  }
+
+  /**
+   * Stamp the party's arrival on a hex at clock minute `at`, creating the
+   * record on first visit.
+   */
+  recordHexArrival(mapId: string, q: number, r: number, at: number): HexVisit {
+    const rt = this.requireMap(mapId);
+    const key = hexKey(q, r);
+    const existing = rt.visits.get(key);
+    const visit: HexVisit = existing
+      ? { ...existing, lastArrived: at }
+      : { q, r, firstArrived: at, lastArrived: at, totalMinutes: 0 };
+    rt.visits.set(key, visit);
+    this.writeHexVisit(mapId, visit);
+    return visit;
+  }
+
+  /** Credit minutes spent standing on a hex (no-op if never arrived there). */
+  addHexTime(mapId: string, q: number, r: number, minutes: number): void {
+    const delta = Math.max(0, Math.round(minutes));
+    if (delta === 0) return;
+    const rt = this.mapStates.get(mapId);
+    if (!rt) return;
+    const key = hexKey(q, r);
+    const existing = rt.visits.get(key);
+    if (!existing) return;
+    const visit: HexVisit = { ...existing, totalMinutes: existing.totalMinutes + delta };
+    rt.visits.set(key, visit);
+    this.writeHexVisit(mapId, visit);
+  }
+
+  private writeHexVisit(mapId: string, visit: HexVisit): void {
+    this.db
+      .prepare(
+        `INSERT INTO hex_visit (map_id, q, r, first_arrived, last_arrived, total_minutes) VALUES (?,?,?,?,?,?)
+         ON CONFLICT(map_id,q,r) DO UPDATE SET first_arrived=excluded.first_arrived, last_arrived=excluded.last_arrived, total_minutes=excluded.total_minutes`,
+      )
+      .run(mapId, visit.q, visit.r, visit.firstArrived, visit.lastArrived, visit.totalMinutes);
+  }
+
   setActiveMap(mapId: string | null): void {
     this.campaign.activeMapId = mapId;
     this.db.prepare('UPDATE campaign SET active_map_id = ? WHERE id = ?').run(mapId, this.id);
@@ -555,6 +650,7 @@ export class CampaignRuntime {
       contents: new Map(),
       pendingMoves: new Map(),
       trails: new Map(),
+      visits: new Map(),
     });
     this.db
       .prepare(

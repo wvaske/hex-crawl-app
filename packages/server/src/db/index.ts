@@ -198,6 +198,16 @@ function migrate(d: DB): void {
     );
     CREATE INDEX IF NOT EXISTS trail_map ON trail(map_id);
 
+    CREATE TABLE IF NOT EXISTS hex_visit (
+      map_id TEXT NOT NULL REFERENCES map(id) ON DELETE CASCADE,
+      q INTEGER NOT NULL,
+      r INTEGER NOT NULL,
+      first_arrived INTEGER NOT NULL,
+      last_arrived INTEGER NOT NULL,
+      total_minutes INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (map_id, q, r)
+    );
+
     CREATE TABLE IF NOT EXISTS trail_discovery (
       id TEXT PRIMARY KEY,
       campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
@@ -227,6 +237,8 @@ function migrate(d: DB): void {
   ensureColumn(d, 'content', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn(d, 'content', 'quest', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(d, 'content', 'known_location', 'INTEGER NOT NULL DEFAULT 0');
+  // Campaign clock (issue #57): JSON blob, zod defaults make it migration-free.
+  ensureColumn(d, 'campaign', 'time', "TEXT NOT NULL DEFAULT '{}'");
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {
