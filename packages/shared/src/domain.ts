@@ -82,11 +82,26 @@ export type FogState = z.infer<typeof FogStateSchema>;
 // Campaign / seats / characters
 // ---------------------------------------------------------------------------
 
+/** A campaign-defined travel mode, on top of the built-in list in rules/time. */
+export const CustomTravelModeSchema = z.object({
+  id: z.string().min(1).max(40),
+  name: z.string().min(1).max(60),
+  /** Miles per hour at normal pace. */
+  mph: z.number().min(0.1).max(500),
+});
+export type CustomTravelMode = z.infer<typeof CustomTravelModeSchema>;
+
 export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
   description: z.string().max(2000).default(''),
   /** Base URL for wiki links on content (page titles are appended). */
   wikiBaseUrl: z.string().max(300).default('https://wiki.deeznuts.wiki/index.php/'),
+  /** Extra travel modes for the campaign clock. */
+  customTravelModes: z.array(CustomTravelModeSchema).default([]),
+  /** Hour of day (0-23) the sun rises; drives day/night derivation. */
+  sunriseHour: z.number().min(0).max(23).default(6),
+  /** Hour of day (0-24) the sun sets. */
+  sunsetHour: z.number().min(0).max(24).default(20),
   /**
    * Prep mode: while true, players keep seeing the map layers (terrain,
    * markers, content, images, trails) as they were when the pause began;
@@ -97,11 +112,42 @@ export const CampaignSettingsSchema = z.object({
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 
+export const TravelPaceSchema = z.enum(['fast', 'normal', 'careful']);
+export type TravelPace = z.infer<typeof TravelPaceSchema>;
+
+/**
+ * The campaign clock. `minutes` is in-game minutes since campaign start, so
+ * day/hour arithmetic is pure integer math and a calendar can be layered on
+ * later (issue #79). Campaigns begin at 8:00 AM on day 1.
+ */
+export const CampaignTimeSchema = z.object({
+  minutes: z.number().int().min(0).default(8 * 60),
+  /** Travel mode id — a built-in or one of settings.customTravelModes. */
+  travelMode: z.string().min(1).max(40).default('foot'),
+  pace: TravelPaceSchema.default('normal'),
+  /**
+   * Where the party stands and when they got there (clock minutes), so time
+   * spent lingering can be credited to that hex when they leave.
+   */
+  partyHex: z
+    .object({
+      mapId: z.string(),
+      q: z.number().int(),
+      r: z.number().int(),
+      arrivedMinutes: z.number().int().min(0),
+    })
+    .nullable()
+    .default(null),
+});
+export type CampaignTime = z.infer<typeof CampaignTimeSchema>;
+
 export const CampaignSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(120),
   activeMapId: z.string().nullable(),
   settings: CampaignSettingsSchema,
+  /** Visible to everyone: players see the clock too. */
+  time: CampaignTimeSchema,
 });
 export type Campaign = z.infer<typeof CampaignSchema>;
 
@@ -562,6 +608,22 @@ export const TrailSignSchema = z.object({
 });
 export type TrailSign = z.infer<typeof TrailSignSchema>;
 
+/**
+ * Per-hex visit accounting for the party, in campaign-clock minutes. Feeds
+ * "when were we here?" (#66) and time-spent-in-hex (#59). DM-only for now.
+ */
+export const HexVisitSchema = z.object({
+  q: z.number().int(),
+  r: z.number().int(),
+  /** Clock minutes at the party's first arrival on this hex. */
+  firstArrived: z.number().int().min(0),
+  /** Clock minutes at their most recent arrival. */
+  lastArrived: z.number().int().min(0),
+  /** Total minutes the party has spent standing here (travel time excluded). */
+  totalMinutes: z.number().int().min(0).default(0),
+});
+export type HexVisit = z.infer<typeof HexVisitSchema>;
+
 export const MapStateSchema = z.object({
   imageLayers: z.array(ImageLayerSchema),
   hexes: z.array(HexCellSchema),
@@ -575,6 +637,8 @@ export const MapStateSchema = z.object({
   trails: z.array(TrailSchema).default([]),
   /** Players: signs for the trail cells their character has discovered. */
   trailSigns: z.array(TrailSignSchema).default([]),
+  /** DM only: per-hex party visit records (players get last-visited in #66). */
+  visits: z.array(HexVisitSchema).default([]),
 });
 export type MapState = z.infer<typeof MapStateSchema>;
 

@@ -51,6 +51,9 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
           // Trail definitions never reach players; only discovered signs do.
           trails: [],
           trailSigns: computeTrailSigns(full, viewer.characterId),
+          // Visit history is DM bookkeeping for now (players get last-visited
+          // in #66, which will need its own per-hex fog check).
+          visits: [],
         };
       })()
     : null;

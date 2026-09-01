@@ -1,9 +1,19 @@
 import React from 'react';
-import { SUPER_SCALE } from '@hexcrawl/shared';
+import {
+  SUPER_SCALE,
+  TRAVEL_PACES,
+  formatDay,
+  formatTimeOfDay,
+  isNight,
+  minutesPerHex,
+  resolveTravelMode,
+  travelModes,
+} from '@hexcrawl/shared';
+import type { TravelPace } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
-import { Button, Select, cx } from '../ui/kit.js';
+import { Button, Input, Select, cx } from '../ui/kit.js';
 
 function ScaleControl({ baseMiles }: { baseMiles: number }) {
   const scaleLock = useUi((s) => s.scaleLock);
@@ -35,6 +45,157 @@ function ScaleControl({ baseMiles }: { baseMiles: number }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * The campaign clock. Everyone sees the readout ("Day 3 · 6:40 PM" plus a
+ * sun/moon); the DM gets travel mode, pace and time-advance controls in a
+ * popover, since the top bar has no room for them inline.
+ */
+function TimeControl() {
+  const time = useSession((s) => s.state?.campaign.time);
+  const settings = useSession((s) => s.state?.campaign.settings);
+  const role = useSession((s) => s.role);
+  const map = activeMap(useSession((s) => s.state));
+  const [open, setOpen] = React.useState(false);
+  const [custom, setCustom] = React.useState('');
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  if (!time) return null;
+  const night = isNight(time.minutes, settings);
+  const modes = travelModes(settings?.customTravelModes ?? []);
+  const mode = resolveTravelMode(time.travelMode, settings?.customTravelModes ?? []);
+  const perHex = map ? Math.round(minutesPerHex(map.milesPerHex, mode, time.pace)) : null;
+
+  const advance = (minutes: number) => {
+    if (minutes > 0) send({ kind: 'time.advance', minutes });
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => role === 'dm' && setOpen((o) => !o)}
+        className={cx(
+          'flex items-center gap-1.5 rounded-md border border-ink-600 px-2 py-1 text-[11px] text-ink-200',
+          role === 'dm' ? 'cursor-pointer hover:bg-ink-700' : 'cursor-default',
+        )}
+        title={
+          role === 'dm'
+            ? 'Campaign clock — travel mode, pace, and time advance'
+            : 'Campaign clock'
+        }
+      >
+        <span>{night ? '🌙' : '☀️'}</span>
+        <span className="whitespace-nowrap">
+          {formatDay(time.minutes)} · {formatTimeOfDay(time.minutes)}
+        </span>
+      </button>
+
+      {open && role === 'dm' && (
+        <div className="absolute left-0 top-full mt-1 w-60 rounded-md border border-ink-700 bg-ink-900 p-2.5 shadow-lg space-y-2 z-40">
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+              Travel mode
+            </span>
+            <Select
+              value={time.travelMode}
+              onChange={(e) => send({ kind: 'time.config', travelMode: e.target.value })}
+            >
+              {modes.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label} ({m.mph} mph)
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+              Pace
+            </span>
+            <div className="flex items-center rounded-md border border-ink-600 overflow-hidden text-[11px]">
+              {TRAVEL_PACES.map((p: TravelPace) => (
+                <button
+                  key={p}
+                  onClick={() => send({ kind: 'time.config', pace: p })}
+                  className={cx(
+                    'flex-1 px-2 py-1 capitalize cursor-pointer transition-colors',
+                    time.pace === p
+                      ? 'bg-brass-500/25 text-brass-300'
+                      : 'text-ink-400 hover:bg-ink-700',
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {perHex !== null && (
+            <p className="text-[11px] text-ink-400">
+              {perHex} min per hex at {map!.milesPerHex} mi/hex
+            </p>
+          )}
+
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+              Advance time
+            </span>
+            <div className="flex gap-1">
+              {(
+                [
+                  ['+1h', 60],
+                  ['+8h', 8 * 60],
+                  ['+1 day', 24 * 60],
+                ] as const
+              ).map(([label, minutes]) => (
+                <Button
+                  key={label}
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 !px-1 border border-ink-600"
+                  onClick={() => advance(minutes)}
+                  title={label === '+8h' ? 'Long rest' : `Advance ${label}`}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <form
+              className="flex gap-1 mt-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const minutes = Math.floor(Number(custom));
+                if (Number.isFinite(minutes) && minutes > 0) advance(minutes);
+                setCustom('');
+              }}
+            >
+              <Input
+                type="number"
+                min={1}
+                value={custom}
+                onChange={(e) => setCustom(e.target.value)}
+                placeholder="minutes"
+                className="!py-1 text-[11px]"
+              />
+              <Button type="submit" variant="ghost" size="sm" className="border border-ink-600">
+                Add
+              </Button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -131,6 +292,7 @@ export function TopBar({
       )}
 
       {map && <ScaleControl baseMiles={map.milesPerHex} />}
+      <TimeControl />
 
       <div className="flex-1" />
 
