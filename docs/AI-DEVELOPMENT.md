@@ -138,6 +138,15 @@ player-facing data).
   That's the intended forcing function: you must decide player visibility.
 - **New log `kind` strings** just need `KIND_META` + `FILTERS` entries in
   `LogTab.tsx`; unknown kinds render with a `·` fallback.
+- **Calendar/weather ride on the clock** (#79): `shared/rules/calendar.ts`
+  imports `time.ts` and never the reverse, so `formatDay`/`formatClock` stay
+  calendar-free and anything holding a campaign reaches for
+  `formatCalendarDate`/`formatCalendarClock` (they fall back to "Day N" when
+  `settings.calendar` is null). Weather rerolls in one place — `logDailyWeather`
+  in `handlers.ts`, called after every clock advance (`time.advance` and
+  `advanceTravelClock`) with the pre-advance reading; a new path that moves the
+  clock must call it too or that day's sky never turns. `time.set` deliberately
+  does not (it can move the clock backwards).
 - **The side panels are compositions, not screens** (#61): `PanelShell.tsx`
   owns the right-edge heading rail and one open pop-out at a time
   (`ui.openPanel`, swap-on-click, `panelWidth` still drag-resizable). The

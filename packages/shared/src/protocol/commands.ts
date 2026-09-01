@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import {
+  CalendarConfigSchema,
   CharacterSchema,
   ContentTypeSchema,
   ClueSchema,
   CustomTravelModeSchema,
+  WeatherEntrySchema,
   TravelPaceSchema,
   EncounterTableSchema,
   FogStateSchema,
@@ -64,6 +66,14 @@ const CampaignSettingsPatchSchema = z
     sunriseHour: z.number().min(0).max(23),
     sunsetHour: z.number().min(0).max(24),
     mapDefaults: MapDefaultsPatchSchema,
+    /**
+     * Calendar and weather table are whole-value replacements (or null to go
+     * back to "Day N" / the built-in table), not nested patches — so unlike
+     * their siblings they keep their schema defaults, which is what completes
+     * the object the server stores verbatim.
+     */
+    calendar: CalendarConfigSchema.nullable(),
+    weatherTable: z.array(WeatherEntrySchema).max(100).nullable(),
   })
   .partial();
 
@@ -573,6 +583,15 @@ export const TimeConfigCommand = z.object({
   pace: TravelPaceSchema.optional(),
 });
 
+/**
+ * DM: force a weather reroll now (issue #79). Weather otherwise rerolls on its
+ * own whenever the clock crosses into a new day.
+ */
+export const WeatherRollCommand = z.object({
+  ...base,
+  kind: z.literal('weather.roll'),
+});
+
 /** DM: undo the most recent undoable change (fog, terrain, moves, edits). */
 export const UndoCommand = z.object({
   ...base,
@@ -643,6 +662,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   TimeAdvanceCommand,
   TimeSetCommand,
   TimeConfigCommand,
+  WeatherRollCommand,
   UndoCommand,
   NarrateCommand,
   SessionMarkCommand,

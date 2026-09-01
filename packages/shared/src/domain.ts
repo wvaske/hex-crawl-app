@@ -128,6 +128,71 @@ export const INHERITABLE_MAP_FIELDS = [
 ] as const;
 export type InheritableMapField = (typeof INHERITABLE_MAP_FIELDS)[number];
 
+/**
+ * A fantasy calendar laid over the campaign clock (issue #79). The clock stays
+ * a plain minute count; this is naming only. Every month has the same length
+ * (`monthLength`), and festivals are intercalary days that sit *between*
+ * months and belong to no month — Harptos's Midwinter and friends. A year is
+ * `months.length * monthLength + festivals.length` days long.
+ */
+export const CalendarFestivalSchema = z.object({
+  name: z.string().min(1).max(60),
+  /** 0-based index of the month this festival follows. */
+  afterMonth: z.number().int().min(0).max(98),
+});
+export type CalendarFestival = z.infer<typeof CalendarFestivalSchema>;
+
+export const CalendarConfigSchema = z.object({
+  name: z.string().min(1).max(60),
+  monthLength: z.number().int().min(1).max(99),
+  months: z.array(z.string().min(1).max(60)).min(1).max(99),
+  /** Year number of campaign day 1. */
+  startYear: z.number().int().min(-99999).max(99999),
+  /** Rendered after the year: "1492 DR". */
+  yearSuffix: z.string().max(12).default(''),
+  festivals: z.array(CalendarFestivalSchema).max(99).default([]),
+  /** 0-based day-of-year the campaign starts on (0 = the first day). */
+  startDayOfYear: z.number().int().min(0).max(9998).default(0),
+});
+export type CalendarConfig = z.infer<typeof CalendarConfigSchema>;
+
+/** One row of a weather table: rolled value range → the day's weather. */
+export const WeatherEntrySchema = z.object({
+  min: z.number().int(),
+  max: z.number().int(),
+  text: z.string().min(1).max(120),
+  icon: z.string().max(8).default(''),
+});
+export type WeatherEntry = z.infer<typeof WeatherEntrySchema>;
+
+/** The weather now, rolled when the clock last crossed into a new day. */
+export const WeatherStateSchema = z.object({
+  text: z.string().max(120),
+  icon: z.string().max(8),
+  rolledAtMinutes: z.number().int().min(0),
+});
+export type WeatherState = z.infer<typeof WeatherStateSchema>;
+
+/** Die rolled against a weather table when the campaign has not set one. */
+export const WEATHER_DIE = '1d20';
+
+/**
+ * Built-in temperate weather table (1d20), used when a campaign has not
+ * configured `settings.weatherTable`. Deliberately fictional colour — nothing
+ * mechanical hangs off it yet (pace/encounter hooks are a follow-up).
+ */
+export const DEFAULT_WEATHER_TABLE: WeatherEntry[] = [
+  { min: 1, max: 5, text: 'Clear skies', icon: '☀️' },
+  { min: 6, max: 9, text: 'Scattered cloud', icon: '🌤️' },
+  { min: 10, max: 12, text: 'Overcast', icon: '☁️' },
+  { min: 13, max: 14, text: 'Drizzle', icon: '🌦️' },
+  { min: 15, max: 16, text: 'Steady rain', icon: '🌧️' },
+  { min: 17, max: 17, text: 'Thick fog', icon: '🌫️' },
+  { min: 18, max: 18, text: 'Hard wind', icon: '💨' },
+  { min: 19, max: 19, text: 'Thunderstorm', icon: '⛈️' },
+  { min: 20, max: 20, text: 'Violent storm', icon: '🌪️' },
+];
+
 export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
   description: z.string().max(2000).default(''),
@@ -148,6 +213,10 @@ export const CampaignSettingsSchema = z.object({
   pausePlayerMapSync: z.boolean().default(false),
   /** Campaign-wide map settings; maps opt in per field via inheritedFields. */
   mapDefaults: MapDefaultsSchema.default(() => MapDefaultsSchema.parse({})),
+  /** Fantasy calendar naming for the clock; null renders plain "Day N". */
+  calendar: CalendarConfigSchema.nullable().default(null),
+  /** Weather table rolled at dawn; null uses DEFAULT_WEATHER_TABLE. */
+  weatherTable: z.array(WeatherEntrySchema).max(100).nullable().default(null),
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 
@@ -177,6 +246,12 @@ export const CampaignTimeSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * The current weather, rerolled whenever the clock crosses into a new day
+   * (issue #79). Null until the first roll — brand-new campaigns and any
+   * campaign that predates the feature.
+   */
+  weather: WeatherStateSchema.nullable().default(null),
 });
 export type CampaignTime = z.infer<typeof CampaignTimeSchema>;
 

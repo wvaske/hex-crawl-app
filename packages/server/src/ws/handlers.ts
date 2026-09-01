@@ -14,7 +14,7 @@ import {
   compassDirection,
   contentCoversHex,
   distanceToContent,
-  formatClock,
+  formatCalendarClock,
   formatDuration,
   GridStyleSchema,
   hexDistance,
@@ -34,6 +34,7 @@ import { evaluateKnowledge, type NewDiscovery } from '../engine/knowledge.js';
 import { evaluateTrails, trailBearings, type TrailFind } from '../engine/trails.js';
 import { generateSettlementClues } from '../engine/settlements.js';
 import { rollEncounter } from '../engine/encounters.js';
+import { rerollWeatherForNewDay, setWeather, weatherLogText } from '../engine/weather.js';
 
 export interface Ctx {
   runtime: CampaignRuntime;
@@ -963,10 +964,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   // -- campaign clock --------------------------------------------------------
   'time.advance': ((cmd: Extract<ClientCommand, { kind: 'time.advance' }>, ctx: Ctx) => {
     requireDm(ctx);
+    const before = ctx.runtime.campaign.time.minutes;
     const time = ctx.runtime.advanceTime(cmd.minutes);
     let text = `Time advances ${formatDuration(cmd.minutes)}`;
     if (cmd.note) text += ` (${cmd.note})`;
-    text += ` — ${formatClock(time.minutes)}`;
+    text += ` — ${campaignClock(ctx, time.minutes)}`;
     if (time.partyHex) {
       text += ` at ${hexLocationLabel(ctx.runtime, time.partyHex)}`;
     }
@@ -976,13 +978,32 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       note: cmd.note ?? null,
     });
     notifyLog(ctx, entry);
+    logDailyWeather(ctx, before);
   }) as Handler,
 
   'time.set': ((cmd: Extract<ClientCommand, { kind: 'time.set' }>, ctx: Ctx) => {
     requireDm(ctx);
     const time = ctx.runtime.setTime(cmd.minutes);
-    const entry = ctx.runtime.appendLog('time', `Clock set to ${formatClock(time.minutes)}`, 'dm', {
-      minutes: time.minutes,
+    // Deliberately no weather reroll: `time.set` is bookkeeping (fixing a
+    // mistyped advance), and it can move the clock backwards. The DM can force
+    // a fresh sky with `weather.roll`.
+    const entry = ctx.runtime.appendLog(
+      'time',
+      `Clock set to ${campaignClock(ctx, time.minutes)}`,
+      'dm',
+      { minutes: time.minutes },
+    );
+    notifyLog(ctx, entry);
+  }) as Handler,
+
+  'weather.roll': ((_cmd: Extract<ClientCommand, { kind: 'weather.roll' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const weather = setWeather(ctx.runtime, ctx.rng);
+    const entry = ctx.runtime.appendLog('weather', weatherLogText(weather), 'all', {
+      text: weather.text,
+      icon: weather.icon,
+      minutes: weather.rolledAtMinutes,
+      forced: true,
     });
     notifyLog(ctx, entry);
   }) as Handler,
@@ -1025,13 +1046,38 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     requireDm(ctx);
     const atMinutes = ctx.runtime.campaign.time.minutes;
     const label = cmd.action === 'start' ? 'Session started' : 'Session ended';
-    const entry = ctx.runtime.appendLog('session', `${label} — ${formatClock(atMinutes)}`, 'all', {
+    const entry = ctx.runtime.appendLog('session', `${label} — ${campaignClock(ctx, atMinutes)}`, 'all', {
       action: cmd.action,
       atMinutes,
     });
     notifyLog(ctx, entry);
   }) as Handler,
 };
+
+/**
+ * Clock readout for a log line, named by the campaign's calendar when it has
+ * one ("Marpenoth 12, 1492 DR, 6:40 PM") and by day number otherwise.
+ */
+function campaignClock(ctx: Ctx, minutes: number): string {
+  return formatCalendarClock(minutes, ctx.runtime.campaign.settings.calendar);
+}
+
+/**
+ * Weather hook for every clock advance: reroll when the advance crossed into a
+ * new day (or seeded the very first sky) and log it for everyone. Call after
+ * the clock has moved, with the reading from before it did.
+ */
+function logDailyWeather(ctx: Ctx, beforeMinutes: number): void {
+  const weather = rerollWeatherForNewDay(ctx.runtime, beforeMinutes, ctx.rng);
+  if (!weather) return;
+  const entry = ctx.runtime.appendLog('weather', weatherLogText(weather), 'all', {
+    text: weather.text,
+    icon: weather.icon,
+    minutes: weather.rolledAtMinutes,
+    forced: false,
+  });
+  notifyLog(ctx, entry);
+}
 
 /**
  * A human-readable label for a party-hex reference: the title of enabled
@@ -1238,10 +1284,13 @@ function advanceTravelClock(
   if (parked) {
     ctx.runtime.addHexTime(parked.mapId, parked.q, parked.r, time.minutes - parked.arrivedMinutes);
   }
+  const before = time.minutes;
   if (travelMinutes > 0) ctx.runtime.advanceTime(travelMinutes);
   const arrivedMinutes = ctx.runtime.campaign.time.minutes;
   ctx.runtime.recordHexArrival(map.id, to.q, to.r, arrivedMinutes);
   ctx.runtime.updateTime({ partyHex: { mapId: map.id, q: to.q, r: to.r, arrivedMinutes } });
+  // Travel that crosses midnight brings a new day's weather with it (#79).
+  logDailyWeather(ctx, before);
 }
 
 function capitalize(s: string): string {

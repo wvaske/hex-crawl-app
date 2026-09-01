@@ -97,8 +97,10 @@ function fullState(): CampaignState {
         sunriseHour: 6,
         sunsetHour: 20,
         mapDefaults: MapDefaultsSchema.parse({}),
+        calendar: null,
+        weatherTable: null,
       },
-      time: { minutes: 8 * 60, travelMode: 'foot', pace: 'normal', partyHex: null },
+      time: { minutes: 8 * 60, travelMode: 'foot', pace: 'normal', partyHex: null, weather: null },
     },
     seats: [
       { id: 'dm', role: 'dm', name: 'DM', characterId: null, online: true },

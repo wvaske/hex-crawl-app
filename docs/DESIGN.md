@@ -122,6 +122,20 @@ Right for personal-group use; role checks still happen on every server command.
   narrate/share text to players and/or spawn a token at the party's hex.
 - All rolls (encounter + skill) are server-side, seeded RNG, appended to the session log.
 
+### Clock, calendar & weather
+- The campaign clock is one integer: in-game minutes since campaign start. Travel
+  spends it (hexes crossed × map scale ÷ pace); rests and downtime advance it
+  explicitly. Everyone sees it.
+- **Calendar** (`settings.calendar`, issue #79) is naming laid over that integer,
+  never a change to the arithmetic. Equal-length months plus intercalary
+  festivals that belong to no month; `null` renders the original "Day N". Harptos
+  ships as a preset (Shieldmeet leap days are not modelled).
+- **Weather** rolls once per in-game day off `settings.weatherTable` (or a
+  built-in temperate d20 table), stored on the campaign `time` blob and logged
+  for everyone as a `weather` entry. Crossing midnight — by travel or by a manual
+  advance — rerolls it; the DM can force a roll any time. It is fiction only for
+  now: no pace or encounter-threshold effects.
+
 ### Real-time & persistence
 - Single WebSocket per client. Every mutation is a **command** message; the server
   validates (zod + role), applies to SQLite, and broadcasts **events** filtered
