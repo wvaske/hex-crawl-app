@@ -1,5 +1,12 @@
 import React from 'react';
-import { CONTENT_TYPE_GLYPHS, isFullContent, type ContentPlayerView } from '@hexcrawl/shared';
+import {
+  CONTENT_TYPE_GLYPHS,
+  computeRecap,
+  computeSessions,
+  isFullContent,
+  recapHighlights,
+  type ContentPlayerView,
+} from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { EmptyNote, Section, cx } from '../../ui/kit.js';
@@ -30,6 +37,8 @@ export function JournalTab() {
 
   return (
     <div>
+      <PreviouslyOnCard />
+
       <Section title="Discoveries">
         {contents.length === 0 && (
           <EmptyNote>
@@ -111,12 +120,56 @@ export function JournalTab() {
         {narrations.length === 0 && <EmptyNote>No narration shared yet.</EmptyNote>}
         <div className="space-y-1.5">
           {narrations.map((n) => (
-            <div key={n.id} className="text-xs bg-ink-850 border border-ink-700 rounded-md px-2.5 py-2">
+            <div
+              key={n.id}
+              className="text-xs bg-ink-850 border border-ink-700 rounded-md px-2.5 py-2"
+            >
               <p className="text-ink-100 whitespace-pre-wrap">{n.text}</p>
             </div>
           ))}
         </div>
       </Section>
+    </div>
+  );
+}
+
+/**
+ * A small "previously on…" teaser at the top of the journal (issue #78): as
+ * soon as the DM starts a new session, players get a quick reminder of the
+ * highlights from the one before it. Deliberately simple — no per-player
+ * "seen this already" tracking, it just shows whenever the most recent
+ * session mark is a 'start'. Runs on `state.log`, which is already filtered
+ * to what this viewer is allowed to see, so the recap it builds respects the
+ * same security boundary as the rest of the journal.
+ */
+function PreviouslyOnCard() {
+  const state = useSession((s) => s.state);
+  if (!state) return null;
+
+  const lastMark = [...state.log].reverse().find((e) => e.kind === 'session');
+  const lastAction = (lastMark?.data as { action?: string } | undefined)?.action;
+  if (lastAction !== 'start') return null;
+
+  const sessions = computeSessions(state.log);
+  const previous = sessions[sessions.length - 2];
+  if (!previous) return null;
+
+  const recap = computeRecap(state.log, { fromAt: previous.fromAt, toAt: previous.toAt });
+  const highlights = recapHighlights(recap, 3);
+  if (highlights.length === 0) return null;
+
+  return (
+    <div className="mb-4 bg-brass-500/10 border border-brass-500/30 rounded-lg p-2.5">
+      <div className="text-[11px] uppercase tracking-wider text-brass-300 font-semibold mb-1.5">
+        Previously on…
+      </div>
+      <ul className="space-y-1">
+        {highlights.map((h) => (
+          <li key={h.id} className="text-xs text-ink-100">
+            {h.text}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -157,7 +210,9 @@ function TrackRow({
           {trail.cells.length} place{trail.cells.length === 1 ? '' : 's'} spotted
         </span>
       </div>
-      {highlighted && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+      {highlighted && (
+        <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>
+      )}
     </button>
   );
 }
