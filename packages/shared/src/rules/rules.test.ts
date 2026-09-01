@@ -15,6 +15,7 @@ import {
   travelModes,
 } from './time.js';
 import type { CampaignState, Character } from '../domain.js';
+import { MapDefaultsSchema } from '../domain.js';
 
 describe('dice', () => {
   it('parses notation', () => {
@@ -94,6 +95,7 @@ function fullState(): CampaignState {
         customTravelModes: [],
         sunriseHour: 6,
         sunsetHour: 20,
+        mapDefaults: MapDefaultsSchema.parse({}),
       },
       time: { minutes: 8 * 60, travelMode: 'foot', pace: 'normal', partyHex: null },
     },

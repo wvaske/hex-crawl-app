@@ -3,12 +3,14 @@ import type { ImageLayer, MapInfo } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { uploadMapImage } from '../../api.js';
-import { Button, EmptyNote, Field, Input, Section, Select, Toggle, cx } from '../../ui/kit.js';
+import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
+import { MapManagerDialog } from '../MapManagerDialog.js';
 
 export function MapsTab({ campaignId }: { campaignId: string }) {
   const state = useSession((s) => s.state);
   const map = activeMap(state);
   const [newName, setNewName] = useState('');
+  const [managing, setManaging] = useState(false);
 
   if (!state) return null;
 
@@ -20,7 +22,22 @@ export function MapsTab({ campaignId }: { campaignId: string }) {
 
   return (
     <div>
-      <Section title="Maps">
+      {managing && (
+        <MapManagerDialog campaignId={campaignId} onClose={() => setManaging(false)} />
+      )}
+      <Section
+        title="Maps"
+        actions={
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setManaging(true)}
+            title="Thumbnails, per-map settings, and campaign defaults in one place"
+          >
+            Manage maps
+          </Button>
+        }
+      >
         <ul className="space-y-1 mb-2">
           {state.maps.map((m) => (
             <li
@@ -81,89 +98,18 @@ function MapSettings({ map, campaignId }: { map: MapInfo; campaignId: string }) 
 
   return (
     <>
-      <Section title="Map settings">
-        <div className="space-y-2.5">
-          <Field label="Name">
-            <Input
-              defaultValue={map.name}
-              onBlur={(e) => e.target.value.trim() && e.target.value !== map.name && patch({ name: e.target.value.trim() })}
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Orientation">
-              <Select
-                value={map.orientation}
-                onChange={(e) => patch({ orientation: e.target.value })}
-              >
-                <option value="flat">Flat-top</option>
-                <option value="pointy">Pointy-top</option>
-              </Select>
-            </Field>
-            <Field label="Hex size (px)">
-              <Input
-                type="number"
-                min={4}
-                max={512}
-                defaultValue={map.hexSize}
-                onBlur={(e) => patch({ hexSize: Math.min(512, Math.max(4, num(e.target.value, map.hexSize))) })}
-              />
-            </Field>
-            <Field label="Miles per hex">
-              <Input
-                type="number"
-                defaultValue={map.milesPerHex}
-                onBlur={(e) => patch({ milesPerHex: Math.max(0, num(e.target.value, map.milesPerHex)) })}
-              />
-            </Field>
-            <Field label="Movement">
-              <Select value={map.moveMode} onChange={(e) => patch({ moveMode: e.target.value })}>
-                <option value="free">Free drag</option>
-                <option value="step">One hex/step</option>
-              </Select>
-            </Field>
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Fog & sight">
-        <div className="space-y-2.5">
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Fog mode">
-              <Select value={map.fogMode} onChange={(e) => patch({ fogMode: e.target.value })}>
-                <option value="auto">Auto-reveal</option>
-                <option value="manual">Manual only</option>
-              </Select>
-            </Field>
-            <Field label="Sight radius">
-              <Input
-                type="number"
-                min={0}
-                max={10}
-                defaultValue={map.sightRadius}
-                onBlur={(e) => patch({ sightRadius: Math.min(10, Math.max(0, Math.round(num(e.target.value, map.sightRadius)))) })}
-              />
-            </Field>
-          </div>
-          <Toggle
-            checked={map.fogDecay}
-            onChange={(v) => patch({ fogDecay: v })}
-            label="Fade to explored when out of sight"
-          />
-          <Toggle
-            checked={map.moveApproval}
-            onChange={(v) => patch({ moveApproval: v })}
-            label="DM approves player movement (turn-based travel)"
-          />
-          <Button
-            size="sm"
-            variant="ghost"
-            className="w-full"
-            title="Add smoke/din/smell clues (with auto compass bearings) to every settlement on this map that doesn't have them. Safe to run again."
-            onClick={() => send({ kind: 'clues.generateSettlements', mapId: map.id })}
-          >
-            🏘️ Generate settlement sensory clues
-          </Button>
-        </div>
+      {/* Name, orientation, hex size, fog, movement, miles per hex and the
+          encounter check all live in the map manager dialog (issue #60). */}
+      <Section title="Clues">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full"
+          title="Add smoke/din/smell clues (with auto compass bearings) to every settlement on this map that doesn't have them. Safe to run again."
+          onClick={() => send({ kind: 'clues.generateSettlements', mapId: map.id })}
+        >
+          🏘️ Generate settlement sensory clues
+        </Button>
       </Section>
 
       <Section title="Grid style">

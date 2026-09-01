@@ -3,6 +3,7 @@ import type {
   ClientCommand,
   Clue,
   Content,
+  InheritableMapField,
   LogEntry,
   MapInfo,
   Marker,
@@ -11,11 +12,11 @@ import type {
 } from '@hexcrawl/shared';
 import {
   compassDirection,
-  EncounterCheckConfigSchema,
   formatClock,
   formatDuration,
   GridStyleSchema,
   hexDistance,
+  INHERITABLE_MAP_FIELDS,
   hexKey,
   hexLine,
   minutesPerHex,
@@ -175,6 +176,13 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     requireDm(ctx);
     const wasPaused = ctx.runtime.campaign.settings.pausePlayerMapSync;
     ctx.runtime.updateCampaign({ name: cmd.name, settings: cmd.settings });
+    // Changed map defaults flow straight into every map inheriting them.
+    if (cmd.settings?.mapDefaults) {
+      const changed = Object.keys(cmd.settings.mapDefaults).filter((f): f is InheritableMapField =>
+        (INHERITABLE_MAP_FIELDS as readonly string[]).includes(f),
+      );
+      if (changed.length > 0) ctx.runtime.propagateMapDefaults(changed);
+    }
     const nowPaused = ctx.runtime.campaign.settings.pausePlayerMapSync;
     // Entering prep mode freezes what players currently see; leaving it
     // releases the snapshot so the next sync shows everything at once.
@@ -185,6 +193,8 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   // -- maps ------------------------------------------------------------------
   'map.create': ((cmd: Extract<ClientCommand, { kind: 'map.create' }>, ctx: Ctx) => {
     requireDm(ctx);
+    // New maps start out following every campaign default; the DM unlinks
+    // whichever settings should be map-specific (or just edits them).
     const map: MapInfo = {
       id: nanoid(10),
       name: cmd.name,
@@ -193,14 +203,9 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       originX: 0,
       originY: 0,
       gridStyle: GridStyleSchema.parse({}),
-      sightRadius: 1,
-      fogMode: 'auto',
-      fogDecay: false,
-      moveMode: 'free',
-      moveApproval: false,
-      milesPerHex: 6,
-      encounterCheck: EncounterCheckConfigSchema.parse({}),
+      ...ctx.runtime.mapDefaultsForNewMap(),
       sortOrder: ctx.runtime.maps.size,
+      inheritedFields: [...INHERITABLE_MAP_FIELDS],
     };
     ctx.runtime.createMap(map);
     if (!ctx.runtime.campaign.activeMapId) ctx.runtime.setActiveMap(map.id);
@@ -208,7 +213,23 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 
   'map.update': ((cmd: Extract<ClientCommand, { kind: 'map.update' }>, ctx: Ctx) => {
     requireDm(ctx);
-    ctx.runtime.updateMap(cmd.mapId, cmd.patch as Partial<MapInfo>);
+    const map = ctx.runtime.maps.get(cmd.mapId);
+    if (!map) throw new Error('Map not found');
+    // Editing a field explicitly means this map now owns it: drop it from the
+    // fields following the campaign defaults.
+    const overridden = Object.keys(cmd.patch).filter((f) => map.inheritedFields.includes(f));
+    const patch = cmd.patch as Partial<MapInfo>;
+    ctx.runtime.updateMap(
+      cmd.mapId,
+      overridden.length > 0
+        ? { ...patch, inheritedFields: map.inheritedFields.filter((f) => !overridden.includes(f)) }
+        : patch,
+    );
+  }) as Handler,
+
+  'map.setInherit': ((cmd: Extract<ClientCommand, { kind: 'map.setInherit' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    ctx.runtime.setMapInherit(cmd.mapId, cmd.field, cmd.inherit);
   }) as Handler,
 
   'map.delete': ((cmd: Extract<ClientCommand, { kind: 'map.delete' }>, ctx: Ctx) => {

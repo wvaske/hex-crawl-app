@@ -73,6 +73,14 @@ player-facing data).
   column means updating the CREATE TABLE, `ensureColumn`, the load mapping,
   and BOTH statements' argument lists — they desync silently. Prefer JSON
   blob columns for new map settings.
+- **Map settings inheritance is propagation-on-write** (#60): a map field named
+  in `MapInfo.inheritedFields` follows `campaign.settings.mapDefaults`, but the
+  map still stores a concrete value. `campaign.update` propagates changed
+  defaults (`runtime.propagateMapDefaults`), `map.update` drops any patched
+  field from `inheritedFields`, `map.setInherit` toggles one field. Add a new
+  shareable setting to `INHERITABLE_MAP_FIELDS` + `MapDefaultsSchema` (shared
+  `domain.ts`) and everything else follows; nothing resolves inheritance at
+  read time.
 - **Pixi v8 hit-testing:** any Graphics whose geometry covers the pointer
   terminates the hit search even when non-interactive. Every engine layer
   except `tokensC` must have `eventMode = 'none'` — new layers go in that

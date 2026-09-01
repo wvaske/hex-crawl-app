@@ -59,6 +59,13 @@ Right for personal-group use; role checks still happen on every server command.
   swamp, water, tundra, jungle, urban…) with color fill + pattern at configurable
   opacity. Brush paint for the DM. Terrain feeds encounter tables and travel pace.
 - Pan (drag) and zoom (wheel/pinch), 60fps with thousands of hexes via culling.
+- **Map manager dialog** (DM): every map with a thumbnail, its settings, ordering,
+  rename/activate/delete. Shareable settings (sight radius, fog mode/decay, move
+  mode/approval, miles per hex, encounter check) have **campaign defaults**
+  (`settings.mapDefaults`) that each map either follows or overrides per field
+  (`MapInfo.inheritedFields`). Inheritance is resolved *on write*: changing a
+  default immediately writes it into every map that follows it, so map values are
+  always concrete.
 
 ### Fog of war
 - Three per-hex states: **hidden** (opaque to players), **explored** (terrain visible,

@@ -283,6 +283,24 @@ export function createApp(store: Store, hub: Hub): Hono {
     return c.json({ layer });
   });
 
+  /**
+   * DM only: one summary row per map for the map manager's thumbnails.
+   * Snapshots only carry the viewed map's layers, so this fills the gap for
+   * every other map without bloating (or leaking) the state sync.
+   */
+  app.get('/api/campaigns/:id/map-thumbs', (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const seat = getSeat(c, runtime);
+    if (!seat || seat.role !== 'dm') return c.json({ error: 'DM only' }, 403);
+    const maps = [...runtime.maps.values()].map((m) => ({
+      mapId: m.id,
+      image: runtime.imageLayersFor(m.id).find((l) => l.visible)?.path ?? null,
+      hexCount: runtime.mapStates.get(m.id)?.hexes.size ?? 0,
+    }));
+    return c.json({ maps });
+  });
+
   // -- uploaded files (images are not secret; ids are unguessable) -----------
 
   app.get('/uploads/:campaignId/:file', (c) => {
