@@ -4,6 +4,7 @@ import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
 import { SendTokenButton } from '../SendTokenButton.js';
+import { CharacterDialog } from '../CharacterDialog.js';
 
 const CHARACTER_COLORS = [
   '#e05555', '#e08f3c', '#c9a24b', '#6fa06b', '#4a9d9c', '#5b8dd9', '#8b7fd4', '#c56bb8',
@@ -15,6 +16,7 @@ export function CharactersTab() {
   const seatId = useSession((s) => s.seatId);
   const [creating, setCreating] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [sheetCharacterId, setSheetCharacterId] = useState<string | null>(null);
 
   if (!state) return null;
   const mySeat = state.seats.find((s) => s.id === seatId);
@@ -70,9 +72,31 @@ export function CharactersTab() {
                   </button>
                   {canEdit && <RollSkillButton characterId={ch.id} skill="perception" />}
                   {canCommand && <SendTokenButton tokenId={token.id} name={ch.name} />}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="!px-1.5 !py-0.5 shrink-0 mr-1"
+                    title="Open character sheet"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSheetCharacterId(ch.id);
+                    }}
+                  >
+                    📜
+                  </Button>
                 </div>
                 {open && (
                   <div className="border-t border-ink-700 p-2.5">
+                    {isMine && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="w-full mb-2.5"
+                        onClick={() => setSheetCharacterId(ch.id)}
+                      >
+                        Open sheet — bio, goals, inventory &amp; more
+                      </Button>
+                    )}
                     {!claimedBy && !isDm && !mySeat?.characterId && (
                       <Button
                         variant="primary"
@@ -116,6 +140,14 @@ export function CharactersTab() {
         </div>
       </Section>
       {creating && <NewCharacterForm onDone={() => setCreating(false)} />}
+      {sheetCharacterId &&
+        (() => {
+          const sheetCharacter = state.characters.find((c) => c.id === sheetCharacterId);
+          if (!sheetCharacter) return null;
+          return (
+            <CharacterDialog character={sheetCharacter} onClose={() => setSheetCharacterId(null)} />
+          );
+        })()}
     </div>
   );
 }
@@ -127,7 +159,7 @@ export function CharactersTab() {
  * the DM (any character) or a player's own claimed character. Results arrive
  * as a 'check' log toast (see ws.ts) — no result UI needed here.
  */
-function RollSkillButton({
+export function RollSkillButton({
   characterId,
   skill,
   className,
@@ -164,7 +196,15 @@ function NewCharacterForm({ onDone }: { onDone: () => void }) {
     if (!name.trim()) return;
     send({
       kind: 'character.create',
-      character: { name: name.trim(), color, glyph: '', speed: 30, skills: {}, ddbId: null },
+      character: {
+        name: name.trim(),
+        color,
+        glyph: '',
+        speed: 30,
+        skills: {},
+        ddbId: null,
+        extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' },
+      },
     });
     onDone();
   };
@@ -208,7 +248,7 @@ function NewCharacterForm({ onDone }: { onDone: () => void }) {
  * One-click skill sync from a PUBLIC D&D Beyond sheet. The URL/id persists on
  * the character so future syncs are a single click.
  */
-function DdbSync({ character }: { character: Character }) {
+export function DdbSync({ character }: { character: Character }) {
   const [value, setValue] = useState(character.ddbId ?? '');
   const [busy, setBusy] = useState(false);
   const campaignId = useSession((s) => s.state?.campaign.id);
@@ -260,7 +300,7 @@ function DdbSync({ character }: { character: Character }) {
   );
 }
 
-function CharacterEditor({
+export function CharacterEditor({
   character,
   readOnly,
   canRoll,

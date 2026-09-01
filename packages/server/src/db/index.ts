@@ -242,6 +242,8 @@ function migrate(d: DB): void {
   // Player-placed party notes (issue #74): existing markers are all DM-placed.
   ensureColumn(d, 'marker', 'player_placed', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'marker', 'owner_seat_id', 'TEXT');
+  // Character sheet extras (issue #63): JSON blob (bio/appearance/goals/inventory/notes).
+  ensureColumn(d, 'character', 'extra', "TEXT NOT NULL DEFAULT '{}'");
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {

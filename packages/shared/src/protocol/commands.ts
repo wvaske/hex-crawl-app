@@ -52,6 +52,16 @@ const CampaignSettingsPatchSchema = z
   })
   .partial();
 
+const CharacterExtraPatchSchema = z
+  .object({
+    bio: z.string().max(5000),
+    appearance: z.string().max(5000),
+    goals: z.string().max(5000),
+    inventory: z.string().max(5000),
+    notes: z.string().max(5000),
+  })
+  .partial();
+
 const CharacterPatchSchema = z
   .object({
     name: z.string().min(1).max(60),
@@ -60,6 +70,7 @@ const CharacterPatchSchema = z
     speed: z.number().int().min(0).max(120),
     skills: z.record(z.string(), z.number().int().min(-10).max(20)),
     ddbId: z.string().nullable(),
+    extra: CharacterExtraPatchSchema,
   })
   .partial();
 

@@ -449,7 +449,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     if (ctx.seat.role !== 'dm' && ctx.seat.characterId !== cmd.characterId) {
       throw new Error('You can only edit your own character');
     }
-    ctx.runtime.upsertCharacter({ ...existing, ...cmd.patch, id: existing.id });
+    // `extra` is a sub-object: merge over the existing value so a one-field
+    // patch (e.g. just `notes`) doesn't blank out its siblings.
+    const extra = cmd.patch.extra ? { ...existing.extra, ...cmd.patch.extra } : existing.extra;
+    ctx.runtime.upsertCharacter({ ...existing, ...cmd.patch, id: existing.id, extra });
     // Skill changes can open passive gates anywhere the character stands.
     const discoveries = ctx.runtime.campaign.activeMapId
       ? evaluateKnowledge(ctx.runtime, ctx.runtime.campaign.activeMapId, [cmd.characterId])

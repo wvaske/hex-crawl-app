@@ -27,6 +27,7 @@ import type {
 import {
   CampaignSettingsSchema,
   CampaignTimeSchema,
+  CharacterExtraSchema,
   EncounterCheckConfigSchema,
   GateSchema,
   GridStyleSchema,
@@ -166,6 +167,7 @@ export class CampaignRuntime {
         speed: c.speed as number,
         skills: SkillsSchema.parse(safeJson(c.skills as string)),
         ddbId: (c.ddb_id as string | null) ?? null,
+        extra: CharacterExtraSchema.parse(safeJson(c.extra as string)),
       });
     }
     for (const m of d
@@ -620,8 +622,8 @@ export class CampaignRuntime {
     this.characters.set(character.id, character);
     this.db
       .prepare(
-        `INSERT INTO character (id, campaign_id, name, color, glyph, speed, skills, ddb_id) VALUES (?,?,?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, glyph=excluded.glyph, speed=excluded.speed, skills=excluded.skills, ddb_id=excluded.ddb_id`,
+        `INSERT INTO character (id, campaign_id, name, color, glyph, speed, skills, ddb_id, extra) VALUES (?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, glyph=excluded.glyph, speed=excluded.speed, skills=excluded.skills, ddb_id=excluded.ddb_id, extra=excluded.extra`,
       )
       .run(
         character.id,
@@ -632,6 +634,7 @@ export class CampaignRuntime {
         character.speed,
         JSON.stringify(character.skills),
         character.ddbId,
+        JSON.stringify(character.extra),
       );
   }
 
