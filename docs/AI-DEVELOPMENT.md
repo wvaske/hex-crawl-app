@@ -138,6 +138,18 @@ player-facing data).
   That's the intended forcing function: you must decide player visibility.
 - **New log `kind` strings** just need `KIND_META` + `FILTERS` entries in
   `LogTab.tsx`; unknown kinds render with a `·` fallback.
+- **Marker stickers** (`client/src/stickers.ts`, issue #67): the catalogue is a
+  hand-maintained list next to `import.meta.glob('./assets/stickers/**/*.svg')`,
+  so a new icon is *two* edits — drop the SVG in
+  `assets/stickers/<category>/`, add its `{ id, name }` row, and record its
+  upstream author in `assets/stickers/ATTRIBUTION.md` (CC BY 3.0 requires it;
+  the README links that file). Vendored SVGs are normalized to a single
+  `viewBox="0 0 512 512"` root with `fill="currentColor" color="#fff"` — the
+  `color` attribute is what makes them render white in an `<img>` and in Pixi's
+  SVG rasterizer, which has no CSS context. Vite inlines the small ones as
+  `data:` URLs; `Assets.load` handles those, so don't assume an emitted file.
+  `Marker.icon` wins over `Marker.glyph` at render time and `glyph` stays the
+  fallback, so keep sending a glyph when placing a sticker.
 - **Move-handler ordering**: post-move hooks (auto encounters, clock) run
   after `executePartyMove`; the clock credits the departed hex *before*
   advancing, so lingering time lands on the hex and travel time on neither.

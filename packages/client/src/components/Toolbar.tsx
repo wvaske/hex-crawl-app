@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  MARKER_LIBRARY,
   TERRAINS,
   TERRAIN_IDS,
   hexKey,
@@ -12,6 +11,7 @@ import { activeMap, useSession } from '../stores/session.js';
 import { useUi, type Tool } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { cx } from '../ui/kit.js';
+import { STICKER_CATEGORIES, stickerUrl } from '../stickers.js';
 
 const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
   { tool: 'select', icon: '➤', name: 'Select (V)', hint: 'Click hexes, drag tokens, pan' },
@@ -135,40 +135,7 @@ export function Toolbar() {
         </div>
       )}
 
-      {ui.tool === 'marker' && (
-        <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-52 overflow-y-auto">
-          {MARKER_LIBRARY.map((group) => (
-            <div key={group.group} className="mb-2">
-              <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
-                {group.group}
-              </p>
-              <div className="grid grid-cols-6 gap-0.5">
-                {group.glyphs.map((g) => (
-                  <button
-                    key={g.glyph}
-                    onClick={() => ui.set('markerGlyph', g.glyph)}
-                    title={g.name}
-                    className={cx(
-                      'h-7 rounded flex items-center justify-center cursor-pointer text-sm',
-                      ui.markerGlyph === g.glyph ? 'bg-brass-500/25 ring-1 ring-brass-500' : 'hover:bg-ink-700',
-                    )}
-                  >
-                    {g.glyph}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-          <label className="flex items-center gap-2 text-xs text-ink-200 cursor-pointer mt-1">
-            <input
-              type="checkbox"
-              checked={ui.markerDmOnly}
-              onChange={(e) => ui.set('markerDmOnly', e.target.checked)}
-            />
-            DM-only marker
-          </label>
-        </div>
-      )}
+      {ui.tool === 'marker' && <StickerPicker />}
 
       {ui.tool === 'trail' && <TrailOptions />}
 
@@ -177,6 +144,129 @@ export function Toolbar() {
           Click a hex to set the start point, then hover. Click again to clear.
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Marker sticker picker (issue #67): category tabs + a name search over the
+ * vendored SVG library, with the legacy emoji set kept as its own category so
+ * older markers stay reachable. Picking a sticker stores its id in
+ * `ui.markerIcon`; picking an emoji clears the id and stores the glyph — the
+ * canvas prefers `icon` when it is set.
+ */
+function StickerPicker() {
+  const ui = useUi();
+  const [category, setCategory] = useState(STICKER_CATEGORIES[0]!.id);
+  const [query, setQuery] = useState('');
+
+  const q = query.trim().toLowerCase();
+  // A search spans every category; otherwise show just the selected tab.
+  const groups = q
+    ? STICKER_CATEGORIES.map((c) => ({
+        ...c,
+        stickers: c.stickers.filter((s) => s.name.toLowerCase().includes(q)),
+        glyphs: (c.glyphs ?? []).filter((g) => g.name.toLowerCase().includes(q)),
+      })).filter((c) => c.stickers.length > 0 || (c.glyphs ?? []).length > 0)
+    : STICKER_CATEGORIES.filter((c) => c.id === category);
+
+  return (
+    <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-60 overflow-y-auto">
+      <div className="flex flex-wrap gap-0.5 mb-1.5">
+        {STICKER_CATEGORIES.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => {
+              setCategory(c.id);
+              setQuery('');
+            }}
+            className={cx(
+              'px-1.5 py-0.5 rounded text-[10px] cursor-pointer border',
+              !q && category === c.id
+                ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+                : 'border-ink-700 hover:bg-ink-700 text-ink-300',
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <input
+        className="w-full bg-ink-950 border border-ink-600 rounded px-2 py-1 text-xs text-ink-100 mb-1.5"
+        placeholder="Search stickers…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {groups.length === 0 && <p className="text-[11px] text-ink-400 mb-2">No sticker matches.</p>}
+      {groups.map((group) => (
+        <div key={group.id} className="mb-2">
+          {q && (
+            <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+              {group.label}
+            </p>
+          )}
+          <div className="grid grid-cols-6 gap-0.5">
+            {group.stickers.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => ui.set('markerIcon', s.id)}
+                title={s.name}
+                className={cx(
+                  'h-8 rounded flex items-center justify-center cursor-pointer p-1',
+                  ui.markerIcon === s.id
+                    ? 'bg-brass-500/25 ring-1 ring-brass-500'
+                    : 'hover:bg-ink-700',
+                )}
+              >
+                <img
+                  src={stickerUrl(s.id)}
+                  alt={s.name}
+                  className="w-full h-full object-contain"
+                  draggable={false}
+                />
+              </button>
+            ))}
+            {(group.glyphs ?? []).map((g) => (
+              <button
+                key={g.glyph}
+                onClick={() => {
+                  ui.set('markerIcon', '');
+                  ui.set('markerGlyph', g.glyph);
+                }}
+                title={g.name}
+                className={cx(
+                  'h-8 rounded flex items-center justify-center cursor-pointer text-sm',
+                  !ui.markerIcon && ui.markerGlyph === g.glyph
+                    ? 'bg-brass-500/25 ring-1 ring-brass-500'
+                    : 'hover:bg-ink-700',
+                )}
+              >
+                {g.glyph}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <label className="block text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+        Size — {ui.markerScale.toFixed(1)}×
+      </label>
+      <input
+        type="range"
+        min={0.5}
+        max={3}
+        step={0.1}
+        value={ui.markerScale}
+        onChange={(e) => ui.set('markerScale', Number(e.target.value))}
+        className="w-full cursor-pointer accent-brass-500 mb-1"
+      />
+      <label className="flex items-center gap-2 text-xs text-ink-200 cursor-pointer mt-1">
+        <input
+          type="checkbox"
+          checked={ui.markerDmOnly}
+          onChange={(e) => ui.set('markerDmOnly', e.target.checked)}
+        />
+        DM-only marker
+      </label>
     </div>
   );
 }
