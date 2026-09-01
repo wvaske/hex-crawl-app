@@ -1,4 +1,14 @@
-import { AlphaFilter, Application, Assets, Circle, Container, Graphics, Sprite, Text } from 'pixi.js';
+import {
+  AlphaFilter,
+  Application,
+  Assets,
+  Circle,
+  Container,
+  Graphics,
+  Sprite,
+  Text,
+  type Texture,
+} from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import type {
   CampaignSettings,
@@ -42,6 +52,7 @@ import {
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
+import { stickerUrl } from '../stickers.js';
 
 const STROKE_FLUSH_MS = 180;
 /** Base font pins are rasterized at; scaling maps this to world/screen size. */
@@ -906,8 +917,37 @@ export class CanvasEngine {
    * never shrink below a readable on-screen minimum when zoomed out, and grow
    * naturally — still sharp — as players zoom in.
    */
+  /**
+   * Sticker id → rasterized SVG texture. SVGs load asynchronously, so the
+   * first draw falls back to the marker's emoji glyph and `drawPins` is
+   * replayed once the texture lands (each id is fetched at most once).
+   */
+  private stickerTextures = new Map<string, Texture>();
+  private stickerLoading = new Set<string>();
+
+  private stickerTexture(icon: string): Texture | null {
+    const cached = this.stickerTextures.get(icon);
+    if (cached) return cached;
+    if (this.stickerLoading.has(icon)) return null;
+    const url = stickerUrl(icon);
+    if (!url) return null; // unknown id (older client/newer data): keep the glyph
+    this.stickerLoading.add(icon);
+    void Assets.load<Texture>(url)
+      .then((texture) => {
+        if (this.destroyed) return;
+        this.stickerTextures.set(icon, texture);
+        this.drawPins();
+      })
+      .catch(() => {
+        /* leave the glyph fallback in place */
+      });
+    return null;
+  }
+
   private buildPin(opts: {
     glyph: string;
+    /** Sticker id; when its texture is loaded it replaces the glyph. */
+    icon?: string;
     label?: string;
     chip: boolean;
     /** Player-placed party note: rounded-rect tag tinted with the owner's colour. */
@@ -940,13 +980,21 @@ export class CanvasEngine {
       corner.fill({ color: tint, alpha: 0.95 });
       pin.addChild(corner);
     }
-    const text = new Text({
-      text: opts.glyph,
-      style: { fontSize: PIN_BASE_FONT, align: 'center' },
-      resolution: 3,
-    });
-    text.anchor.set(0.5);
-    pin.addChild(text);
+    const sticker = opts.icon ? this.stickerTexture(opts.icon) : null;
+    if (sticker) {
+      const sprite = new Sprite(sticker);
+      sprite.anchor.set(0.5);
+      sprite.setSize(PIN_BASE_FONT * 1.2, PIN_BASE_FONT * 1.2);
+      pin.addChild(sprite);
+    } else {
+      const text = new Text({
+        text: opts.glyph,
+        style: { fontSize: PIN_BASE_FONT, align: 'center' },
+        resolution: 3,
+      });
+      text.anchor.set(0.5);
+      pin.addChild(text);
+    }
     if (opts.label) {
       const label = new Text({
         text: opts.label,
@@ -1130,15 +1178,20 @@ export class CanvasEngine {
       markers.forEach((m, i) => {
         const center = hexToPixel(this.layout!, { q: m.q, r: m.r });
         const spread = (i - (markers.length - 1) / 2) * size * 0.7;
+        // Sticker markers (issue #67) carry their own size multiplier; it
+        // scales both the world footprint and the zoomed-out floor so a big
+        // sticker stays big at every zoom.
+        const scale = m.scale || 1;
         const pin = this.buildPin({
           glyph: m.glyph,
+          icon: m.icon,
           chip: false,
           note: m.playerPlaced,
           tint: m.playerPlaced ? noteTint?.get(m.ownerSeatId ?? '') : undefined,
           label: m.playerPlaced && m.label ? truncateLabel(m.label) : undefined,
           dmOnly: m.dmOnly,
-          worldSize: size * (m.playerPlaced ? 1.15 : 1.0),
-          minScreen: m.playerPlaced ? 21 : 19,
+          worldSize: size * (m.playerPlaced ? 1.15 : 1.0) * scale,
+          minScreen: (m.playerPlaced ? 21 : 19) * scale,
         });
         pin.position.set(center.x + spread, center.y + size * 0.55);
         if (fogByKey) {
@@ -1539,7 +1592,11 @@ export class CanvasEngine {
               mapId: this.lastMap.id,
               q: hex.q,
               r: hex.r,
+              // `glyph` stays the non-SVG fallback even when a sticker is
+              // chosen; `icon` wins wherever the sticker library is available.
               glyph: ui.markerGlyph,
+              icon: ui.markerIcon,
+              scale: ui.markerScale,
               label: '',
               dmOnly: ui.markerDmOnly,
             },
@@ -1875,8 +1932,8 @@ function fogCellsEqual(a: FogCell[], b: FogCell[]): boolean {
 
 /**
  * `shallowEqual` walks every key of the marker, so fields added to
- * `MarkerSchema` (playerPlaced / ownerSeatId) are diffed without touching
- * this comparator — unlike the explicit-field ones below.
+ * `MarkerSchema` (playerPlaced / ownerSeatId, icon / scale) are diffed without
+ * touching this comparator — unlike the explicit-field ones below.
  */
 function markersEqual(a: Marker[], b: Marker[]): boolean {
   return a.length === b.length && a.every((m, i) => shallowEqual(m, b[i]!));

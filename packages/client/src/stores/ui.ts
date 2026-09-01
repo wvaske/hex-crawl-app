@@ -24,6 +24,10 @@ interface UiStore {
   brushRadius: 0 | 1 | 2;
   fogTarget: FogState;
   markerGlyph: string;
+  /** Sticker id (`<category>/<slug>`); empty means place the emoji glyph. */
+  markerIcon: string;
+  /** Size multiplier for newly placed markers (0.5–3). */
+  markerScale: number;
   markerDmOnly: boolean;
   selectedHex: HexCoord | null;
   hoverHex: HexCoord | null;
@@ -112,6 +116,8 @@ export const useUi = create<UiStore>((set) => ({
   brushRadius: 0,
   fogTarget: 'visible',
   markerGlyph: '⭐',
+  markerIcon: 'story/objective',
+  markerScale: 1,
   markerDmOnly: false,
   selectedHex: null,
   hoverHex: null,

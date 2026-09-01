@@ -17,6 +17,7 @@ import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Section, cx } from '../../ui/kit.js';
+import { stickerName, stickerUrl } from '../../stickers.js';
 
 export function InspectTab() {
   const state = useSession((s) => s.state);
@@ -117,7 +118,7 @@ export function InspectTab() {
                 : null;
               return (
                 <li key={m.id} className="flex items-center gap-2 text-sm">
-                  <span className="text-base">{m.glyph}</span>
+                  <MarkerIcon icon={m.icon} glyph={m.glyph} />
                   <MarkerLabel markerId={m.id} label={m.label} editable={isDm || mine} />
                   {owner && !mine && (
                     <span className="text-[11px] text-ink-400 shrink-0" title="Party note">
@@ -406,6 +407,24 @@ function AddPartyNote({ mapId, hex }: { mapId: string; hex: { q: number; r: numb
         Party notes are visible to everyone at the table.
       </p>
     </div>
+  );
+}
+
+/**
+ * Marker row icon: the sticker image when the marker carries one (issue #67),
+ * otherwise the emoji glyph it was placed with.
+ */
+function MarkerIcon({ icon, glyph }: { icon: string; glyph: string }) {
+  const url = stickerUrl(icon);
+  if (!url) return <span className="text-base">{glyph}</span>;
+  return (
+    <img
+      src={url}
+      alt={stickerName(icon)}
+      title={stickerName(icon)}
+      className="w-5 h-5 shrink-0 object-contain"
+      draggable={false}
+    />
   );
 }
 

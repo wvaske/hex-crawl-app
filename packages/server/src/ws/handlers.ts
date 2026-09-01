@@ -446,6 +446,9 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       playerPlaced: isDm ? (cmd.marker.playerPlaced ?? false) : true,
       ownerSeatId: isDm ? (cmd.marker.ownerSeatId ?? null) : ctx.seat.id,
       dmOnly: isDm ? cmd.marker.dmOnly : false,
+      // Sticker fields are optional on the wire (CommandInput gotcha).
+      icon: cmd.marker.icon ?? '',
+      scale: cmd.marker.scale ?? 1,
     };
     ctx.runtime.placeMarker(marker);
   }) as Handler,

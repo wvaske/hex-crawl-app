@@ -12,6 +12,19 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@hexcrawl/client", "dev"],
       "port": 5173
+    },
+    {
+      "name": "worktree-full",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=3120",
+        "CLIENT_DIST=../client/dist",
+        "pnpm",
+        "--filter",
+        "@hexcrawl/server",
+        "dev"
+      ],
+      "port": 3120
     }
   ]
 }
