@@ -398,22 +398,35 @@ export function TopBar({
   // the map picker moves into the ⋯ menu rather than squeezing the title to
   // two letters. Same element either way — just a different home.
   const mapPicker = state && state.maps.length > 0 && (
-    <Select
-      className="!w-auto max-w-28 md:max-w-44 shrink"
-      value={state.campaign.activeMapId ?? ''}
-      onChange={(e) =>
-        role === 'dm'
-          ? send({ kind: 'map.setActive', mapId: e.target.value })
-          : send({ kind: 'view.map', mapId: e.target.value })
-      }
-      title={role === 'dm' ? 'Active map (the party default)' : 'Browse another map'}
-    >
-      {state.maps.map((m) => (
-        <option key={m.id} value={m.id}>
-          {m.name}
-        </option>
-      ))}
-    </Select>
+    <span className="flex items-center gap-0.5 min-w-0">
+      <Select
+        className="!w-auto max-w-28 md:max-w-44 shrink"
+        value={state.campaign.activeMapId ?? ''}
+        onChange={(e) =>
+          role === 'dm'
+            ? send({ kind: 'map.setActive', mapId: e.target.value })
+            : send({ kind: 'view.map', mapId: e.target.value })
+        }
+        title={role === 'dm' ? 'Active map (the party default)' : 'Browse another map'}
+      >
+        {state.maps.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.name}
+          </option>
+        ))}
+      </Select>
+      {role === 'dm' && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="!px-1.5 shrink-0"
+          onClick={() => useUi.getState().set('mapManagerOpen', true)}
+          title="Manage maps — thumbnails, per-map settings, campaign defaults"
+        >
+          🗺️
+        </Button>
+      )}
+    </span>
   );
 
   return (
