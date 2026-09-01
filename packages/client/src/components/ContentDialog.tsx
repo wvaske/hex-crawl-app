@@ -13,6 +13,7 @@ import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { Button, Dialog, Field, Input, Select, TextArea, cx } from '../ui/kit.js';
+import { RegionBrushControls } from './Toolbar.js';
 
 interface ClueDraft {
   id: string | null;
@@ -87,14 +88,15 @@ export function ContentDialog() {
 
   if (areaPaint) {
     return (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-ink-850/95 border border-brass-500/60 rounded-xl shadow-2xl px-4 py-2.5 backdrop-blur">
+      <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 flex-wrap justify-center max-w-[calc(100vw-1.5rem)] bg-ink-850/95 border border-brass-500/60 rounded-xl shadow-2xl px-4 py-2.5 backdrop-blur">
         <span className="text-sm text-ink-100">
           Painting the area of <span className="font-medium">{title.trim() || 'this content'}</span>
         </span>
         <span className="text-xs text-ink-400">
-          {areaPaint.cells.length} extra hex{areaPaint.cells.length === 1 ? '' : 'es'} · click to
-          toggle
+          {areaPaint.cells.length} extra hex{areaPaint.cells.length === 1 ? '' : 'es'} · drag to
+          paint
         </span>
+        <RegionBrushControls compact />
         <Button size="sm" variant="ghost" onClick={() => setUi('areaPaint', { cells: [] })}>
           Clear
         </Button>

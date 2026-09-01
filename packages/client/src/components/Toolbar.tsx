@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import {
+  CONTENT_TYPE_GLYPHS,
   TERRAINS,
   TERRAIN_IDS,
+  contentCells,
   hexKey,
   hexesInPixelRect,
+  isFullContent,
+  type Content,
   type FogState,
   type HexCoord,
 } from '@hexcrawl/shared';
@@ -20,6 +24,7 @@ const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
   { tool: 'marker', icon: '📍', name: 'Marker (M)', hint: 'Place effect markers' },
   { tool: 'content', icon: '📖', name: 'Content (C)', hint: 'Add hex content' },
   { tool: 'trail', icon: '👣', name: 'Trail (T)', hint: 'Draw a footstep trail cell by cell' },
+  { tool: 'region', icon: '🗺️', name: 'Region (G)', hint: 'Paint area footprints' },
   { tool: 'measure', icon: '📏', name: 'Measure (R)', hint: 'Measure distances' },
 ];
 
@@ -139,11 +144,148 @@ export function Toolbar() {
 
       {ui.tool === 'trail' && <TrailOptions />}
 
+      {ui.tool === 'region' && <RegionOptions />}
+
       {ui.tool === 'measure' && (
         <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-44 text-xs text-ink-300">
           Click a hex to set the start point, then hover. Click again to clear.
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Brush size (1/7/19 hexes) and add/erase polarity for region painting
+ * (issue #108). Shared by the Region tool's panel and the content dialog's
+ * floating paint bar so the two modes feel like one brush — `brushRadius` is
+ * literally the terrain painter's, so a size chosen there carries over.
+ */
+export function RegionBrushControls({ compact = false }: { compact?: boolean }) {
+  const brushRadius = useUi((s) => s.brushRadius);
+  const regionErase = useUi((s) => s.regionErase);
+  const set = useUi((s) => s.set);
+
+  return (
+    <div
+      className={cx(
+        'gap-1',
+        // In the toolbar panel the two rows stack (it's only 13rem wide); in
+        // the dialog's floating bar they sit inline with the other controls.
+        compact ? 'flex items-center' : 'flex flex-col w-full',
+      )}
+    >
+      <div className="flex items-center gap-1">
+        {([0, 1, 2] as const).map((r) => (
+          <button
+            key={r}
+            onClick={() => set('brushRadius', r)}
+            title={`Brush: ${r === 0 ? '1 hex' : r === 1 ? '7 hexes' : '19 hexes'}`}
+            className={cx(
+              'py-1 rounded text-xs cursor-pointer border',
+              compact ? 'px-2' : 'flex-1',
+              brushRadius === r
+                ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+                : 'border-ink-700 hover:bg-ink-700 text-ink-200',
+            )}
+          >
+            {r === 0 ? '1' : r === 1 ? '7' : '19'}
+          </button>
+        ))}
+      </div>
+      <div className={cx('flex items-center gap-1', compact && 'ml-1')}>
+        {([false, true] as const).map((erase) => (
+          <button
+            key={String(erase)}
+            onClick={() => set('regionErase', erase)}
+            title={
+              erase
+                ? 'Erase: drag to take hexes out of the footprint'
+                : 'Add: drag to bring hexes into the footprint'
+            }
+            className={cx(
+              'px-2 py-1 rounded text-xs cursor-pointer border',
+              !compact && 'flex-1',
+              regionErase === erase
+                ? erase
+                  ? 'border-ember-500 bg-ember-500/15 text-ember-500'
+                  : 'border-brass-500 bg-brass-500/15 text-brass-300'
+                : 'border-ink-700 hover:bg-ink-700 text-ink-200',
+            )}
+          >
+            {erase ? '⌫ Remove' : '+ Add'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Region tool panel (issue #108): pick an existing content item and paint its
+ * multi-hex footprint straight onto the map — no dialog round trip. Regions
+ * (and anything that already has an area) sort to the top of the target list,
+ * because those are what a DM paints; every item is still reachable, since any
+ * content type can carry an area.
+ */
+function RegionOptions() {
+  const targetId = useUi((s) => s.regionTargetId);
+  const state = useSession((s) => s.state);
+  const map = activeMap(state);
+  const contents = (state?.mapState?.contents ?? []).filter(isFullContent) as Content[];
+
+  const options = [...contents].sort((a, b) => {
+    const rank = (c: Content) => (c.type === 'region' ? 0 : c.area.length > 0 ? 1 : 2);
+    return rank(a) - rank(b) || a.title.localeCompare(b.title);
+  });
+  const target = options.find((c) => c.id === targetId) ?? null;
+  const targetCells = target ? contentCells(target).length : 0;
+
+  if (!map) return null;
+
+  return (
+    <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-52 overflow-y-auto space-y-2">
+      <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">
+        Paint the area of
+      </p>
+      {options.length === 0 ? (
+        <p className="text-[11px] text-ink-400">
+          No content on this map yet. Create a region with the Content tool (C), then come back here
+          to paint its footprint.
+        </p>
+      ) : (
+        <select
+          className="w-full bg-ink-950 border border-ink-600 rounded px-1 py-1 text-xs text-ink-100 cursor-pointer"
+          value={targetId ?? ''}
+          onChange={(e) => useUi.getState().set('regionTargetId', e.target.value || null)}
+          title="Which content item this brush paints into"
+        >
+          <option value="">Choose a region…</option>
+          {options.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.glyph || CONTENT_TYPE_GLYPHS[c.type]} {c.title} ({contentCells(c).length} hex
+              {contentCells(c).length === 1 ? '' : 'es'})
+            </option>
+          ))}
+        </select>
+      )}
+      {target ? (
+        <p className="text-[11px] text-ink-300">
+          <span className="text-brass-300 font-medium">{targetCells}</span> hex
+          {targetCells === 1 ? '' : 'es'} — drag on the map to paint. The anchor hex always belongs
+          to the region.
+        </p>
+      ) : (
+        options.length > 0 && (
+          <p className="text-[11px] text-ink-400">Pick a target before painting.</p>
+        )
+      )}
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+          Brush
+        </p>
+        <RegionBrushControls />
+      </div>
     </div>
   );
 }
