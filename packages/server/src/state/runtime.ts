@@ -531,6 +531,24 @@ export class CampaignRuntime {
       .run(this.campaign.name, JSON.stringify(this.campaign.settings), this.id);
   }
 
+  /**
+   * Replace one invite secret with a fresh one and write it through. Old links
+   * carrying the previous secret stop working immediately; seats that already
+   * joined keep their cookies (the secret is only used to obtain a seat, and
+   * — for the DM key — to authorize the integration API and `?key=` export).
+   */
+  rotateSecret(which: 'player' | 'dm'): string {
+    const next = nanoid(24);
+    if (which === 'dm') {
+      this.dmSecret = next;
+      this.db.prepare('UPDATE campaign SET dm_secret = ? WHERE id = ?').run(next, this.id);
+    } else {
+      this.playerSecret = next;
+      this.db.prepare('UPDATE campaign SET player_secret = ? WHERE id = ?').run(next, this.id);
+    }
+    return next;
+  }
+
   // -- campaign clock --------------------------------------------------------
 
   /** Patch the clock blob and write it through. */
