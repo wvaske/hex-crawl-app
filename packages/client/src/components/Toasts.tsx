@@ -18,7 +18,9 @@ export function Toasts() {
   const visible = toasts.slice(-3);
   const hidden = toasts.length - visible.length;
   return (
-    <div className="absolute bottom-2 right-16 z-40 flex flex-col gap-1.5 w-[19rem] pointer-events-none">
+    // On a phone the panel rail is a bottom tab bar, so toasts clear it there
+    // instead of clearing the side rail (issue #75).
+    <div className="absolute bottom-20 right-2 md:bottom-2 md:right-16 z-40 flex flex-col gap-1.5 w-[19rem] max-w-[calc(100%-1rem)] pointer-events-none">
       {hidden > 0 && (
         <p className="text-[10px] text-ink-400 text-right pr-1">+{hidden} more…</p>
       )}

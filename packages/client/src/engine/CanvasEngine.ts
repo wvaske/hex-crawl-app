@@ -53,12 +53,20 @@ import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { stickerUrl } from '../stickers.js';
+import { isCoarsePointer } from '../ui/responsive.js';
 
 const STROKE_FLUSH_MS = 180;
 /** Base font pins are rasterized at; scaling maps this to world/screen size. */
 const PIN_BASE_FONT = 32;
 /** Minimum on-screen token diameter in px. */
 const TOKEN_MIN_SCREEN = 26;
+/**
+ * How far the pointer must travel before a token grab becomes a drag (issue
+ * #75). A mouse is precise; a fingertip is ~10mm wide and never lands still,
+ * so on touch the token has to stay put until the move is clearly deliberate.
+ */
+const DRAG_THRESHOLD_MOUSE = 3;
+const DRAG_THRESHOLD_TOUCH = 12;
 /** Tag colour for a party note whose owner has no character colour. */
 const NOTE_DEFAULT_TINT = 0x8fb4ff;
 
@@ -142,7 +150,13 @@ export class CanvasEngine {
 
   private stroke: { mode: 'paint' | 'fog'; pending: Map<string, HexCoord>; timer: number } | null =
     null;
-  private drag: { view: TokenView } | null = null;
+  /**
+   * A token grab in progress. It starts *armed* (`active: false`): the token
+   * only follows the pointer once it has travelled past DRAG_THRESHOLD, so a
+   * tap (or the wobble of a finger) selects the token instead of dispatching a
+   * move, and a second finger landing on the map cancels it back into a pinch.
+   */
+  private drag: { view: TokenView; startX: number; startY: number; active: boolean } | null = null;
   private panning = false;
   /** DM shift+drag rubber band (world coords) for bulk content selection. */
   private boxSelect: { start: { x: number; y: number }; end: { x: number; y: number } } | null =
@@ -1464,7 +1478,10 @@ export class CanvasEngine {
     view.root.alpha = token.kind === 'npc' && !token.playerVisible ? 0.75 : 1;
     // Explicit grab target: hit-testing a bare Container depends on child
     // geometry, which is fragile; a hitArea makes the whole disc grabbable.
-    view.root.hitArea = new Circle(0, 0, size * 1.25);
+    // Touch gets a wider collar than the disc itself — the hit area scales
+    // with the token, whose on-screen size is floored at TOKEN_MIN_SCREEN, so
+    // this stays a ~44px target even zoomed all the way out.
+    view.root.hitArea = new Circle(0, 0, size * (isCoarsePointer() ? 1.7 : 1.25));
   }
 
   private wireTokenDrag(view: TokenView): void {
@@ -1484,8 +1501,9 @@ export class CanvasEngine {
         return;
       }
       e.stopPropagation();
-      view.dragging = true;
-      this.drag = { view };
+      // Armed, not dragging: the map stays put and the token stays home until
+      // the pointer clears the threshold in `pointermove`.
+      this.drag = { view, startX: e.global.x, startY: e.global.y, active: false };
       this.viewport.plugins.pause('drag');
       useUi.getState().set('selectedTokenId', view.token.id);
     });
@@ -1515,6 +1533,12 @@ export class CanvasEngine {
     this.viewport.eventMode = 'static';
 
     this.viewport.on('pointerdown', (e) => {
+      // A second finger while a token is held: that gesture is a pinch, not a
+      // move. Hand the map back its token and let pixi-viewport zoom.
+      if (this.drag && e.pointerType !== 'mouse') {
+        this.cancelTokenDrag();
+        return;
+      }
       if (e.button !== 0) {
         this.panning = true;
         return;
@@ -1670,6 +1694,17 @@ export class CanvasEngine {
         if (this.stroke && hex) this.strokeApply(hex);
       }
       if (this.drag) {
+        if (!this.drag.active) {
+          const threshold =
+            e.pointerType === 'mouse' ? DRAG_THRESHOLD_MOUSE : DRAG_THRESHOLD_TOUCH;
+          const travelled = Math.hypot(
+            e.global.x - this.drag.startX,
+            e.global.y - this.drag.startY,
+          );
+          if (travelled < threshold) return;
+          this.drag.active = true;
+          this.drag.view.dragging = true;
+        }
         const world = this.viewport.toWorld(e.global.x, e.global.y);
         this.drag.view.root.position.set(world.x, world.y);
       }
@@ -1763,7 +1798,28 @@ export class CanvasEngine {
     this.updateDragMode();
   }
 
+  /**
+   * Give up a token grab without moving anything — the pointer never cleared
+   * the drag threshold (a tap), or a second finger arrived and this gesture is
+   * really a pinch.
+   */
+  private cancelTokenDrag(): void {
+    const drag = this.drag;
+    this.drag = null;
+    this.updateDragMode();
+    if (!drag || !this.layout) return;
+    drag.view.dragging = false;
+    // `targetX/Y` is where the sync loop wants this token (hex centre plus any
+    // crowd offset) — snapping to it undoes a partial drag exactly.
+    drag.view.root.position.set(drag.view.targetX, drag.view.targetY);
+  }
+
   private endTokenDrag(): void {
+    if (this.drag && !this.drag.active) {
+      // A tap: the token is selected (done on pointerdown), nothing moves.
+      this.cancelTokenDrag();
+      return;
+    }
     const drag = this.drag;
     this.drag = null;
     this.updateDragMode();

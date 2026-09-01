@@ -8,6 +8,7 @@ import {
   type PanelId,
 } from '../stores/ui.js';
 import { Button, cx } from '../ui/kit.js';
+import { useIsMobile } from '../ui/responsive.js';
 import { CharacterDialog } from './CharacterDialog.js';
 import { InspectTab } from './panels/InspectTab.js';
 import { MapsTab } from './panels/MapsTab.js';
@@ -64,11 +65,18 @@ const PANEL_META: Record<PanelId, { icon: string; label: string; title: string; 
 const PLAYER_PANELS: PanelId[] = ['information', 'character', 'history'];
 const DM_PANELS: PanelId[] = ['information', 'character', 'history', 'build', 'setup'];
 
+/** Bottom-sheet heights as a fraction of the viewport (mobile shell). */
+const SHEET_MIN = 0.25;
+const SHEET_DEFAULT = 0.6;
+const SHEET_MAX = 0.92;
+
 export function PanelShell({ campaignId }: { campaignId: string }) {
   const role = useSession((s) => s.role);
   const open = useUi((s) => s.openPanel);
   const width = useUi((s) => s.panelWidth);
   const setUi = useUi((s) => s.set);
+  const mobile = useIsMobile();
+  const [sheet, setSheet] = React.useState(SHEET_DEFAULT);
   const panels = role === 'dm' ? DM_PANELS : PLAYER_PANELS;
   // A player who somehow holds a DM-only panel id (role flipped on rejoin)
   // must not end up staring at an empty shell.
@@ -94,11 +102,118 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
     window.addEventListener('pointerup', onUp);
   };
 
+  /**
+   * Bottom-sheet grabber: drag it up/down to resize, tap it to toggle between
+   * the default height and (nearly) full screen. One affordance, both gestures
+   * — a phone has no room for a separate expand button next to the title.
+   */
+  const startSheetDrag = (e: React.PointerEvent<HTMLElement>) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startSheet = sheet;
+    let moved = false;
+    const onMove = (ev: PointerEvent) => {
+      const delta = (startY - ev.clientY) / window.innerHeight;
+      if (Math.abs(ev.clientY - startY) > 6) moved = true;
+      setSheet(Math.min(SHEET_MAX, Math.max(SHEET_MIN, startSheet + delta)));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (!moved) setSheet((h) => (h > SHEET_DEFAULT + 0.01 ? SHEET_DEFAULT : SHEET_MAX));
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const header = active && (
+    <header className="flex items-center gap-2 px-3 py-2 border-b border-ink-700 shrink-0">
+      <span className="text-base leading-none">{PANEL_META[active].icon}</span>
+      <h2 className="text-sm font-semibold text-ink-100 flex-1 truncate">
+        {PANEL_META[active].title}
+      </h2>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="!px-2 !py-1.5"
+        onClick={() => setUi('openPanel', null)}
+        title="Close this panel"
+        aria-label="Close panel"
+      >
+        ✕
+      </Button>
+    </header>
+  );
+
+  const body = active && (
+    <div className="flex-1 min-h-0 flex flex-col">
+      {active === 'information' && <InformationPanel />}
+      {active === 'character' && <CharacterPanel />}
+      {active === 'history' && <HistoryPanel />}
+      {active === 'build' && <BuildPanel campaignId={campaignId} />}
+      {active === 'setup' && <SetupPanel campaignId={campaignId} />}
+    </div>
+  );
+
+  // -- phone: bottom sheet over the map + a thumb-reachable tab bar ----------
+  if (mobile) {
+    return (
+      <>
+        {active && (
+          <section
+            style={{ height: `${Math.round(sheet * 100)}dvh` }}
+            className="panel-sheet fixed left-0 right-0 z-30 bg-ink-900 border-t border-ink-700 rounded-t-xl shadow-2xl flex flex-col"
+            aria-label={PANEL_META[active].title}
+          >
+            <div
+              role="separator"
+              aria-label="Drag to resize, tap to expand"
+              onPointerDown={startSheetDrag}
+              className="shrink-0 flex items-center justify-center py-2.5 cursor-row-resize touch-none"
+            >
+              <span className="block w-10 h-1 rounded-full bg-ink-600" />
+            </div>
+            {header}
+            {body}
+          </section>
+        )}
+
+        <nav className="panel-tabbar fixed inset-x-0 bottom-0 z-40 bg-ink-900 border-t border-ink-700 flex items-stretch" aria-label="Panels">
+          {panels.map((id) => {
+            const meta = PANEL_META[id];
+            const isActive = active === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setUi('openPanel', isActive ? null : id)}
+                aria-pressed={isActive}
+                className={cx(
+                  'flex-1 flex flex-col items-center justify-center gap-1 py-2 cursor-pointer transition-colors border-t-2 -mt-px',
+                  isActive
+                    ? 'border-brass-500 bg-ink-850 text-brass-300'
+                    : 'border-transparent text-ink-400',
+                )}
+              >
+                <span className="text-lg leading-none">{meta.icon}</span>
+                <span className="text-[11px] font-medium leading-none">{meta.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </>
+    );
+  }
+
+  // -- tablet & desktop: side pop-out + heading rail -------------------------
   return (
     <>
       {active && (
+        // The stored width is a desktop preference; on a tablet (or a phone
+        // held landscape, which is wide enough to keep the side layout) it
+        // must never swallow the map, hence the viewport clamp. It only bites
+        // below ~1070px — a desktop keeps exactly the width it dragged.
         <aside
-          style={{ width }}
+          style={{ width: `min(${width}px, 60vw)` }}
           className="relative shrink-0 bg-ink-900 border-l border-ink-700 flex flex-col z-20"
         >
           <div
@@ -106,29 +221,8 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
             className="absolute left-0 top-0 bottom-0 w-1.5 -translate-x-0.5 cursor-col-resize z-30 hover:bg-brass-500/40 active:bg-brass-500/60"
             title="Drag to resize the panel"
           />
-          <header className="flex items-center gap-2 px-3 py-2 border-b border-ink-700 shrink-0">
-            <span className="text-base leading-none">{PANEL_META[active].icon}</span>
-            <h2 className="text-sm font-semibold text-ink-100 flex-1 truncate">
-              {PANEL_META[active].title}
-            </h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="!px-1.5"
-              onClick={() => setUi('openPanel', null)}
-              title="Close this panel"
-              aria-label="Close panel"
-            >
-              ✕
-            </Button>
-          </header>
-          <div className="flex-1 min-h-0 flex flex-col">
-            {active === 'information' && <InformationPanel />}
-            {active === 'character' && <CharacterPanel />}
-            {active === 'history' && <HistoryPanel />}
-            {active === 'build' && <BuildPanel campaignId={campaignId} />}
-            {active === 'setup' && <SetupPanel campaignId={campaignId} />}
-          </div>
+          {header}
+          {body}
         </aside>
       )}
 
@@ -164,7 +258,7 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
 
 /** The scrolling body every panel shares. */
 function PanelBody({ children }: { children: React.ReactNode }) {
-  return <div className="flex-1 min-h-0 overflow-y-auto p-3">{children}</div>;
+  return <div className="panel-scroll flex-1 min-h-0 overflow-y-auto p-3">{children}</div>;
 }
 
 /** A pill row for panels that hold more than one view. */
@@ -185,7 +279,9 @@ function SubTabs<T extends string>({
           onClick={() => onChange(t.id)}
           title={t.title}
           className={cx(
-            'px-2.5 py-0.5 rounded-full text-[11px] cursor-pointer border transition-colors',
+            // Roomier on touch — a pill that's 18px tall is a coin toss with
+            // a thumb, and these are the panel's primary navigation.
+            'px-3 py-1.5 md:px-2.5 md:py-0.5 rounded-full text-[11px] cursor-pointer border transition-colors',
             value === t.id
               ? 'border-brass-500 bg-brass-500/15 text-brass-300'
               : 'border-ink-700 text-ink-300 hover:bg-ink-700',
@@ -281,7 +377,7 @@ function HistoryPanel() {
           ]}
         />
       )}
-      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+      <div className="panel-scroll flex-1 min-h-0 overflow-y-auto p-3">
         {tab === 'journal' && !isDm ? <JournalTab /> : <LogTab />}
       </div>
     </div>
@@ -302,7 +398,7 @@ function BuildPanel({ campaignId }: { campaignId: string }) {
           { id: 'encounters', label: '🎲 Encounters', title: 'Encounter tables and rolls' },
         ]}
       />
-      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+      <div className="panel-scroll flex-1 min-h-0 overflow-y-auto p-3">
         {tab === 'maps' && <MapsTab campaignId={campaignId} />}
         {tab === 'tokens' && <TokensTab />}
         {tab === 'encounters' && <EncountersTab />}

@@ -47,6 +47,66 @@ body,
 }
 
 /*
+ * Touch/mobile shell (issue #75). The map owns its own zoom (pixi-viewport
+ * pinch), so page-level gestures must not fight it: `touch-action: none` on
+ * the canvas hands every touch to Pixi. Panels are deliberately left alone —
+ * browser pinch-zoom on text is a legitimate accessibility affordance, which
+ * is also why index.html keeps `user-scalable` at its default.
+ */
+.canvas-host,
+.canvas-host canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Height of the phone bottom tab bar; the sheet sits directly on top of it. */
+:root {
+  --tabbar-h: 3.5rem;
+}
+.panel-tabbar {
+  min-height: var(--tabbar-h);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.panel-sheet {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+  max-height: calc(100dvh - var(--tabbar-h) - 4rem);
+  /* Scrolling inside the sheet must not chain to the page behind it. */
+  overscroll-behavior: contain;
+}
+
+@media (pointer: coarse) {
+  /* No 300ms tap delay, no grey flash on the controls players tap most. */
+  button,
+  a,
+  [role='button'],
+  select,
+  summary {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Panel rows are dense by design; give their controls a thumb-sized floor. */
+  .panel-scroll button,
+  .panel-scroll [role='button'],
+  .panel-scroll a {
+    min-height: 2rem;
+  }
+}
+
+/*
+ * iOS Safari zooms the whole page when a focused input's text is under 16px.
+ * The app's inputs are 14px by design, so bump them on phone-sized touch
+ * screens only — desktop density is unaffected.
+ */
+@media (pointer: coarse) and (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/*
  * Wiki HTML rendered inside the location dialog (#66). MediaWiki output
  * carries no classes we can style with utilities, so it gets a small set of
  * element rules scoped to the panel.

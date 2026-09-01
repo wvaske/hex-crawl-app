@@ -68,12 +68,12 @@ export function MapManagerDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-ink-850 border border-ink-600 rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col">
+      <div className="bg-ink-850 border border-ink-600 rounded-xl shadow-2xl w-full min-w-0 max-w-5xl h-[85dvh] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-700 shrink-0">
           <h2 className="font-semibold text-ink-100">Maps</h2>
           <div className="flex items-center gap-2">
@@ -92,7 +92,7 @@ export function MapManagerDialog({
         </div>
 
         <div className="flex-1 min-h-0 flex">
-          <div className="w-64 shrink-0 border-r border-ink-700 overflow-y-auto p-2 space-y-1.5">
+          <div className="w-40 sm:w-64 shrink-0 border-r border-ink-700 overflow-y-auto p-2 space-y-1.5">
             {maps.length === 0 && <EmptyNote>No maps yet.</EmptyNote>}
             {[...maps]
               .sort((a, b) => a.sortOrder - b.sortOrder)

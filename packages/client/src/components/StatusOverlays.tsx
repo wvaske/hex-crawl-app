@@ -37,7 +37,8 @@ export function HexReadout() {
   }
 
   return (
-    <div className="absolute bottom-3 left-3 z-30 bg-ink-900/90 border border-ink-700 rounded-md px-2.5 py-1.5 text-xs text-ink-300 backdrop-blur pointer-events-none">
+    // bottom-20 on a phone keeps the readout above the bottom tab bar (#75).
+    <div className="absolute bottom-20 md:bottom-3 left-3 right-3 md:right-auto z-30 bg-ink-900/90 border border-ink-700 rounded-md px-2.5 py-1.5 text-xs text-ink-300 backdrop-blur pointer-events-none">
       <span className="text-ink-100 font-medium">
         {hover.q}, {hover.r}
       </span>
