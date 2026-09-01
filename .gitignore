@@ -4,4 +4,8 @@ data/
 *.tsbuildinfo
 .DS_Store
 *.local
+
+# Instance config & secrets — never commit. See .env.example for the contract.
 .env
+.env.*
+!.env.example
