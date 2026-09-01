@@ -12,6 +12,7 @@ import { EmptyMapHint, HexReadout } from '../components/StatusOverlays.js';
 import { PendingMoves } from '../components/PendingMoves.js';
 import { SelectionBar } from '../components/SelectionBar.js';
 import { PinActions } from '../components/PinActions.js';
+import { LocationDialog } from '../components/LocationDialog.js';
 
 export function TableView({ campaignId }: { campaignId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -21,6 +22,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
   const role = useSession((s) => s.role);
   const panelOpen = useUi((s) => s.panelOpen);
   const contentDialogHex = useUi((s) => s.contentDialogHex);
+  const locationDialogContentId = useUi((s) => s.locationDialogContentId);
 
   useEffect(() => {
     connectWs(campaignId);
@@ -46,6 +48,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
       if (e.key === 'Escape') {
         ui.set('contentDialogHex', null);
         ui.set('editingContentId', null);
+        ui.set('locationDialogContentId', null);
         ui.selectHex(null);
         ui.set('measureStart', null);
         ui.set('movingTokenId', null);
@@ -128,6 +131,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         <Toasts />
       </div>
       {contentDialogHex && <ContentDialog />}
+      {locationDialogContentId && <LocationDialog campaignId={campaignId} />}
     </div>
   );
 }

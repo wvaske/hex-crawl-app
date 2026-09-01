@@ -123,6 +123,13 @@ export function PinActions() {
           >
             Move
           </button>
+          <button
+            className="px-1.5 py-0.5 rounded text-[11px] cursor-pointer text-ink-300 hover:bg-ink-700"
+            title="Everything about this location: clues, visits, wiki page"
+            onClick={() => useUi.getState().set('locationDialogContentId', c.id)}
+          >
+            More…
+          </button>
           {c.wikiPage ? (
             <a
               className="px-1.5 py-0.5 rounded text-xs cursor-pointer text-arcane-500 hover:bg-ink-700"

@@ -19,6 +19,7 @@ import {
   exportFileName,
   importCampaign,
 } from './portability.js';
+import { fetchWikiPage, isWikiError, wikiApiEndpoint } from './wiki.js';
 import type { Store } from '../state/store.js';
 import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
 import type { Hub } from '../ws/hub.js';
@@ -211,6 +212,32 @@ export function createApp(store: Store, hub: Hub): Hono {
     const seat = getSeat(c, runtime);
     if (!seat) return c.json({ error: 'No seat' }, 401);
     return c.json({ seatId: seat.id, role: seat.role, name: seat.name, characterId: seat.characterId });
+  });
+
+  /**
+   * Read one page of the campaign's wiki as sanitized HTML, for the location
+   * detail dialog (#66). Any seated member may read it: the wiki is public to
+   * whoever can open it in a browser, and the app cannot enforce wiki-side
+   * secrecy — see docs/WIKI-TEMPLATE.md. The target host comes from the DM's
+   * `wikiBaseUrl` setting, never from the request.
+   */
+  app.get('/api/campaigns/:id/wiki-page', async (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const seat = getSeat(c, runtime);
+    if (!seat) return c.json({ error: 'No seat' }, 401);
+    const title = (c.req.query('title') ?? '').trim();
+    if (!title) return c.json({ error: 'Page title required' }, 400);
+    // Content may store a full URL instead of a title; that is a plain link,
+    // not something to proxy (and keeps this route pinned to one host).
+    if (/^[a-z]+:\/\//i.test(title)) {
+      return c.json({ error: 'Wiki page is an external link' }, 404);
+    }
+    const endpoint = wikiApiEndpoint(runtime.campaign.settings.wikiBaseUrl);
+    if (!endpoint) return c.json({ error: 'No wiki configured' }, 404);
+    const result = await fetchWikiPage(endpoint, title);
+    if (isWikiError(result)) return c.json({ error: result.error }, result.status);
+    return c.json({ title: result.title, html: result.html });
   });
 
   /**

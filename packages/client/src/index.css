@@ -45,3 +45,73 @@ body,
 .canvas-host canvas {
   display: block;
 }
+
+/*
+ * Wiki HTML rendered inside the location dialog (#66). MediaWiki output
+ * carries no classes we can style with utilities, so it gets a small set of
+ * element rules scoped to the panel.
+ */
+.wiki-content h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-brass-300);
+  margin: 0.9rem 0 0.35rem;
+}
+.wiki-content h3:first-child {
+  margin-top: 0;
+}
+.wiki-content h4,
+.wiki-content h5 {
+  font-weight: 600;
+  color: var(--color-ink-100);
+  margin: 0.7rem 0 0.25rem;
+}
+.wiki-content p {
+  margin: 0 0 0.6rem;
+  line-height: 1.5;
+}
+.wiki-content ul,
+.wiki-content ol {
+  margin: 0 0 0.6rem 1.1rem;
+  list-style: revert;
+}
+.wiki-content li {
+  margin-bottom: 0.2rem;
+}
+.wiki-content a {
+  color: var(--color-arcane-500);
+  text-decoration: none;
+}
+.wiki-content a:hover {
+  text-decoration: underline;
+}
+.wiki-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+}
+.wiki-content table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  margin-bottom: 0.6rem;
+}
+.wiki-content th,
+.wiki-content td {
+  border: 1px solid var(--color-ink-700);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+/* Infoboxes and thumbnails float in wiki CSS we don't ship; keep them inline. */
+.wiki-content .infobox,
+.wiki-content .thumb,
+.wiki-content figure {
+  float: none;
+  margin: 0 0 0.6rem;
+  max-width: 100%;
+}
+.wiki-content .mw-editsection,
+.wiki-content .navbox,
+.wiki-content .toc {
+  display: none;
+}

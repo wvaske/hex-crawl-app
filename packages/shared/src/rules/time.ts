@@ -148,6 +148,23 @@ export function formatDuration(minutes: number): string {
   return parts.join(' ');
 }
 
+/**
+ * How long ago something happened, in in-game prose: "today", "yesterday",
+ * "5 days ago", "3 weeks ago", "4 months ago". Both arguments are campaign
+ * clock minutes; a future `fromMinutes` reads as "today" rather than going
+ * negative. Months are 30-day approximations — deliberately calendar-free,
+ * same as `formatDay` (#79 can rename this layer).
+ */
+export function formatRelativeGameTime(fromMinutes: number, nowMinutes: number): string {
+  const delta = Math.max(0, Math.round(nowMinutes) - Math.round(fromMinutes));
+  const days = Math.floor(delta / MINUTES_PER_DAY);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return `${Math.round(days / 30)} months ago`;
+}
+
 /** Minutes the party has spent on their current hex, per the campaign clock. */
 export function minutesOnCurrentHex(time: CampaignTime): number {
   if (!time.partyHex) return 0;

@@ -51,9 +51,11 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
           // Trail definitions never reach players; only discovered signs do.
           trails: [],
           trailSigns: computeTrailSigns(full, viewer.characterId),
-          // Visit history is DM bookkeeping for now (players get last-visited
-          // in #66, which will need its own per-hex fog check).
-          visits: [],
+          // The party's own travel history (#66): where they've been, when
+          // they last arrived, and how long they lingered — no DM-only data
+          // rides along (q/r + clock minutes only). Gated on fog so a hex the
+          // DM has re-hidden doesn't come back as a visit record.
+          visits: mapState.visits.filter((v) => fogAt(v.q, v.r) !== 'hidden'),
         };
       })()
     : null;

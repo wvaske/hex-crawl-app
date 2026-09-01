@@ -1659,7 +1659,7 @@ describe('campaign clock (issue #57)', () => {
     expect(reloaded.hexVisit(mapId, 1, 0)).toEqual(revisit);
   });
 
-  it('exposes visits to the DM snapshot only', () => {
+  it('exposes the party visit history to players too (#66)', () => {
     const { mapId, charId, playerSeat, tokenId } = setupPartyWithScout();
     asSeat(playerSeat, { kind: 'token.move', tokenId, q: 1, r: 0 } as never);
     const full = runtime.buildFullState(mapId);
@@ -1667,7 +1667,7 @@ describe('campaign clock (issue #57)', () => {
     const playerView = filterStateForViewer(full, {
       seatId: playerSeat.id, role: 'player', characterId: charId,
     });
-    expect(playerView.mapState!.visits).toEqual([]);
+    expect(playerView.mapState!.visits).toEqual(full.mapState!.visits);
     // The clock itself is public.
     expect(playerView.campaign.time.minutes).toBe(runtime.campaign.time.minutes);
   });
