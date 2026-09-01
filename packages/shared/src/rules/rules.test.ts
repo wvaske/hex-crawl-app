@@ -123,9 +123,11 @@ function fullState(): CampaignState {
         { id: 't4', mapId: 'm1', q: 0, r: 0, kind: 'npc', characterId: null, label: 'Hidden', color: '#000000', glyph: '', playerVisible: false, partyId: null },
       ],
       markers: [
-        { id: 'mk1', mapId: 'm1', q: 0, r: 0, glyph: '🔥', label: 'Fire', dmOnly: false },
-        { id: 'mk2', mapId: 'm1', q: 0, r: 0, glyph: '💀', label: 'Secret', dmOnly: true },
-        { id: 'mk3', mapId: 'm1', q: 2, r: 0, glyph: '⛺', label: 'FoggedCamp', dmOnly: false },
+        { id: 'mk1', mapId: 'm1', q: 0, r: 0, glyph: '🔥', label: 'Fire', dmOnly: false, playerPlaced: false, ownerSeatId: null },
+        { id: 'mk2', mapId: 'm1', q: 0, r: 0, glyph: '💀', label: 'Secret', dmOnly: true, playerPlaced: false, ownerSeatId: null },
+        { id: 'mk3', mapId: 'm1', q: 2, r: 0, glyph: '⛺', label: 'FoggedCamp', dmOnly: false, playerPlaced: false, ownerSeatId: null },
+        // Party note dropped by another player's seat: party-wide (issue #74).
+        { id: 'mk4', mapId: 'm1', q: 1, r: 0, glyph: '📌', label: 'We camped here', dmOnly: false, playerPlaced: true, ownerSeatId: 's2' },
       ],
       contents: [
         {
@@ -185,7 +187,15 @@ describe('filterStateForViewer', () => {
 
   it('filters markers by dmOnly and fog', () => {
     const s = filterStateForViewer(fullState(), viewer);
-    expect(s.mapState!.markers.map((m) => m.id)).toEqual(['mk1']);
+    // mk4 is another seat's party note — player notes are party-wide.
+    expect(s.mapState!.markers.map((m) => m.id)).toEqual(['mk1', 'mk4']);
+  });
+
+  it('keeps ownership fields on party notes so a player can spot their own', () => {
+    const s = filterStateForViewer(fullState(), viewer);
+    const note = s.mapState!.markers.find((m) => m.id === 'mk4')!;
+    expect(note.playerPlaced).toBe(true);
+    expect(note.ownerSeatId).toBe('s2');
   });
 
   it('projects content to discovered clues only', () => {

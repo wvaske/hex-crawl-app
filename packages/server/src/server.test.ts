@@ -1056,6 +1056,155 @@ describe('prep mode (pause player map sync)', () => {
   });
 });
 
+describe('player-placed party notes (issue #74)', () => {
+  function markers() {
+    return [...runtime.requireMap(activeMapId()).markers.values()];
+  }
+
+  it('lets a player pin a note, forcing party visibility and seat ownership', () => {
+    const { mapId, playerSeat } = setupPartyWithScout();
+    asSeat(playerSeat, {
+      kind: 'marker.place',
+      // A player claiming dmOnly / someone else's ownership is overridden.
+      marker: { mapId, q: 2, r: 1, glyph: '📌', label: 'We camped here', dmOnly: true, ownerSeatId: dmSeat.id },
+    } as never);
+    const note = markers()[0]!;
+    expect(note.playerPlaced).toBe(true);
+    expect(note.ownerSeatId).toBe(playerSeat.id);
+    expect(note.dmOnly).toBe(false);
+  });
+
+  it('shows a note to the whole party, not just its author', () => {
+    const { mapId, charId, playerSeat } = setupPartyWithScout();
+    dm({ kind: 'fog.set', mapId, cells: [{ q: 2, r: 1 }], state: 'explored' } as never);
+    const other = runtime.createSeat('player', 'Bob');
+    asSeat(other, {
+      kind: 'marker.place',
+      marker: { mapId, q: 2, r: 1, glyph: '⚠️', label: 'Wyverns', dmOnly: false },
+    } as never);
+    const view = filterStateForViewer(runtime.buildFullState(), {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    expect(view.mapState!.markers.map((m) => m.label)).toEqual(['Wyverns']);
+  });
+
+  it('DM markers keep their DM-only default when the DM places them', () => {
+    const { mapId } = setupPartyWithScout();
+    dm({
+      kind: 'marker.place',
+      marker: { mapId, q: 0, r: 0, glyph: '💀', label: 'Ambush', dmOnly: true },
+    } as never);
+    const marker = markers()[0]!;
+    expect(marker.dmOnly).toBe(true);
+    expect(marker.playerPlaced).toBe(false);
+    expect(marker.ownerSeatId).toBeNull();
+  });
+
+  it('lets a player edit and delete their own note only', () => {
+    const { mapId, playerSeat } = setupPartyWithScout();
+    const other = runtime.createSeat('player', 'Bob');
+    asSeat(playerSeat, {
+      kind: 'marker.place',
+      marker: { mapId, q: 1, r: 1, glyph: '📌', label: 'Mine', dmOnly: false },
+    } as never);
+    const noteId = markers()[0]!.id;
+
+    asSeat(playerSeat, { kind: 'marker.update', markerId: noteId, patch: { label: 'Edited' } } as never);
+    expect(runtime.findMarker(noteId)!.label).toBe('Edited');
+
+    expect(() =>
+      asSeat(other, { kind: 'marker.update', markerId: noteId, patch: { label: 'Hijacked' } } as never),
+    ).toThrow(/own notes/);
+    expect(() => asSeat(other, { kind: 'marker.delete', markerId: noteId } as never)).toThrow(
+      /own notes/,
+    );
+    expect(runtime.findMarker(noteId)!.label).toBe('Edited');
+
+    asSeat(playerSeat, { kind: 'marker.delete', markerId: noteId } as never);
+    expect(runtime.findMarker(noteId)).toBeNull();
+  });
+
+  it('refuses to let a player touch a DM marker, or hide their own note', () => {
+    const { mapId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'marker.place',
+      marker: { mapId, q: 0, r: 0, glyph: '⭐', label: 'DM', dmOnly: false },
+    } as never);
+    const dmMarkerId = markers()[0]!.id;
+    expect(() =>
+      asSeat(playerSeat, { kind: 'marker.update', markerId: dmMarkerId, patch: { label: 'nope' } } as never),
+    ).toThrow(/own notes/);
+    expect(() =>
+      asSeat(playerSeat, { kind: 'marker.delete', markerId: dmMarkerId } as never),
+    ).toThrow(/own notes/);
+
+    asSeat(playerSeat, {
+      kind: 'marker.place',
+      marker: { mapId, q: 1, r: 1, glyph: '📌', label: 'Mine', dmOnly: false },
+    } as never);
+    const noteId = markers().find((m) => m.playerPlaced)!.id;
+    asSeat(playerSeat, { kind: 'marker.update', markerId: noteId, patch: { dmOnly: true } } as never);
+    expect(runtime.findMarker(noteId)!.dmOnly).toBe(false);
+  });
+
+  it('lets the DM moderate a player note', () => {
+    const { mapId, playerSeat } = setupPartyWithScout();
+    asSeat(playerSeat, {
+      kind: 'marker.place',
+      marker: { mapId, q: 1, r: 1, glyph: '📌', label: 'Rude', dmOnly: false },
+    } as never);
+    const noteId = markers()[0]!.id;
+    dm({ kind: 'marker.update', markerId: noteId, patch: { label: 'Tidied' } } as never);
+    expect(runtime.findMarker(noteId)!.label).toBe('Tidied');
+    dm({ kind: 'marker.delete', markerId: noteId } as never);
+    expect(runtime.findMarker(noteId)).toBeNull();
+  });
+
+  it('persists ownership across a reload', () => {
+    const { mapId, playerSeat } = setupPartyWithScout();
+    asSeat(playerSeat, {
+      kind: 'marker.place',
+      marker: { mapId, q: 3, r: 0, glyph: '⛺', label: 'Camp', dmOnly: false },
+    } as never);
+    const db = (store as unknown as { db: unknown }).db;
+    const reloaded = new Store(db as never).getCampaign(runtime.id)!;
+    const note = [...reloaded.requireMap(mapId).markers.values()][0]!;
+    expect(note.playerPlaced).toBe(true);
+    expect(note.ownerSeatId).toBe(playerSeat.id);
+  });
+
+  it('stays live for players through a prep-mode pause', () => {
+    const { mapId, charId, playerSeat } = setupPartyWithScout();
+    dm({ kind: 'fog.set', mapId, cells: [{ q: 2, r: 1 }, { q: 3, r: 1 }], state: 'explored' } as never);
+    dm({ kind: 'campaign.update', settings: { pausePlayerMapSync: true } } as never);
+
+    // DM prep during the pause stays hidden; the player's own note does not.
+    dm({
+      kind: 'marker.place',
+      marker: { mapId, q: 3, r: 1, glyph: '⭐', label: 'Prep', dmOnly: false },
+    } as never);
+    asSeat(playerSeat, {
+      kind: 'marker.place',
+      marker: { mapId, q: 2, r: 1, glyph: '📌', label: 'Note', dmOnly: false },
+    } as never);
+
+    const viewNow = () =>
+      filterStateForViewer(runtime.applyPlayerFreeze(runtime.buildFullState()), {
+        seatId: playerSeat.id, role: 'player', characterId: charId,
+      });
+    expect(viewNow().mapState!.markers.map((m) => m.label)).toEqual(['Note']);
+
+    // Edits and deletes of a live note also land during the pause.
+    const noteId = markers().find((m) => m.playerPlaced)!.id;
+    asSeat(playerSeat, { kind: 'marker.update', markerId: noteId, patch: { label: 'Edited' } } as never);
+    expect(viewNow().mapState!.markers.map((m) => m.label)).toEqual(['Edited']);
+    asSeat(playerSeat, { kind: 'marker.delete', markerId: noteId } as never);
+    expect(viewNow().mapState!.markers).toHaveLength(0);
+  });
+});
+
+
+
 describe('campaign export / import (issue #76)', () => {
   /**
    * Canonical form for deep comparison: ids replaced by a placeholder, null /

@@ -44,6 +44,8 @@ const STROKE_FLUSH_MS = 180;
 const PIN_BASE_FONT = 32;
 /** Minimum on-screen token diameter in px. */
 const TOKEN_MIN_SCREEN = 26;
+/** Tag colour for a party note whose owner has no character colour. */
+const NOTE_DEFAULT_TINT = 0x8fb4ff;
 
 type PinContainer = Container & {
   __pin?: { worldSize: number; minScreen: number };
@@ -822,6 +824,9 @@ export class CanvasEngine {
     glyph: string;
     label?: string;
     chip: boolean;
+    /** Player-placed party note: rounded-rect tag tinted with the owner's colour. */
+    note?: boolean;
+    tint?: number;
     dmOnly?: boolean;
     worldSize: number;
     minScreen: number;
@@ -833,6 +838,21 @@ export class CanvasEngine {
       chip.fill({ color: 0x12151d, alpha: 0.88 });
       chip.stroke({ width: PIN_BASE_FONT * 0.07, color: 0xdcb968, alpha: 0.95 });
       pin.addChild(chip);
+    }
+    if (opts.note) {
+      const tint = opts.tint ?? NOTE_DEFAULT_TINT;
+      const w = PIN_BASE_FONT * 1.6;
+      const h = PIN_BASE_FONT * 1.3;
+      const tag = new Graphics();
+      tag.roundRect(-w / 2, -h / 2, w, h, PIN_BASE_FONT * 0.32);
+      tag.fill({ color: 0x12151d, alpha: 0.82 });
+      tag.stroke({ width: PIN_BASE_FONT * 0.1, color: tint, alpha: 0.95 });
+      pin.addChild(tag);
+      // Owner-coloured dog-ear so a note reads as a note even at a glance.
+      const corner = new Graphics();
+      corner.circle(w / 2 - PIN_BASE_FONT * 0.12, -h / 2 + PIN_BASE_FONT * 0.12, PIN_BASE_FONT * 0.2);
+      corner.fill({ color: tint, alpha: 0.95 });
+      pin.addChild(corner);
     }
     const text = new Text({
       text: opts.glyph,
@@ -870,6 +890,18 @@ export class CanvasEngine {
     }
     (pin as PinContainer).__pin = { worldSize: opts.worldSize, minScreen: opts.minScreen };
     return pin;
+  }
+
+  /** seatId → the colour of the character that seat plays (for party notes). */
+  private seatTints(): Map<string, number> {
+    const st = useSession.getState().state;
+    const colors = new Map((st?.characters ?? []).map((c) => [c.id, c.color]));
+    const tints = new Map<string, number>();
+    for (const seat of st?.seats ?? []) {
+      const hex = seat.characterId ? colors.get(seat.characterId) : undefined;
+      if (hex) tints.set(seat.id, Number.parseInt(hex.replace('#', ''), 16));
+    }
+    return tints;
   }
 
   /** Disabled content: dimmed with a red X — staged, not live for players. */
@@ -971,6 +1003,8 @@ export class CanvasEngine {
       list.push(m);
       byHex.set(key, list);
     }
+    // Party notes (issue #74) get a tag in the placing player's colour.
+    const noteTint = this.lastMarkers.some((m) => m.playerPlaced) ? this.seatTints() : null;
     for (const markers of byHex.values()) {
       markers.forEach((m, i) => {
         const center = hexToPixel(this.layout!, { q: m.q, r: m.r });
@@ -978,9 +1012,12 @@ export class CanvasEngine {
         const pin = this.buildPin({
           glyph: m.glyph,
           chip: false,
+          note: m.playerPlaced,
+          tint: m.playerPlaced ? noteTint?.get(m.ownerSeatId ?? '') : undefined,
+          label: m.playerPlaced && m.label ? truncateLabel(m.label) : undefined,
           dmOnly: m.dmOnly,
-          worldSize: size * 1.0,
-          minScreen: 19,
+          worldSize: size * (m.playerPlaced ? 1.15 : 1.0),
+          minScreen: m.playerPlaced ? 21 : 19,
         });
         pin.position.set(center.x + spread, center.y + size * 0.55);
         if (fogByKey) {
@@ -1685,8 +1722,18 @@ function fogCellsEqual(a: FogCell[], b: FogCell[]): boolean {
   return true;
 }
 
+/**
+ * `shallowEqual` walks every key of the marker, so fields added to
+ * `MarkerSchema` (playerPlaced / ownerSeatId) are diffed without touching
+ * this comparator — unlike the explicit-field ones below.
+ */
 function markersEqual(a: Marker[], b: Marker[]): boolean {
   return a.length === b.length && a.every((m, i) => shallowEqual(m, b[i]!));
+}
+
+/** Party-note captions render on the map; keep them to a glance. */
+function truncateLabel(label: string): string {
+  return label.length > 24 ? label.slice(0, 23) + '…' : label;
 }
 
 function contentsEqual(

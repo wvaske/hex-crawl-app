@@ -320,6 +320,10 @@ export const MarkerSchema = z.object({
   glyph: z.string().min(1).max(8),
   label: z.string().max(120).default(''),
   dmOnly: z.boolean().default(false),
+  /** Party note dropped by a player rather than the DM (issue #74). */
+  playerPlaced: z.boolean().default(false),
+  /** Seat that placed a player note; that seat (and the DM) may edit/delete it. */
+  ownerSeatId: z.string().nullable().default(null),
 });
 export type Marker = z.infer<typeof MarkerSchema>;
 
