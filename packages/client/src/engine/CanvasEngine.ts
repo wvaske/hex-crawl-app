@@ -71,7 +71,7 @@ const DRAG_THRESHOLD_TOUCH = 12;
 const NOTE_DEFAULT_TINT = 0x8fb4ff;
 
 type PinContainer = Container & {
-  __pin?: { worldSize: number; minScreen: number };
+  __pin?: { worldSize: number; minScreen: number; maxScreen?: number };
 };
 
 interface TokenView {
@@ -762,7 +762,15 @@ export class CanvasEngine {
     for (const child of this.pinsC.children) {
       const meta = (child as PinContainer).__pin;
       if (!meta) continue;
-      const effectiveWorld = Math.max(meta.worldSize, meta.minScreen / zoom);
+      let effectiveWorld = Math.max(meta.worldSize, meta.minScreen / zoom);
+      // Region labels also cap in SCREEN pixels: zooming into a region should
+      // shrink its printed-map name out of the way, not fill the viewport.
+      if (meta.maxScreen !== undefined) {
+        effectiveWorld = Math.min(
+          effectiveWorld,
+          Math.max(meta.maxScreen, meta.minScreen) / zoom,
+        );
+      }
       child.scale.set(effectiveWorld / PIN_BASE_FONT);
     }
     // Party/NPC tokens: same guarantee — never smaller than a thumbprint.
@@ -1192,13 +1200,15 @@ export class CanvasEngine {
         const pin = new Container();
         pin.addChild(label);
         // Bigger footprint for bigger regions; readable minimum when far out.
-        // A painted area sizes the label to the ground it actually covers.
+        // A painted area nudges the label up with the ground it covers, but
+        // gently — a province-sized footprint should not shout (the 3x cap
+        // made Forest of Wyrms comically large once its area was painted).
         const base = size * (content.scaleVisibility === 2 ? 2.6 : 1.8);
         const worldSize =
           content.area.length > 0
-            ? Math.min(base * 3, Math.max(base, this.footprintWidth(contentCells(content)) * 0.7))
+            ? Math.min(base * 1.8, Math.max(base, this.footprintWidth(contentCells(content)) * 0.35))
             : base;
-        (pin as PinContainer).__pin = { worldSize, minScreen: 15 };
+        (pin as PinContainer).__pin = { worldSize, minScreen: 15, maxScreen: 42 };
         pin.position.set(center.x, center.y);
         if (discoveredClues) {
           const known =
