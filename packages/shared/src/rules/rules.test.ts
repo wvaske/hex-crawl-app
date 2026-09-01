@@ -126,11 +126,11 @@ function fullState(): CampaignState {
         { id: 't4', mapId: 'm1', q: 0, r: 0, kind: 'npc', characterId: null, label: 'Hidden', color: '#000000', glyph: '', playerVisible: false, partyId: null },
       ],
       markers: [
-        { id: 'mk1', mapId: 'm1', q: 0, r: 0, glyph: '🔥', label: 'Fire', dmOnly: false, playerPlaced: false, ownerSeatId: null },
-        { id: 'mk2', mapId: 'm1', q: 0, r: 0, glyph: '💀', label: 'Secret', dmOnly: true, playerPlaced: false, ownerSeatId: null },
-        { id: 'mk3', mapId: 'm1', q: 2, r: 0, glyph: '⛺', label: 'FoggedCamp', dmOnly: false, playerPlaced: false, ownerSeatId: null },
+        { id: 'mk1', mapId: 'm1', q: 0, r: 0, glyph: '🔥', icon: '', scale: 1, label: 'Fire', dmOnly: false, playerPlaced: false, ownerSeatId: null },
+        { id: 'mk2', mapId: 'm1', q: 0, r: 0, glyph: '💀', icon: '', scale: 1, label: 'Secret', dmOnly: true, playerPlaced: false, ownerSeatId: null },
+        { id: 'mk3', mapId: 'm1', q: 2, r: 0, glyph: '⛺', icon: '', scale: 1, label: 'FoggedCamp', dmOnly: false, playerPlaced: false, ownerSeatId: null },
         // Party note dropped by another player's seat: party-wide (issue #74).
-        { id: 'mk4', mapId: 'm1', q: 1, r: 0, glyph: '📌', label: 'We camped here', dmOnly: false, playerPlaced: true, ownerSeatId: 's2' },
+        { id: 'mk4', mapId: 'm1', q: 1, r: 0, glyph: '📌', icon: '', scale: 1, label: 'We camped here', dmOnly: false, playerPlaced: true, ownerSeatId: 's2' },
       ],
       contents: [
         {

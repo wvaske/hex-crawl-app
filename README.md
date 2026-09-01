@@ -250,3 +250,9 @@ Worth noting when picking: the choice also governs any bundled art and map
 assets, which may want different terms (e.g. code under a permissive or copyleft
 software license, art under a Creative Commons license). Contributions are
 welcome once this is settled.
+
+### Credits
+
+The map-marker sticker icons are from [game-icons.net](https://game-icons.net),
+used under CC BY 3.0 — per-icon authors and licence links are listed in
+[packages/client/src/assets/stickers/ATTRIBUTION.md](packages/client/src/assets/stickers/ATTRIBUTION.md).

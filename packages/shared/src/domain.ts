@@ -363,6 +363,15 @@ export const MarkerSchema = z.object({
   q: z.number().int(),
   r: z.number().int(),
   glyph: z.string().min(1).max(8),
+  /**
+   * Sticker id from the client sticker library (`<category>/<slug>`, issue
+   * #67). When set it wins over `glyph` for rendering; `glyph` is still stored
+   * as the fallback for anything that cannot draw an SVG (and for markers
+   * placed before the library existed).
+   */
+  icon: z.string().max(120).default(''),
+  /** Render size multiplier for the placed sticker/glyph. */
+  scale: z.number().min(0.5).max(3).default(1),
   label: z.string().max(120).default(''),
   dmOnly: z.boolean().default(false),
   /** Party note dropped by a player rather than the DM (issue #74). */

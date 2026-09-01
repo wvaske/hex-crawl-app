@@ -280,13 +280,21 @@ export const TokenDeleteCommand = z.object({
 export const MarkerPlaceCommand = z.object({
   ...base,
   kind: z.literal('marker.place'),
-  // The ownership fields are `.optional()` rather than defaulted: a zod default
-  // would make them required in `CommandInput` and break every existing
-  // `marker.place` call site. The server fills them in (and forces them for
-  // player seats).
-  marker: MarkerSchema.omit({ id: true, playerPlaced: true, ownerSeatId: true }).extend({
+  // The ownership and sticker fields are `.optional()` rather than defaulted: a
+  // zod default would make them required in `CommandInput` and break every
+  // existing `marker.place` call site. The server fills them in (and forces the
+  // ownership ones for player seats).
+  marker: MarkerSchema.omit({
+    id: true,
+    playerPlaced: true,
+    ownerSeatId: true,
+    icon: true,
+    scale: true,
+  }).extend({
     playerPlaced: z.boolean().optional(),
     ownerSeatId: z.string().nullable().optional(),
+    icon: z.string().max(120).optional(),
+    scale: z.number().min(0.5).max(3).optional(),
   }),
 });
 
@@ -299,6 +307,8 @@ export const MarkerUpdateCommand = z.object({
       q: z.number().int(),
       r: z.number().int(),
       glyph: z.string().min(1).max(8),
+      icon: z.string().max(120),
+      scale: z.number().min(0.5).max(3),
       label: z.string().max(120),
       dmOnly: z.boolean(),
     })

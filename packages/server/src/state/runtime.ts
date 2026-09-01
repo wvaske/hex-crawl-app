@@ -336,6 +336,8 @@ export class CampaignRuntime {
         q: m.q as number,
         r: m.r as number,
         glyph: m.glyph as string,
+        icon: (m.icon as string | null) ?? '',
+        scale: (m.scale as number | null) ?? 1,
         label: m.label as string,
         dmOnly: Boolean(m.dm_only),
         playerPlaced: Boolean(m.player_placed),
@@ -1040,7 +1042,7 @@ export class CampaignRuntime {
     rt.markers.set(marker.id, marker);
     this.db
       .prepare(
-        'INSERT INTO marker (id, map_id, q, r, glyph, label, dm_only, player_placed, owner_seat_id) VALUES (?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO marker (id, map_id, q, r, glyph, icon, scale, label, dm_only, player_placed, owner_seat_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         marker.id,
@@ -1048,6 +1050,8 @@ export class CampaignRuntime {
         marker.q,
         marker.r,
         marker.glyph,
+        marker.icon,
+        marker.scale,
         marker.label,
         marker.dmOnly ? 1 : 0,
         marker.playerPlaced ? 1 : 0,
@@ -1063,12 +1067,14 @@ export class CampaignRuntime {
     rt.markers.set(markerId, updated);
     this.db
       .prepare(
-        'UPDATE marker SET q=?, r=?, glyph=?, label=?, dm_only=?, player_placed=?, owner_seat_id=? WHERE id=?',
+        'UPDATE marker SET q=?, r=?, glyph=?, icon=?, scale=?, label=?, dm_only=?, player_placed=?, owner_seat_id=? WHERE id=?',
       )
       .run(
         updated.q,
         updated.r,
         updated.glyph,
+        updated.icon,
+        updated.scale,
         updated.label,
         updated.dmOnly ? 1 : 0,
         updated.playerPlaced ? 1 : 0,
