@@ -183,25 +183,52 @@ export function InspectTab() {
 function TrailInfo({ hex, isDm }: { hex: { q: number; r: number }; isDm: boolean }) {
   const state = useSession((s) => s.state);
   const map = activeMap(state);
+  const highlight = useUi((u) => u.trailHighlight);
+  const setUi = useUi((s) => s.set);
   if (!state?.mapState || !map) return null;
 
   if (!isDm) {
     const signs = state.mapState.trailSigns.filter((s) => s.q === hex.q && s.r === hex.r);
     if (signs.length === 0) return null;
+    const toggle = (trailId: string) => {
+      if (highlight?.trailId === trailId) {
+        setUi('trailHighlight', null);
+        return;
+      }
+      const cells = state.mapState!.trailSigns
+        .filter((s) => s.trailId === trailId)
+        .map((s) => ({ q: s.q, r: s.r }));
+      setUi('trailHighlight', { trailId, cells });
+    };
     return (
       <Section title="Tracks">
         <ul className="space-y-1.5">
-          {signs.map((s, i) => (
-            <li key={i} className="text-sm text-ink-100">
-              {s.glyph}{' '}
-              {s.forward
-                ? <>The trail continues <span className="text-brass-300">to the {s.forward}</span></>
-                : 'The trail ends here'}
-              {s.backward && (
-                <span className="text-ink-400"> · back-trail {s.backward}</span>
-              )}
-            </li>
-          ))}
+          {signs.map((s, i) => {
+            const active = highlight?.trailId === s.trailId;
+            return (
+              <li key={i}>
+                <button
+                  onClick={() => toggle(s.trailId)}
+                  className={cx(
+                    'w-full text-left rounded-md border px-2.5 py-1.5 text-sm text-ink-100 cursor-pointer transition-colors',
+                    active
+                      ? 'border-brass-500 bg-brass-500/10'
+                      : 'border-transparent hover:border-ink-600 hover:bg-ink-850',
+                  )}
+                  title={active ? 'Hide this trail on the map' : 'Show every cell you’ve found of this trail'}
+                >
+                  {s.glyph}{' '}
+                  {s.forward
+                    ? <>The trail continues <span className="text-brass-300">to the {s.forward}</span></>
+                    : 'The trail ends here'}
+                  {s.backward && (
+                    <span className="text-ink-400"> · back-trail {s.backward}</span>
+                  )}
+                  {active && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </Section>
     );
@@ -211,24 +238,44 @@ function TrailInfo({ hex, isDm }: { hex: { q: number; r: number }; isDm: boolean
     .map((t) => ({ trail: t, idx: t.cells.findIndex((c) => c.q === hex.q && c.r === hex.r) }))
     .filter((x) => x.idx >= 0);
   if (crossing.length === 0) return null;
+  const toggleDm = (trailId: string, cells: { q: number; r: number }[]) => {
+    if (highlight?.trailId === trailId) {
+      setUi('trailHighlight', null);
+      return;
+    }
+    setUi('trailHighlight', { trailId, cells });
+  };
   return (
     <Section title="Trails here">
       <ul className="space-y-1.5">
         {crossing.map(({ trail, idx }) => {
           const next = trail.cells[idx + 1];
           const prev = trail.cells[idx - 1];
+          const active = highlight?.trailId === trail.id;
           return (
-            <li key={trail.id} className="text-sm text-ink-100">
-              {trail.glyph} <span className="font-medium">{trail.name}</span>
-              <span className="block text-xs text-ink-400">
-                cell {idx + 1}/{trail.cells.length}
-                {next && ` · onward ${compassDirection(hex, next, map.orientation)}`}
-                {prev && ` · back ${compassDirection(hex, prev, map.orientation)}`}
-                {' · '}
-                {trail.gate.kind === 'skill'
-                  ? `${trail.gate.skill} DC ${trail.gate.dc}`
-                  : 'obvious'}
-              </span>
+            <li key={trail.id}>
+              <button
+                onClick={() => toggleDm(trail.id, trail.cells)}
+                className={cx(
+                  'w-full text-left rounded-md border px-2.5 py-1.5 text-sm text-ink-100 cursor-pointer transition-colors',
+                  active
+                    ? 'border-brass-500 bg-brass-500/10'
+                    : 'border-transparent hover:border-ink-600 hover:bg-ink-850',
+                )}
+                title={active ? 'Hide this trail on the map' : 'Show the full trail on the map'}
+              >
+                {trail.glyph} <span className="font-medium">{trail.name}</span>
+                <span className="block text-xs text-ink-400">
+                  cell {idx + 1}/{trail.cells.length}
+                  {next && ` · onward ${compassDirection(hex, next, map.orientation)}`}
+                  {prev && ` · back ${compassDirection(hex, prev, map.orientation)}`}
+                  {' · '}
+                  {trail.gate.kind === 'skill'
+                    ? `${trail.gate.skill} DC ${trail.gate.dc}`
+                    : 'obvious'}
+                </span>
+                {active && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+              </button>
             </li>
           );
         })}

@@ -43,6 +43,8 @@ interface UiStore {
   movingTokenId: string | null;
   /** Sense triangulation: visited hexes a clicked clue is observable from. */
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
+  /** Trail highlight: the full path (DM) or discovered cells (player) of a clicked trail. */
+  trailHighlight: { trailId: string; cells: HexCoord[] } | null;
   /** DM trail tool: cells of the trail being drawn, in click order. */
   trailDraft: HexCoord[];
   /** DM trail tool: id of the trail whose nodes are being edited (null = new). */
@@ -109,6 +111,7 @@ export const useUi = create<UiStore>((set) => ({
   movingContentId: null,
   movingTokenId: null,
   senseHighlight: null,
+  trailHighlight: null,
   trailDraft: [],
   editingTrailId: null,
   contentSelection: null,
