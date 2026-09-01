@@ -116,7 +116,12 @@ export function minutesUntilSunrise(minutes: number, settings: DaylightSettings 
   return sunriseToday + MINUTES_PER_DAY - total;
 }
 
-/** "Day 3" — deliberately calendar-free; #79 can rename this layer. */
+/**
+ * "Day 3" — deliberately calendar-free. A campaign with
+ * `settings.calendar` configured renders dates through
+ * `formatCalendarDate`/`formatCalendarClock` in `calendar.ts` instead, which
+ * falls back to exactly this string when there is no calendar.
+ */
 export function formatDay(minutes: number): string {
   return `Day ${timeOfDay(minutes).day}`;
 }
@@ -129,7 +134,7 @@ export function formatTimeOfDay(minutes: number): string {
   return `${h12}:${String(minute).padStart(2, '0')} ${suffix}`;
 }
 
-/** "Day 3, 6:40 PM" */
+/** "Day 3, 6:40 PM" — see `formatCalendarClock` for the calendar-aware form. */
 export function formatClock(minutes: number): string {
   return `${formatDay(minutes)}, ${formatTimeOfDay(minutes)}`;
 }

@@ -313,3 +313,102 @@ Operational notes:
 - **Still missing** (issue #80's remaining bullets): seat expiry, kick+ban, and
   a per-campaign seat cap. A removed seat can re-join with the same invite key,
   so the ban story today is "rotate the key and re-invite everyone else".
+
+---
+
+## 11. Storage backend: SQLite (default) or PostgreSQL
+
+Rows live in **SQLite** under `DATA_DIR` unless `DATABASE_URL` is set. That is
+the supported, one-command path and what the deployment above uses — the LUN in
+§2 exists precisely because the database file must sit on a *block* device.
+
+**Do not put `hexcrawl.db` on NFS/SMB.** SQLite's WAL mode needs shared-memory
+locking that network filesystems do not provide honestly; the failure mode is a
+silently corrupted database, not an error. If your only storage is a file
+server, use Postgres instead.
+
+```bash
+# .env / compose environment
+DATABASE_URL=postgres://hexcrawl:<password>@db.example.com:5432/hexcrawl
+```
+
+Set it and the server keeps *rows* in Postgres. Everything else is unchanged:
+**uploaded images still live on disk under `DATA_DIR/uploads`**, so that
+directory still needs to be a persistent volume, and it is still part of a
+backup. Schema migrations run automatically at boot exactly as they do on
+SQLite (`packages/server/src/db/index.ts`).
+
+The database user needs `CREATE TABLE` on its schema — the server owns the
+schema and runs its own migrations. An empty database is all the provisioning
+required.
+
+### Migrating an existing instance from SQLite to Postgres
+
+The per-campaign archive from §9b is the vehicle: it is a plain JSON document
+of rows plus base64 images and is backend-independent.
+
+```bash
+# 1. Export every campaign from the running SQLite instance.
+curl -fsSL -o campaign-<id>.json \
+  "https://hex-crawl.deeznuts.wiki/api/campaigns/<id>/export?key=<DM_KEY>"
+
+# 2. Bring up a second instance pointed at the empty Postgres database.
+#    (Same image, same DATA_DIR volume layout, plus DATABASE_URL.)
+
+# 3. Import each archive into it.
+curl -fsS -X POST -H 'Content-Type: application/json' \
+  --data-binary @campaign-<id>.json \
+  "https://<new-instance>/api/campaigns/import"
+```
+
+Import mints **new ids and new invite keys**, so hand out the new links
+afterwards (`/api/campaigns/<newId>/keys`). Seats are not restored: everyone
+re-joins, and the importer becomes the DM. Check the `imported` counts in the
+response against the archive before decommissioning the old instance.
+
+There is no in-place converter, and that is deliberate — export/import is the
+one migration path that is already exercised by tests and by the nightly backup
+script.
+
+### Operating the Postgres backend
+
+- **One writer.** The server keeps every campaign in memory and writes through
+  to the database; it does not read rows back at request time. Run exactly one
+  container against a given database. Postgres removes the *filesystem*
+  constraint, not the single-process one.
+- **Writes are queued, not awaited.** Statements are applied in order on a
+  single connection. A statement that fails is logged as `[db] WRITE FAILED`
+  and counted in `/api/health`:
+
+  ```bash
+  curl -s http://127.0.0.1:3000/api/health
+  # {"ok":true,"db":{"driver":"postgres","pendingWrites":0,"failedWrites":0,...}}
+  ```
+
+  **Alert on `failedWrites > 0`.** It means memory and the database have
+  diverged for some campaign. The fix is to restart the container, which
+  reloads every campaign from the database — losing the diverged writes but
+  restoring a consistent state. `pendingWrites` sitting high means the database
+  is slower than the table is; it drains on its own.
+- **Boot loads every campaign** before the port opens, so startup grows with
+  the number of campaigns. A slow boot on a large instance is expected.
+- **Shutdown flushes.** `SIGTERM`/`SIGINT` drain the write queue before exit,
+  so use `docker stop` (not `docker kill`) and leave a grace period.
+- **Back up both halves**: `pg_dump` for the rows *and* `DATA_DIR/uploads` for
+  the images. The per-campaign export in §9b still covers both in one file and
+  works identically on this backend.
+
+### Verifying the Postgres path locally
+
+CI runs the driver's unit tests against a mock client. To exercise a real
+server:
+
+```bash
+docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=dev \
+  -e POSTGRES_DB=hexcrawl_test --name hexcrawl-pg postgres:16
+HEXCRAWL_TEST_DATABASE_URL=postgres://postgres:dev@localhost:5433/hexcrawl_test \
+  pnpm --filter @hexcrawl/server test
+docker rm -f hexcrawl-pg
+```
+
+Without that variable the live tests skip (`src/db/postgres-live.test.ts`).
