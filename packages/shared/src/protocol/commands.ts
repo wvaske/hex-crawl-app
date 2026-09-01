@@ -242,7 +242,14 @@ export const TokenDeleteCommand = z.object({
 export const MarkerPlaceCommand = z.object({
   ...base,
   kind: z.literal('marker.place'),
-  marker: MarkerSchema.omit({ id: true }),
+  // The ownership fields are `.optional()` rather than defaulted: a zod default
+  // would make them required in `CommandInput` and break every existing
+  // `marker.place` call site. The server fills them in (and forces them for
+  // player seats).
+  marker: MarkerSchema.omit({ id: true, playerPlaced: true, ownerSeatId: true }).extend({
+    playerPlaced: z.boolean().optional(),
+    ownerSeatId: z.string().nullable().optional(),
+  }),
 });
 
 export const MarkerUpdateCommand = z.object({

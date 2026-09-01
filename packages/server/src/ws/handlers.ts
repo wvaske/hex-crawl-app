@@ -5,6 +5,7 @@ import type {
   Content,
   LogEntry,
   MapInfo,
+  Marker,
   Rng,
   Token,
 } from '@hexcrawl/shared';
@@ -97,6 +98,21 @@ function recordCellUndo(
 
 function requireDm(ctx: Ctx): void {
   if (ctx.seat.role !== 'dm') throw new Error('Only the DM can do that');
+}
+
+/**
+ * Marker edit/delete authority (issue #74): the DM moderates anything; a
+ * player may only touch a party note their own seat placed. Returns the
+ * marker, or null when it is already gone (the DM's edits stay idempotent).
+ */
+function requireMarkerAccess(ctx: Ctx, markerId: string): Marker | null {
+  const marker = ctx.runtime.findMarker(markerId);
+  if (ctx.seat.role === 'dm') return marker;
+  if (!marker) throw new Error('Marker not found');
+  if (!marker.playerPlaced || marker.ownerSeatId !== ctx.seat.id) {
+    throw new Error('You can only edit your own notes');
+  }
+  return marker;
 }
 
 /** Deliver freshly-created discoveries: toast to the owning player, entry in the DM feed. */
@@ -388,18 +404,29 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   }) as Handler,
 
   // -- markers ---------------------------------------------------------------
+  // Players may drop party notes (issue #74): always party-visible, owned by
+  // the placing seat. Only the DM can place DM-only / unowned markers.
   'marker.place': ((cmd: Extract<ClientCommand, { kind: 'marker.place' }>, ctx: Ctx) => {
-    requireDm(ctx);
-    ctx.runtime.placeMarker({ ...cmd.marker, id: nanoid(10) });
+    const isDm = ctx.seat.role === 'dm';
+    const marker = {
+      ...cmd.marker,
+      id: nanoid(10),
+      playerPlaced: isDm ? (cmd.marker.playerPlaced ?? false) : true,
+      ownerSeatId: isDm ? (cmd.marker.ownerSeatId ?? null) : ctx.seat.id,
+      dmOnly: isDm ? cmd.marker.dmOnly : false,
+    };
+    ctx.runtime.placeMarker(marker);
   }) as Handler,
 
   'marker.update': ((cmd: Extract<ClientCommand, { kind: 'marker.update' }>, ctx: Ctx) => {
-    requireDm(ctx);
-    ctx.runtime.updateMarker(cmd.markerId, cmd.patch);
+    if (!requireMarkerAccess(ctx, cmd.markerId)) return;
+    // A player editing their own note cannot hide it from the party.
+    const patch = ctx.seat.role === 'dm' ? cmd.patch : { ...cmd.patch, dmOnly: false };
+    ctx.runtime.updateMarker(cmd.markerId, patch);
   }) as Handler,
 
   'marker.delete': ((cmd: Extract<ClientCommand, { kind: 'marker.delete' }>, ctx: Ctx) => {
-    requireDm(ctx);
+    if (!requireMarkerAccess(ctx, cmd.markerId)) return;
     const removed = ctx.runtime.deleteMarker(cmd.markerId);
     if (removed) {
       ctx.runtime.pushUndo({

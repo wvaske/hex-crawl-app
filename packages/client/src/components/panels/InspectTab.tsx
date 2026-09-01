@@ -44,6 +44,8 @@ export function InspectTab() {
   const contents = ms.contents.filter((c) => c.q === hex.q && c.r === hex.r);
   const isDm = role === 'dm';
   const myCharacterId = state.seats.find((s) => s.id === seatId)?.characterId ?? null;
+  // Players have no toolbar; a claimed character is the bar for annotating.
+  const canAddNote = !isDm && !!myCharacterId;
 
   return (
     <div>
@@ -99,15 +101,26 @@ export function InspectTab() {
         </Section>
       )}
 
-      {markers.length > 0 && (
-        <Section title="Markers">
+      {(markers.length > 0 || canAddNote) && (
+        <Section title={isDm ? 'Markers' : 'Notes & markers'}>
           <ul className="space-y-1.5">
-            {markers.map((m) => (
-              <li key={m.id} className="flex items-center gap-2 text-sm">
-                <span className="text-base">{m.glyph}</span>
-                <MarkerLabel markerId={m.id} label={m.label} editable={isDm} />
-                {isDm && (
-                  <>
+            {markers.map((m) => {
+              // Players may edit/delete the party notes their own seat placed;
+              // the DM moderates everything.
+              const mine = m.playerPlaced && m.ownerSeatId === seatId;
+              const owner = m.playerPlaced
+                ? state.seats.find((s) => s.id === m.ownerSeatId)?.name
+                : null;
+              return (
+                <li key={m.id} className="flex items-center gap-2 text-sm">
+                  <span className="text-base">{m.glyph}</span>
+                  <MarkerLabel markerId={m.id} label={m.label} editable={isDm || mine} />
+                  {owner && !mine && (
+                    <span className="text-[11px] text-ink-400 shrink-0" title="Party note">
+                      — {owner}
+                    </span>
+                  )}
+                  {isDm && (
                     <button
                       className="text-xs text-ink-400 hover:text-ink-100 cursor-pointer"
                       title={m.dmOnly ? 'DM-only — click to share' : 'Visible to players — click to hide'}
@@ -117,17 +130,21 @@ export function InspectTab() {
                     >
                       {m.dmOnly ? '🚫' : '👁️'}
                     </button>
+                  )}
+                  {(isDm || mine) && (
                     <button
                       className="text-xs text-ink-400 hover:text-ember-500 cursor-pointer ml-auto"
+                      title={mine && !isDm ? 'Delete your note' : 'Delete marker'}
                       onClick={() => send({ kind: 'marker.delete', markerId: m.id })}
                     >
                       ✕
                     </button>
-                  </>
-                )}
-              </li>
-            ))}
+                  )}
+                </li>
+              );
+            })}
           </ul>
+          {canAddNote && <AddPartyNote mapId={map.id} hex={hex} />}
         </Section>
       )}
 
@@ -320,6 +337,71 @@ function SearchHex({ mapId, hex, isDm }: { mapId: string; hex: { q: number; r: n
         </Button>
       </div>
     </Section>
+  );
+}
+
+/** Glyphs a player can pick for a party note (issue #74). */
+const NOTE_GLYPHS: { glyph: string; title: string }[] = [
+  { glyph: '📌', title: 'Note' },
+  { glyph: '⚠️', title: 'Danger' },
+  { glyph: '⛺', title: 'Camp' },
+];
+
+/**
+ * Player-side "add a note here": drops a party-wide marker on the inspected
+ * hex. The server forces ownership and player visibility, so this only needs
+ * the glyph and the text.
+ */
+function AddPartyNote({ mapId, hex }: { mapId: string; hex: { q: number; r: number } }) {
+  const [glyph, setGlyph] = React.useState(NOTE_GLYPHS[0]!.glyph);
+  const [text, setText] = React.useState('');
+  const place = () => {
+    const label = text.trim();
+    if (!label) return;
+    send({
+      kind: 'marker.place',
+      marker: { mapId, q: hex.q, r: hex.r, glyph, label, dmOnly: false },
+    });
+    setText('');
+  };
+  return (
+    <div className="mt-2 pt-2 border-t border-ink-700">
+      <div className="flex gap-1.5">
+        <div className="flex gap-0.5">
+          {NOTE_GLYPHS.map((g) => (
+            <button
+              key={g.glyph}
+              title={g.title}
+              onClick={() => setGlyph(g.glyph)}
+              className={cx(
+                'w-7 h-7 rounded border text-sm cursor-pointer',
+                glyph === g.glyph
+                  ? 'border-brass-500 bg-brass-500/15'
+                  : 'border-ink-700 hover:bg-ink-700',
+              )}
+            >
+              {g.glyph}
+            </button>
+          ))}
+        </div>
+        <input
+          className="flex-1 min-w-0 bg-ink-900 border border-ink-600 rounded px-2 py-1 text-sm text-ink-100"
+          placeholder="Add a note for the party…"
+          maxLength={120}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') place();
+          }}
+        />
+        <Button size="sm" variant="primary" onClick={place}>
+          Pin
+        </Button>
+      </div>
+      <p className="text-[11px] text-ink-400 mt-1">
+        Party notes are visible to everyone at the table.
+      </p>
+    </div>
   );
 }
 
