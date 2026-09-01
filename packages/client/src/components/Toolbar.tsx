@@ -286,6 +286,13 @@ function RegionOptions() {
         </p>
         <RegionBrushControls />
       </div>
+      <button
+        className="w-full px-2 py-1 rounded text-xs cursor-pointer border border-ink-600 text-ink-200 hover:bg-ink-700"
+        title="Auto-detect footprints, fill terrain, rename (issue #113)"
+        onClick={() => useUi.getState().set('regionManagerOpen', true)}
+      >
+        ⚙ Manage regions…
+      </button>
     </div>
   );
 }

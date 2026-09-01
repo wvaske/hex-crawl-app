@@ -12,6 +12,7 @@ import type {
 } from '@hexcrawl/shared';
 import {
   compassDirection,
+  contentCells,
   contentCoversHex,
   distanceToContent,
   formatCalendarClock,
@@ -693,6 +694,52 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     // A grown footprint can open entering-the-region gates for whoever is
     // already standing there; a shrunk one costs nothing to re-evaluate.
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, found.mapId));
+  }) as Handler,
+
+  /**
+   * Terrain fill across a region's footprint (issue #113). The overlap policy
+   * is the interesting part: with `skipOtherRegions` (the default) a hex that
+   * also belongs to another region's footprint keeps its terrain, so filling
+   * "The Greenwood" never repaints the villages inside it. Only real regions
+   * block — a plain single-hex pin has no area, and a landmark sitting in the
+   * woods should be painted with the woods.
+   *
+   * Undo rides the shared terrain mechanism, so a fill merges with adjacent
+   * brush strokes exactly like another stroke would.
+   */
+  'content.applyTerrain': ((
+    cmd: Extract<ClientCommand, { kind: 'content.applyTerrain' }>,
+    ctx: Ctx,
+  ) => {
+    requireDm(ctx);
+    let found: Content | null = null;
+    for (const rt of ctx.runtime.mapStates.values()) {
+      const c = rt.contents.get(cmd.contentId);
+      if (c) { found = c; break; }
+    }
+    if (!found) throw new Error('Content not found');
+    const skip = cmd.skipOtherRegions ?? true;
+    const footprint = contentCells(found);
+    const blocked = new Set<string>();
+    if (skip) {
+      for (const other of ctx.runtime.requireMap(found.mapId).contents.values()) {
+        if (other.id === found.id || other.area.length === 0) continue;
+        for (const cell of contentCells(other)) blocked.add(hexKey(cell.q, cell.r));
+      }
+    }
+    const target = footprint.filter((c) => !blocked.has(hexKey(c.q, c.r)));
+    const skipped = footprint.length - target.length;
+    const changed = ctx.runtime.paintTerrain(found.mapId, target, cmd.terrain);
+    recordCellUndo(ctx, 'terrain', found.mapId, changed);
+    const what = cmd.terrain === null ? 'Erased terrain' : `Painted ${cmd.terrain}`;
+    const entry = ctx.runtime.appendLog(
+      'note',
+      `${what} across ${found.title} — ${target.length} hex${target.length === 1 ? '' : 'es'}` +
+        (skipped > 0 ? ` (${skipped} skipped in other regions)` : ''),
+      'dm',
+      { contentId: found.id },
+    );
+    notifyLog(ctx, entry);
   }) as Handler,
 
   'view.map': ((_cmd: Extract<ClientCommand, { kind: 'view.map' }>, _ctx: Ctx) => {

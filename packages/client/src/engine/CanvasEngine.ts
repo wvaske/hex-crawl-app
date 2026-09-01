@@ -306,6 +306,11 @@ export class CanvasEngine {
           this.drawHighlight(); // the brush ring follows the pointer in paint mode
         }
       }
+      // A cancelled/accepted proposal hands the highlight back to the region
+      // tool's own preview.
+      if (u.areaProposal !== prev.areaProposal && u.areaProposal === null) {
+        this.syncRegionHighlight();
+      }
       if (u.tool !== prev.tool || u.regionTargetId !== prev.regionTargetId) {
         this.syncRegionHighlight();
         if ((u.tool === 'region') !== (prev.tool === 'region')) {
@@ -850,23 +855,32 @@ export class CanvasEngine {
     g.clear();
     if (!this.layout) return;
     const ui = useUi.getState();
+    // An auto-detect recommendation (issue #113) is not the footprint yet, so
+    // it gets its own amber wash and a heavier outline — Pixi's Graphics has
+    // no dashed stroke, and weight reads at every zoom where dashes wouldn't.
+    const proposal = ui.areaPaint === null && ui.areaHighlight?.proposal === true;
     // "Painting" (a warmer wash) covers both authoring modes: the dialog's
     // draft and the Region tool's live target.
-    const painting = ui.areaPaint !== null || (ui.tool === 'region' && this.role === 'dm');
+    const painting =
+      !proposal && (ui.areaPaint !== null || (ui.tool === 'region' && this.role === 'dm'));
     const cells = ui.areaPaint?.cells ?? ui.areaHighlight?.cells ?? [];
     if (cells.length === 0) return;
-    const color = painting ? 0x6fae6a : 0x59a5c4;
+    const color = proposal ? 0xd9a441 : painting ? 0x6fae6a : 0x59a5c4;
     const corners = this.corners();
     for (const cell of cells) {
       const center = hexToPixel(this.layout, cell);
       g.poly(this.polyPoints(center, corners));
     }
-    g.fill({ color, alpha: painting ? 0.3 : 0.2 });
+    g.fill({ color, alpha: proposal ? 0.28 : painting ? 0.3 : 0.2 });
     for (const cell of cells) {
       const center = hexToPixel(this.layout, cell);
       g.poly(this.polyPoints(center, corners));
     }
-    g.stroke({ width: 1.5 / this.viewport.scale.x, color, alpha: 0.6 });
+    g.stroke({
+      width: (proposal ? 2.5 : 1.5) / this.viewport.scale.x,
+      color,
+      alpha: proposal ? 0.95 : 0.6,
+    });
   }
 
   /** The content item on this map with that id, if it's still there. */
@@ -883,6 +897,9 @@ export class CanvasEngine {
   private syncRegionHighlight(): void {
     if (this.stroke?.mode === 'region') return;
     const ui = useUi.getState();
+    // A pending auto-detect proposal owns the highlight until it's accepted
+    // or cancelled — a snapshot must not swap it back for the stored area.
+    if (ui.areaProposal) return;
     if (ui.tool !== 'region' || this.role !== 'dm') {
       // Leaving the tool takes its own preview with it; a highlight the DM
       // opened from a panel (a different item) stays put.
