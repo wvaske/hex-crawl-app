@@ -5,8 +5,9 @@ import type { CampaignRuntime } from '../state/runtime.js';
 /**
  * Sensory clue templates for settlements, scaled by pin prominence
  * (scaleVisibility: 2 = major city, 1 = town, 0 = village/hamlet).
- * All are distance-sensed, directional, and never locate the source —
- * players triangulate from where they've sensed them.
+ * All are distance-sensed and directional, and they reveal the settlement's
+ * pin on discovery — a column of chimney smoke locates a town the way a
+ * hidden cache never would.
  */
 const TEMPLATES: Record<
   number,

@@ -122,6 +122,10 @@ export function TableView({ campaignId }: { campaignId: string }) {
     const engine = new CanvasEngine();
     engineRef.current = engine;
     void engine.init(host);
+    if (import.meta.env.DEV) {
+      // Dev-only handle for demos/E2E scripts (window.__send lives in ws.ts).
+      (window as unknown as { __debug?: unknown }).__debug = { engine, useUi, useSession };
+    }
     return () => {
       engine.destroy();
       engineRef.current = null;

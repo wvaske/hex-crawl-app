@@ -197,7 +197,7 @@ export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
   description: z.string().max(2000).default(''),
   /** Base URL for wiki links on content (page titles are appended). */
-  wikiBaseUrl: z.string().max(300).default('https://wiki.deeznuts.wiki/index.php/'),
+  wikiBaseUrl: z.string().max(300).default(''),
   /** Extra travel modes for the campaign clock. */
   customTravelModes: z.array(CustomTravelModeSchema).default([]),
   /** Hour of day (0-23) the sun rises; drives day/night derivation. */
