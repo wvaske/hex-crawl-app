@@ -239,6 +239,8 @@ function migrate(d: DB): void {
   ensureColumn(d, 'content', 'known_location', 'INTEGER NOT NULL DEFAULT 0');
   // Campaign clock (issue #57): JSON blob, zod defaults make it migration-free.
   ensureColumn(d, 'campaign', 'time', "TEXT NOT NULL DEFAULT '{}'");
+  // Character sheet extras (issue #63): JSON blob (bio/appearance/goals/inventory/notes).
+  ensureColumn(d, 'character', 'extra', "TEXT NOT NULL DEFAULT '{}'");
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {

@@ -57,7 +57,7 @@ describe('campaign + seats', () => {
   it('players claim characters exclusively', () => {
     dm({
       kind: 'character.create',
-      character: { name: 'Ash', color: '#ff0000', glyph: '🔥', speed: 30, skills: {} },
+      character: { name: 'Ash', color: '#ff0000', glyph: '🔥', speed: 30, skills: {}, extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' } },
     } as never);
     const charId = [...runtime.characters.keys()][0]!;
     const p1 = runtime.createSeat('player', 'Alice');
@@ -109,7 +109,7 @@ function setupPartyWithScout(): { mapId: string; charId: string; tokenId: string
   const mapId = activeMapId();
   dm({
     kind: 'character.create',
-    character: { name: 'Scout', color: '#00aa00', glyph: '🏹', speed: 30, skills: { perception: 4, survival: 2 } },
+    character: { name: 'Scout', color: '#00aa00', glyph: '🏹', speed: 30, skills: { perception: 4, survival: 2 }, extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' } },
   } as never);
   const charId = [...runtime.characters.keys()][0]!;
   const playerSeat = runtime.createSeat('player', 'Alice');
@@ -805,7 +805,7 @@ describe('clue sharing', () => {
     const { mapId, charId, tokenId, playerSeat } = setupPartyWithScout();
     dm({
       kind: 'character.create',
-      character: { name: 'Bard', color: '#0000aa', glyph: '🎻', speed: 30, skills: {} },
+      character: { name: 'Bard', color: '#0000aa', glyph: '🎻', speed: 30, skills: {}, extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' } },
     } as never);
     const bardId = [...runtime.characters.keys()].find((id) => id !== charId)!;
     dm({
@@ -859,7 +859,7 @@ describe('per-character log filtering', () => {
     // Second player with their own character.
     dm({
       kind: 'character.create',
-      character: { name: 'Bard', color: '#0000aa', glyph: '🎻', speed: 30, skills: {} },
+      character: { name: 'Bard', color: '#0000aa', glyph: '🎻', speed: 30, skills: {}, extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' } },
     } as never);
     const bardId = [...runtime.characters.keys()].find((id) => id !== charId)!;
     const bardSeat = runtime.createSeat('player', 'Bob');
@@ -890,6 +890,91 @@ describe('per-character log filtering', () => {
       seatId: bardSeat.id, role: 'player', characterId: bardId,
     });
     expect(bardView2.log.some((e) => e.id === narration.id)).toBe(true);
+  });
+});
+
+describe('character sheet extras (issue #63)', () => {
+  it('defaults to empty strings and round-trips through a DB reload', () => {
+    const { charId } = setupPartyWithScout();
+    expect(runtime.characters.get(charId)!.extra).toEqual({
+      bio: '', appearance: '', goals: '', inventory: '', notes: '',
+    });
+
+    dm({
+      kind: 'character.update',
+      characterId: charId,
+      patch: { extra: { bio: 'A wandering ranger.', notes: 'Owes the guild a favor.' } },
+    } as never);
+
+    // Simulate a server restart: a fresh Store over the same underlying db.
+    const db = (store as unknown as { db: unknown }).db;
+    const reloaded = new Store(db as never).getCampaign(runtime.id)!;
+    expect(reloaded.characters.get(charId)!.extra).toEqual({
+      bio: 'A wandering ranger.',
+      appearance: '',
+      goals: '',
+      inventory: '',
+      notes: 'Owes the guild a favor.',
+    });
+  });
+
+  it('merges an extra sub-patch over the existing value instead of replacing it', () => {
+    const { charId } = setupPartyWithScout();
+    dm({
+      kind: 'character.update',
+      characterId: charId,
+      patch: {
+        extra: {
+          bio: 'A wandering ranger.',
+          appearance: 'Weathered, green cloak.',
+          goals: 'Find the missing caravan.',
+          inventory: 'Longbow, 20 arrows.',
+          notes: 'Trusts no one in Elturel.',
+        },
+      },
+    } as never);
+
+    // A one-field patch must not blank out its siblings (zod v4 `.partial()`
+    // gotcha for the outer schema; here it's our own shallow-merge in the
+    // handler that has to get this right for the nested `extra` object).
+    dm({
+      kind: 'character.update',
+      characterId: charId,
+      patch: { extra: { notes: 'Now trusts the barkeep.' } },
+    } as never);
+
+    expect(runtime.characters.get(charId)!.extra).toEqual({
+      bio: 'A wandering ranger.',
+      appearance: 'Weathered, green cloak.',
+      goals: 'Find the missing caravan.',
+      inventory: 'Longbow, 20 arrows.',
+      notes: 'Now trusts the barkeep.',
+    });
+  });
+
+  it('a player can edit their own extra info but not another character\'s', () => {
+    const { charId, playerSeat } = setupPartyWithScout();
+    dm({
+      kind: 'character.create',
+      character: { name: 'Bard', color: '#0000aa', glyph: '🎻', speed: 30, skills: {}, extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' } },
+    } as never);
+    const bardId = [...runtime.characters.keys()].find((id) => id !== charId)!;
+
+    asSeat(playerSeat, {
+      kind: 'character.update',
+      characterId: charId,
+      patch: { extra: { bio: 'Written by their own player.' } },
+    } as never);
+    expect(runtime.characters.get(charId)!.extra.bio).toBe('Written by their own player.');
+
+    expect(() =>
+      asSeat(playerSeat, {
+        kind: 'character.update',
+        characterId: bardId,
+        patch: { extra: { bio: 'Trying to edit someone else.' } },
+      } as never),
+    ).toThrow(/own character/);
+    expect(runtime.characters.get(bardId)!.extra.bio).toBe('');
   });
 });
 
