@@ -500,6 +500,8 @@ export const TimeAdvanceCommand = z.object({
   ...base,
   kind: z.literal('time.advance'),
   minutes: z.number().int().min(1).max(60 * 24 * 365),
+  /** Why the clock moved ("camp", "short rest") — shown in the log line. */
+  note: z.string().max(200).optional(),
 });
 
 /** DM: set the clock absolutely (session bookkeeping, fixing a mistake). */

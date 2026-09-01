@@ -57,6 +57,8 @@ interface UiStore {
   viewedMapId: string | null;
   /** DM view aid: dim location pins on hexes the party hasn't explored. */
   dimUnexplored: boolean;
+  /** Tint the map to match the campaign clock's time of day. */
+  dayNightTint: boolean;
   /** Held Alt/Option: a DM token drop teleports (no explored trail). */
   altTeleport: boolean;
 
@@ -118,6 +120,7 @@ export const useUi = create<UiStore>((set) => ({
   pinPopup: null,
   viewedMapId: null,
   dimUnexplored: true,
+  dayNightTint: true,
   altTeleport: false,
 
   set: (key, value) => set({ [key]: value } as Partial<UiStore>),

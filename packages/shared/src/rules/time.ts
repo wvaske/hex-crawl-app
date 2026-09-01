@@ -102,6 +102,20 @@ export function isNight(minutes: number, settings: DaylightSettings = {}): boole
   return hour >= sunset && hour < sunrise;
 }
 
+/**
+ * Minutes from the current clock forward to the next sunrise (strictly in
+ * the future — if the clock reads exactly sunrise right now, this returns a
+ * full day, not zero). Used by "camp until dawn".
+ */
+export function minutesUntilSunrise(minutes: number, settings: DaylightSettings = {}): number {
+  const sunrise = settings.sunriseHour ?? 6;
+  const total = Math.max(0, Math.floor(minutes));
+  const day = Math.floor(total / MINUTES_PER_DAY);
+  const sunriseToday = day * MINUTES_PER_DAY + sunrise * 60;
+  if (total < sunriseToday) return sunriseToday - total;
+  return sunriseToday + MINUTES_PER_DAY - total;
+}
+
 /** "Day 3" — deliberately calendar-free; #79 can rename this layer. */
 export function formatDay(minutes: number): string {
   return `Day ${timeOfDay(minutes).day}`;

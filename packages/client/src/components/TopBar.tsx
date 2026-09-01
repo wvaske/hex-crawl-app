@@ -6,6 +6,7 @@ import {
   formatTimeOfDay,
   isNight,
   minutesPerHex,
+  minutesUntilSunrise,
   resolveTravelMode,
   travelModes,
 } from '@hexcrawl/shared';
@@ -78,8 +79,8 @@ function TimeControl() {
   const mode = resolveTravelMode(time.travelMode, settings?.customTravelModes ?? []);
   const perHex = map ? Math.round(minutesPerHex(map.milesPerHex, mode, time.pace)) : null;
 
-  const advance = (minutes: number) => {
-    if (minutes > 0) send({ kind: 'time.advance', minutes });
+  const advance = (minutes: number, note?: string) => {
+    if (minutes > 0) send({ kind: 'time.advance', minutes, note });
   };
 
   return (
@@ -172,6 +173,26 @@ function TimeControl() {
                 </Button>
               ))}
             </div>
+            <div className="flex gap-1 mt-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1 !px-1 border border-ink-600"
+                onClick={() => advance(60, 'short rest')}
+                title="Short rest — advance the clock 1 hour"
+              >
+                Short rest (+1h)
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1 !px-1 border border-ink-600"
+                onClick={() => advance(minutesUntilSunrise(time.minutes, settings), 'camp')}
+                title="Camp — advance the clock to the next sunrise"
+              >
+                Camp until dawn
+              </Button>
+            </div>
             <form
               className="flex gap-1 mt-1"
               onSubmit={(e) => {
@@ -197,6 +218,27 @@ function TimeControl() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Toggle the map's day/night tint overlay — cosmetic, both roles. */
+function DayNightToggle() {
+  const enabled = useUi((s) => s.dayNightTint);
+  const setUi = useUi((s) => s.set);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setUi('dayNightTint', !enabled)}
+      className={enabled ? '!text-brass-300' : ''}
+      title={
+        enabled
+          ? 'Day/night map tint is on — the map dims at night and warms at dusk/dawn. Click to turn off.'
+          : 'Day/night map tint is off — click to tint the map for the current time of day'
+      }
+    >
+      🌗
+    </Button>
   );
 }
 
@@ -293,6 +335,7 @@ export function TopBar({
 
       {map && <ScaleControl baseMiles={map.milesPerHex} />}
       <TimeControl />
+      <DayNightToggle />
 
       <div className="flex-1" />
 

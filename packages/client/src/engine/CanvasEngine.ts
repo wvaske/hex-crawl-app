@@ -1,6 +1,7 @@
 import { AlphaFilter, Application, Assets, Circle, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import type {
+  CampaignSettings,
   CampaignState,
   Content,
   ContentPlayerView,
@@ -30,6 +31,8 @@ import {
   hexToPixel,
   hexesInPixelRect,
   indexToFineCenter,
+  isNight,
+  MINUTES_PER_DAY,
   pixelToHex,
   superCornerOffsets,
   superIndexRange,
@@ -89,6 +92,9 @@ export class CanvasEngine {
   private exploredG = new Graphics();
   private exploredAlpha = new AlphaFilter({ alpha: 0.3 });
   private pinsC = new Container();
+  // Day/night tint: a single generous rect above pins/terrain, below tokens,
+  // redrawn whenever the view, clock or toggle changes. Cheap — no per-hex work.
+  private tintG = new Graphics();
   private tokensC = new Container();
   private pendingC = new Container();
   private senseG = new Graphics();
@@ -109,6 +115,7 @@ export class CanvasEngine {
   private lastTrailSigns: TrailSign[] = [];
   private lastImages: ImageLayer[] = [];
   private lastDiscoveriesRef: unknown = null;
+  private lastTintKey = '';
   private role: SeatRole = 'player';
   private myCharacterId: string | null = null;
 
@@ -169,6 +176,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.terrainG);
     this.viewport.addChild(this.gridG);
     this.viewport.addChild(this.pinsC);
+    this.viewport.addChild(this.tintG);
     this.viewport.addChild(this.tokensC);
     this.viewport.addChild(this.pendingC);
     this.viewport.addChild(this.exploredC);
@@ -186,6 +194,7 @@ export class CanvasEngine {
       this.terrainG,
       this.gridG,
       this.pinsC,
+      this.tintG,
       this.pendingC,
       this.exploredC,
       this.fogC,
@@ -238,6 +247,9 @@ export class CanvasEngine {
       }
       if (u.dimUnexplored !== prev.dimUnexplored) {
         this.drawPins();
+      }
+      if (u.dayNightTint !== prev.dayNightTint) {
+        this.viewDirty = true;
       }
       if (u.senseHighlight !== prev.senseHighlight) {
         this.drawSenseHighlight();
@@ -314,6 +326,14 @@ export class CanvasEngine {
 
     const ms = state.mapState;
 
+    // Day/night tint tracks the clock and daylight settings, independent of
+    // the map layers above — redraw the (cheap) tint rect when either moves.
+    const tintKey = `${state.campaign.time.minutes}|${state.campaign.settings.sunriseHour}|${state.campaign.settings.sunsetHour}`;
+    if (tintKey !== this.lastTintKey) {
+      this.lastTintKey = tintKey;
+      this.viewDirty = true;
+    }
+
     if (layoutChanged || !hexCellsEqual(ms.hexes, this.lastHexes) || styleChanged) {
       this.lastHexes = ms.hexes;
       this.drawTerrain();
@@ -377,6 +397,7 @@ export class CanvasEngine {
     this.senseG.clear();
     this.trailHighlightG.clear();
     this.highlightG.clear();
+    this.tintG.clear();
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.tokensReset();
     for (const sprite of this.images.values()) sprite.destroy();
@@ -640,7 +661,32 @@ export class CanvasEngine {
     this.fogEraseG.fill({ color: 0xffffff });
     this.exploredG.fill({ color: 0x0b0d12 });
 
+    this.drawTint(bounds);
     this.updatePinScales();
+  }
+
+  /**
+   * Day/night map tint (#58): a single rect covering the visible area
+   * generously, tinted to match the campaign clock. Purely cosmetic — no
+   * per-hex work, cheap to redraw on every view/clock/toggle change.
+   */
+  private drawTint(bounds: { x: number; y: number; width: number; height: number }): void {
+    this.tintG.clear();
+    if (!useUi.getState().dayNightTint) return;
+    const state = useSession.getState().state;
+    const time = state?.campaign.time;
+    if (!time) return;
+    const settings = state.campaign.settings;
+    const tint = tintForClock(time.minutes, settings);
+    if (!tint) return;
+    const margin = Math.max(bounds.width, bounds.height);
+    this.tintG.rect(
+      bounds.x - margin,
+      bounds.y - margin,
+      bounds.width + margin * 2,
+      bounds.height + margin * 2,
+    );
+    this.tintG.fill({ color: tint.color, alpha: tint.alpha });
   }
 
   /**
@@ -1698,6 +1744,26 @@ export class CanvasEngine {
       }
     }
   }
+}
+
+// -- day/night tint ------------------------------------------------------------
+
+/**
+ * Tint color/alpha for the campaign clock: deep blue at night, a warm dusk/
+ * dawn wash in the hour to either side of sunset/sunrise, nothing by day.
+ */
+function tintForClock(
+  minutes: number,
+  settings: Pick<CampaignSettings, 'sunriseHour' | 'sunsetHour'>,
+): { color: number; alpha: number } | null {
+  if (isNight(minutes, settings)) return { color: 0x1a2244, alpha: 0.28 };
+  const sunrise = settings.sunriseHour ?? 6;
+  const sunset = settings.sunsetHour ?? 20;
+  const hour = (Math.max(0, Math.floor(minutes)) % MINUTES_PER_DAY) / 60;
+  const inDusk = hour >= sunset - 1 && hour < sunset;
+  const inDawn = hour >= sunrise && hour < sunrise + 1;
+  if (inDusk || inDawn) return { color: 0xd9822b, alpha: 0.12 };
+  return null;
 }
 
 // -- diff helpers ------------------------------------------------------------

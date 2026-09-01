@@ -9,6 +9,7 @@ import {
   formatTimeOfDay,
   isNight,
   minutesPerHex,
+  minutesUntilSunrise,
   resolveTravelMode,
   timeOfDay,
   travelModes,
@@ -274,5 +275,18 @@ describe('campaign clock', () => {
     // A campaign with long nights.
     expect(isNight(8 * 60, { sunriseHour: 9, sunsetHour: 16 })).toBe(true);
     expect(isNight(15 * 60, { sunriseHour: 9, sunsetHour: 16 })).toBe(false);
+  });
+
+  it('counts minutes to the next sunrise for "camp until dawn"', () => {
+    // Default sunrise (6 AM). Currently 8 AM day 1 — sunrise is tomorrow.
+    expect(minutesUntilSunrise(8 * 60)).toBe(22 * 60);
+    // Just before dawn: a short hop to sunrise, same day.
+    expect(minutesUntilSunrise(5 * 60 + 30)).toBe(30);
+    // Exactly at sunrise: the *next* sunrise is a full day away, not zero.
+    expect(minutesUntilSunrise(6 * 60)).toBe(24 * 60);
+    // A custom sunrise hour.
+    expect(minutesUntilSunrise(3 * 60, { sunriseHour: 9 })).toBe(6 * 60);
+    // Works past day 1 the same way.
+    expect(minutesUntilSunrise(1440 + 20 * 60)).toBe(10 * 60);
   });
 });
