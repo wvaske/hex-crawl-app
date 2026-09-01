@@ -59,12 +59,34 @@ function DimToggle() {
   );
 }
 
+/** DM prep mode: pause/resume live map updates for players. */
+function PauseSyncToggle() {
+  const paused = useSession((s) => s.state?.campaign.settings.pausePlayerMapSync ?? false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => send({ kind: 'campaign.update', settings: { pausePlayerMapSync: !paused } })}
+      className={paused ? '!text-ember-500' : ''}
+      title={
+        paused
+          ? 'Prep mode: players see the map as it was when you paused — click to push your edits live'
+          : 'Players see map edits live — click to pause updates while you prep'
+      }
+    >
+      {paused ? '▶' : '⏸'}
+    </Button>
+  );
+}
+
 export function TopBar({
   campaignId: _campaignId,
   onRecenter,
+  onGoToMe,
 }: {
   campaignId: string;
   onRecenter: () => void;
+  onGoToMe: () => void;
 }) {
   const state = useSession((s) => s.state);
   const role = useSession((s) => s.role);
@@ -147,6 +169,17 @@ export function TopBar({
         </Button>
       )}
       {role === 'dm' && <DimToggle />}
+      {role === 'dm' && <PauseSyncToggle />}
+      {role === 'player' && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onGoToMe}
+          title="Go to me — center the view on your token"
+        >
+          🎯 Me
+        </Button>
+      )}
       <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
         ⌖
       </Button>

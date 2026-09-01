@@ -103,6 +103,32 @@ function RollPanel({ mapId }: { mapId: string }) {
           />
         </Field>
       </div>
+      <div className="mt-2">
+        <Field label="Auto-check every N hexes of travel (0 = off)">
+          <Input
+            type="number"
+            min={0}
+            max={99}
+            defaultValue={map.encounterCheck.autoEvery}
+            key={map.encounterCheck.autoEvery}
+            onBlur={(e) => {
+              const v = Math.round(Number(e.target.value));
+              if (Number.isFinite(v) && v >= 0 && v <= 99 && v !== map.encounterCheck.autoEvery) {
+                send({ kind: 'map.update', mapId, patch: { encounterCheck: { autoEvery: v } } });
+              }
+            }}
+          />
+        </Field>
+        {map.encounterCheck.autoEvery > 0 && (
+          <p className="text-[11px] text-ink-400 mt-1">
+            Rolling automatically as the party travels — every{' '}
+            {map.encounterCheck.autoEvery === 1
+              ? 'hex'
+              : `${map.encounterCheck.autoEvery} hexes`}
+            . Results land in the DM log.
+          </p>
+        )}
+      </div>
     </Section>
   );
 }

@@ -1565,7 +1565,34 @@ export class CanvasEngine {
     if (teleport) {
       useSession.getState().pushToast({ kind: 'info', title: 'Teleported', text: `${token.label || 'Token'} moved without leaving a trail.` });
     }
+    // Landing selects the destination, so the inspect tab shows the new hex.
+    if (token.kind === 'pc') useUi.getState().selectHex(dropHex);
     return 'moved';
+  }
+
+  /** Center and zoom the view on the viewer's own PC token ("Go to me"). */
+  centerOnMyToken(): void {
+    if (!this.layout) return;
+    const view = [...this.tokens.values()].find(
+      (v) =>
+        v.token.kind === 'pc' &&
+        v.token.characterId !== null &&
+        v.token.characterId === this.myCharacterId,
+    );
+    if (!view) {
+      useSession.getState().pushToast({
+        kind: 'info',
+        title: 'No token',
+        text: 'Your character has no token on this map.',
+      });
+      return;
+    }
+    const p = hexToPixel(this.layout, view.token);
+    // Zoom so one hex reads comfortably regardless of the map's hex size.
+    const scale = Math.min(Math.max(120 / (this.layout.size * 2), 0.3), 3);
+    this.viewport.setZoom(scale, true);
+    this.viewport.moveCenter(p.x, p.y);
+    this.viewDirty = true;
   }
 
   // -- ticker ----------------------------------------------------------------

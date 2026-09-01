@@ -70,7 +70,7 @@ describe('gates', () => {
 
 function fullState(): CampaignState {
   return {
-    campaign: { id: 'c1', name: 'Test', activeMapId: 'm1', settings: { description: '', wikiBaseUrl: 'https://wiki.example/wiki/' } },
+    campaign: { id: 'c1', name: 'Test', activeMapId: 'm1', settings: { description: '', wikiBaseUrl: 'https://wiki.example/wiki/', pausePlayerMapSync: false } },
     seats: [
       { id: 'dm', role: 'dm', name: 'DM', characterId: null, online: true },
       { id: 's1', role: 'player', name: 'Alice', characterId: 'char1', online: true },

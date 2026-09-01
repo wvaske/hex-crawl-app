@@ -32,11 +32,19 @@ const GridStylePatchSchema = z
   .partial();
 
 const EncounterCheckPatchSchema = z
-  .object({ die: z.string(), threshold: z.number().int() })
+  .object({
+    die: z.string(),
+    threshold: z.number().int(),
+    autoEvery: z.number().int().min(0).max(99),
+  })
   .partial();
 
 const CampaignSettingsPatchSchema = z
-  .object({ description: z.string().max(2000), wikiBaseUrl: z.string().max(300) })
+  .object({
+    description: z.string().max(2000),
+    wikiBaseUrl: z.string().max(300),
+    pausePlayerMapSync: z.boolean(),
+  })
   .partial();
 
 const CharacterPatchSchema = z
@@ -406,6 +414,13 @@ export const DiscoveryRevokeCommand = z.object({
   discoveryId: z.string(),
 });
 
+/** Player: share a clue their character discovered with the whole party. */
+export const ClueShareCommand = z.object({
+  ...base,
+  kind: z.literal('clue.share'),
+  clueId: z.string(),
+});
+
 // --- checks, encounters, narration ------------------------------------------
 
 export const CheckRollCommand = z.object({
@@ -503,6 +518,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   ContentDeleteCommand,
   ClueRevealCommand,
   DiscoveryRevokeCommand,
+  ClueShareCommand,
   CheckRollCommand,
   EncounterRollCommand,
   EncounterTableUpsertCommand,

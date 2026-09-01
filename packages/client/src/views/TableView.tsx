@@ -98,7 +98,11 @@ export function TableView({ campaignId }: { campaignId: string }) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <TopBar campaignId={campaignId} onRecenter={() => engineRef.current?.recenter()} />
+      <TopBar
+        campaignId={campaignId}
+        onRecenter={() => engineRef.current?.recenter()}
+        onGoToMe={() => engineRef.current?.centerOnMyToken()}
+      />
       <div className="flex-1 flex min-h-0 relative">
         <div ref={hostRef} className="canvas-host flex-1 min-w-0 relative" />
         <EmptyMapHint />
