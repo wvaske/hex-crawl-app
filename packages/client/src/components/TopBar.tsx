@@ -15,6 +15,46 @@ import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { Button, Input, Select, cx } from '../ui/kit.js';
+import { useIsMobile } from '../ui/responsive.js';
+
+/**
+ * Secondary top-bar controls. On a phone the bar has room for the campaign,
+ * the clock and the one control a player reaches for mid-session ("go to me"),
+ * so everything else folds into a ⋯ menu instead of being dropped — the same
+ * children, in a popover.
+ */
+function Overflow({ children, extra }: { children: React.ReactNode; extra?: React.ReactNode }) {
+  const mobile = useIsMobile();
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  if (!mobile) return <>{children}</>;
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} aria-label="More controls">
+        ⋯
+      </Button>
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-1 w-52 rounded-md border border-ink-700 bg-ink-900 p-1.5 shadow-lg z-40 flex flex-col items-stretch gap-1"
+          onClick={() => setOpen(false)}
+        >
+          {extra}
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ScaleControl({ baseMiles }: { baseMiles: number }) {
   const scaleLock = useUi((s) => s.scaleLock);
@@ -242,6 +282,23 @@ function TimeControl() {
 }
 
 /**
+ * One row of the ⋯ menu: the same control the desktop bar shows inline, with
+ * the label its `title` tooltip used to carry — a phone has no hover, and an
+ * unlabelled glyph in a menu is a guess (#75). Renders nothing extra on
+ * desktop, where the control goes straight back into the bar.
+ */
+function MenuRow({ label, children }: { label: string; children: React.ReactNode }) {
+  const mobile = useIsMobile();
+  if (!mobile) return <>{children}</>;
+  return (
+    <div className="flex items-center gap-2">
+      {children}
+      <span className="text-xs text-ink-300">{label}</span>
+    </div>
+  );
+}
+
+/**
  * Today's weather, next to the clock. Everyone sees it — the sky is not a DM
  * secret — and the DM rerolls it from the clock popover.
  */
@@ -333,48 +390,55 @@ export function TopBar({
   const role = useSession((s) => s.role);
   const status = useSession((s) => s.status);
   const map = activeMap(state);
+  const mobile = useIsMobile();
 
   const online = state?.seats.filter((s) => s.online) ?? [];
 
+  // On a phone the bar has room for the campaign, the clock and "go to me";
+  // the map picker moves into the ⋯ menu rather than squeezing the title to
+  // two letters. Same element either way — just a different home.
+  const mapPicker = state && state.maps.length > 0 && (
+    <Select
+      className="!w-auto max-w-28 md:max-w-44 shrink"
+      value={state.campaign.activeMapId ?? ''}
+      onChange={(e) =>
+        role === 'dm'
+          ? send({ kind: 'map.setActive', mapId: e.target.value })
+          : send({ kind: 'view.map', mapId: e.target.value })
+      }
+      title={role === 'dm' ? 'Active map (the party default)' : 'Browse another map'}
+    >
+      {state.maps.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.name}
+        </option>
+      ))}
+    </Select>
+  );
+
   return (
-    <header className="h-12 shrink-0 bg-ink-900 border-b border-ink-700 flex items-center gap-3 px-3 z-30">
-      <span className="text-brass-500 text-xl leading-none">⬡</span>
-      <div className="min-w-0">
-        <h1 className="text-sm font-semibold text-ink-100 truncate leading-tight">
+    <header className="h-12 shrink-0 bg-ink-900 border-b border-ink-700 flex items-center gap-1.5 md:gap-3 px-2 md:px-3 z-30">
+      <span className="text-brass-500 text-xl leading-none shrink-0">⬡</span>
+      <div className="min-w-0 flex-1">
+        <h1 className="text-xs md:text-sm font-semibold text-ink-100 truncate leading-tight">
           {state?.campaign.name ?? '…'}
         </h1>
+        {/* The map picker beside this already names the map — on a phone the
+            subline is redundant, and the width is worth more to the title. */}
         {map && (
-          <p className="text-[11px] text-ink-400 leading-tight truncate">
+          <p className="hidden md:block text-[11px] text-ink-400 leading-tight truncate">
             {map.name} · {map.milesPerHex} mi/hex
           </p>
         )}
       </div>
 
-      {state && state.maps.length > 0 && (
-        <Select
-          className="!w-auto max-w-44"
-          value={state.campaign.activeMapId ?? ''}
-          onChange={(e) =>
-            role === 'dm'
-              ? send({ kind: 'map.setActive', mapId: e.target.value })
-              : send({ kind: 'view.map', mapId: e.target.value })
-          }
-          title={role === 'dm' ? 'Active map (the party default)' : 'Browse another map'}
-        >
-          {state.maps.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </Select>
-      )}
+      {!mobile && mapPicker}
 
       {map && <ScaleControl baseMiles={map.milesPerHex} />}
       <TimeControl />
       <WeatherReadout />
-      <DayNightToggle />
 
-      <div className="flex-1" />
+      <div className="hidden md:block flex-1" />
 
       <div className="hidden sm:flex items-center -space-x-1.5" title={online.map((s) => s.name).join(', ')}>
         {online.slice(0, 6).map((seat) => {
@@ -398,26 +462,17 @@ export function TopBar({
           status === 'open' ? 'bg-moss-500' : status === 'connecting' ? 'bg-brass-500 animate-pulse' : 'bg-ember-500',
         )}
         title={status === 'open' ? 'Connected' : status}
+        role="status"
+        aria-label={status === 'open' ? 'Connected' : `Connection ${status}`}
       />
 
-      {role === 'dm' && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => send({ kind: 'undo' })}
-          title="Undo the last change (fog, terrain, moves, deletes) — or press Ctrl/Cmd+Z"
-        >
-          ↶
-        </Button>
-      )}
-      {role === 'dm' && <DimToggle />}
-      {role === 'dm' && <PauseSyncToggle />}
       {role === 'player' && (
         <Button
           variant="ghost"
           size="sm"
           onClick={onGoToMe}
           title="Go to me — center the view on your token"
+          aria-label="Go to me — center the view on your token"
         >
           🎯 Me
         </Button>
@@ -427,9 +482,38 @@ export function TopBar({
         live on the rail down the right edge, and clicking the open one closes
         it — one affordance instead of two competing ones.
       */}
-      <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
-        ⌖
-      </Button>
+      <Overflow extra={mapPicker}>
+        <MenuRow label="Day/night tint">
+          <DayNightToggle />
+        </MenuRow>
+        {role === 'dm' && (
+          <MenuRow label="Undo last change">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => send({ kind: 'undo' })}
+              title="Undo the last change (fog, terrain, moves, deletes) — or press Ctrl/Cmd+Z"
+            >
+              ↶
+            </Button>
+          </MenuRow>
+        )}
+        {role === 'dm' && (
+          <MenuRow label="Dim unexplored">
+            <DimToggle />
+          </MenuRow>
+        )}
+        {role === 'dm' && (
+          <MenuRow label="Prep mode (pause sync)">
+            <PauseSyncToggle />
+          </MenuRow>
+        )}
+        <MenuRow label="Re-center map">
+          <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
+            ⌖
+          </Button>
+        </MenuRow>
+      </Overflow>
     </header>
   );
 }

@@ -81,17 +81,22 @@ function SenseRow({ sense }: { sense: Sense }) {
         ) : (
           'Observed earlier'
         )}
-        {highlighted && ' · highlighted on map'}
+        {/*
+          Both facts used to live in a `title`, which a phone never shows: the
+          hex count is what tells a player whether tapping is worth it, and
+          "share with the party" is what the handshake actually does (#75).
+        */}
+        {highlighted ? ' · highlighted on map' : ` · seen from ${sense.observableFrom.length} hexes`}
         <span
           role="button"
-          className="float-right text-brass-400 hover:text-brass-300"
+          className="float-right inline-flex items-center -my-1 px-2 py-1 rounded text-brass-400 hover:text-brass-300"
           title="Tell the party — everyone learns this clue"
           onClick={(e) => {
             e.stopPropagation();
             send({ kind: 'clue.share', clueId: sense.clueId });
           }}
         >
-          🤝 Share
+          🤝 Share with party
         </span>
       </span>
     </button>

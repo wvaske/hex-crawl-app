@@ -158,6 +158,27 @@ player-facing data).
   *navigate* the user sets `ui.openPanel` (and `selectHex` already opens
   Information, which is how a map click, a token row and a journal row all
   land on the inspected hex).
+- **The same shell has two shapes** (#75): below 768px (`useIsMobile()` in
+  `client/src/ui/responsive.ts`) `PanelShell` renders the *same* panel
+  compositions as a bottom sheet (`.panel-sheet`, drag/tap the grabber to
+  resize between 25% and 92% of the viewport) over a bottom tab bar
+  (`.panel-tabbar`); above it, the side pop-out and the right-edge rail. Two
+  consequences: **anything absolutely positioned near the bottom of the map
+  needs a `bottom-20 md:bottom-<x>` pair** (see `Toasts`, `HexReadout`) or the
+  tab bar covers it, and JS breakpoint and `md:` utilities must agree — keep
+  `MOBILE_MAX_WIDTH` at 767. TopBar folds its secondary controls into a ⋯
+  menu on phones via `Overflow`/`MenuRow`, so a new top-bar control belongs in
+  one of those two places, and a `MenuRow` label is where its `title` text
+  goes (a phone never shows a tooltip). Touch sizing lives in `index.css`
+  under `@media (pointer: coarse)`: `.panel-scroll` descendants get a 2rem
+  minimum, and inputs go to 16px on phones because iOS Safari zooms the page
+  for anything smaller.
+- **Token drag has a threshold** (#75): a token `pointerdown` only *arms* a
+  drag (`this.drag.active === false`); the token follows the pointer once it
+  travels 3px (mouse) / 12px (touch), a second non-mouse pointer cancels the
+  grab back into a pinch, and a tap just selects. Anything that assumed
+  `pointerdown` = dragging (the `view.dragging` flag included) has to look at
+  `drag.active` now.
 - **Marker stickers** (`client/src/stickers.ts`, issue #67): the catalogue is a
   hand-maintained list next to `import.meta.glob('./assets/stickers/**/*.svg')`,
   so a new icon is *two* edits — drop the SVG in

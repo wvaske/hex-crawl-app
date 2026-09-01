@@ -631,12 +631,14 @@ function PlayerContentCard({ content }: { content: ContentPlayerView }) {
         {content.discoveredClues.map((c) => (
           <li key={c.clueId} className="text-xs text-ink-200 flex items-start gap-2">
             <span className="flex-1">{c.text}</span>
+            {/* The label spells out what sharing does — a phone never shows
+                the `title` this used to hide it in (#75). */}
             <button
-              className="shrink-0 text-[10px] text-brass-400 hover:text-brass-300 cursor-pointer"
+              className="shrink-0 text-[11px] px-1.5 py-1 text-brass-400 hover:text-brass-300 cursor-pointer"
               title="Tell the party — everyone learns this clue"
               onClick={() => send({ kind: 'clue.share', clueId: c.clueId })}
             >
-              🤝 Share
+              🤝 Share with party
             </button>
           </li>
         ))}

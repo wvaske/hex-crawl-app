@@ -148,7 +148,7 @@ export function ContentDialog() {
       wide
     >
       <div className="space-y-3">
-        <div className="grid grid-cols-[1fr_8rem_4rem] gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_8rem_4rem] gap-2">
           <Field label="Title">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="The Sunken Barrow" maxLength={120} />
           </Field>
@@ -181,7 +181,7 @@ export function ContentDialog() {
           Location known to players
           <span className="text-xs text-ink-400">(pin always shown; clues stay gated)</span>
         </label>
-        <div className="grid grid-cols-2 gap-2 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
           <label className="flex items-center gap-2 text-sm text-ink-200 cursor-pointer pb-1.5">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             Enabled
@@ -191,7 +191,7 @@ export function ContentDialog() {
             <Input value={quest} onChange={(e) => setQuest(e.target.value)} placeholder="varram-hunt" maxLength={120} />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Field label="Visible at hex scales">
             <Select
               value={scaleVisibility}

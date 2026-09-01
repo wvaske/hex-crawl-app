@@ -151,24 +151,29 @@ export function Dialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      {/*
+        `dvh` rather than `vh` so the dialog still fits once a mobile browser's
+        address bar is showing, and `min-w-0` so long unbroken content (wiki
+        text, ids) scrolls its own container instead of widening the dialog.
+      */}
       <div
         className={cx(
-          'bg-ink-850 border border-ink-600 rounded-xl shadow-2xl w-full flex flex-col max-h-[90vh]',
+          'bg-ink-850 border border-ink-600 rounded-xl shadow-2xl w-full min-w-0 flex flex-col max-h-[90dvh]',
           wide ? 'max-w-2xl' : 'max-w-md',
         )}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-ink-700 shrink-0">
-          <h2 className="font-semibold text-ink-100">{title}</h2>
+        <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b border-ink-700 shrink-0">
+          <h2 className="font-semibold text-ink-100 min-w-0 truncate">{title}</h2>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
             ✕
           </Button>
         </div>
-        <div className="p-4 overflow-y-auto">{children}</div>
+        <div className="p-3 sm:p-4 overflow-y-auto overscroll-contain">{children}</div>
       </div>
     </div>
   );
