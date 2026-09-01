@@ -104,6 +104,24 @@ player-facing data).
 - In DEV builds the page exposes `window.__engine` (CanvasEngine) and
   `window.__send` (WS sender) — the fastest way to drive/verify from a
   browser console. Production builds do not.
+- **New campaign column = two-place edit**: `CampaignRuntime`'s constructor
+  row type is inline; add the column there as optional (`time?: string |
+  null` style) so `Store.getCampaign`'s explicit row type still assigns.
+  JSON blob + `ensureColumn` + `Schema.parse(safeJson(...))` is the proven
+  pattern (see `campaign.time`).
+- **Growing `CampaignSettingsSchema`/`MapStateSchema` breaks the typed
+  `fullState()` fixture** in `shared/src/rules/rules.test.ts` (it's a typed
+  literal, not a parse) — the typecheck error points straight at it.
+- **`filterStateForViewer` builds a hand-written literal per map layer** — a
+  new `MapState` field won't compile until you add it to the player branch.
+  That's the intended forcing function: you must decide player visibility.
+- **New log `kind` strings** just need `KIND_META` + `FILTERS` entries in
+  `LogTab.tsx`; unknown kinds render with a `·` fallback.
+- **Move-handler ordering**: post-move hooks (auto encounters, clock) run
+  after `executePartyMove`; the clock credits the departed hex *before*
+  advancing, so lingering time lands on the hex and travel time on neither.
+- CI (`.github/workflows/ci.yml`) runs typecheck + test on PRs; pnpm is
+  pinned there and in the Dockerfile — keep the versions in sync.
 
 ## Dev & verification
 

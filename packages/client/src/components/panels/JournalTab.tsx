@@ -14,6 +14,9 @@ export function JournalTab() {
     (c): c is ContentPlayerView => !isFullContent(c),
   );
   const narrations = state.log.filter((l) => l.kind === 'narration');
+  // Party notes the players pinned themselves (issue #74) — findable without
+  // scanning the map.
+  const partyNotes = (state.mapState?.markers ?? []).filter((m) => m.playerPlaced);
   const trailSigns = state.mapState?.trailSigns ?? [];
   const trails: { trailId: string; glyph: string; cells: { q: number; r: number }[] }[] = [];
   for (const s of trailSigns) {
@@ -58,6 +61,38 @@ export function JournalTab() {
               </ul>
             </button>
           ))}
+        </div>
+      </Section>
+
+      <Section title="Party notes">
+        {partyNotes.length === 0 && (
+          <EmptyNote>
+            No party notes on this map yet — pin one from a hex in the Inspect tab.
+          </EmptyNote>
+        )}
+        <div className="space-y-1.5">
+          {partyNotes.map((n) => {
+            const owner = state.seats.find((s) => s.id === n.ownerSeatId)?.name;
+            return (
+              <button
+                key={n.id}
+                className="w-full text-left bg-ink-850 border border-ink-700 rounded-lg px-2.5 py-2 cursor-pointer hover:border-ink-600"
+                onClick={() => selectHex({ q: n.q, r: n.r })}
+                title="Show on map"
+              >
+                <div className="flex items-center gap-2">
+                  <span>{n.glyph}</span>
+                  <span className="text-sm text-ink-100 truncate flex-1">
+                    {n.label || '(no text)'}
+                  </span>
+                  <span className="text-xs text-ink-400 shrink-0">
+                    {n.q},{n.r}
+                  </span>
+                </div>
+                {owner && <span className="text-[11px] text-ink-400">— {owner}</span>}
+              </button>
+            );
+          })}
         </div>
       </Section>
 

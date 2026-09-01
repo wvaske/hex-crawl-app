@@ -1,6 +1,7 @@
 import { AlphaFilter, Application, Assets, Circle, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import type {
+  CampaignSettings,
   CampaignState,
   Content,
   ContentPlayerView,
@@ -30,6 +31,8 @@ import {
   hexToPixel,
   hexesInPixelRect,
   indexToFineCenter,
+  isNight,
+  MINUTES_PER_DAY,
   pixelToHex,
   superCornerOffsets,
   superIndexRange,
@@ -44,6 +47,8 @@ const STROKE_FLUSH_MS = 180;
 const PIN_BASE_FONT = 32;
 /** Minimum on-screen token diameter in px. */
 const TOKEN_MIN_SCREEN = 26;
+/** Tag colour for a party note whose owner has no character colour. */
+const NOTE_DEFAULT_TINT = 0x8fb4ff;
 
 type PinContainer = Container & {
   __pin?: { worldSize: number; minScreen: number };
@@ -87,6 +92,9 @@ export class CanvasEngine {
   private exploredG = new Graphics();
   private exploredAlpha = new AlphaFilter({ alpha: 0.3 });
   private pinsC = new Container();
+  // Day/night tint: a single generous rect above pins/terrain, below tokens,
+  // redrawn whenever the view, clock or toggle changes. Cheap — no per-hex work.
+  private tintG = new Graphics();
   private tokensC = new Container();
   private pendingC = new Container();
   private senseG = new Graphics();
@@ -107,6 +115,7 @@ export class CanvasEngine {
   private lastTrailSigns: TrailSign[] = [];
   private lastImages: ImageLayer[] = [];
   private lastDiscoveriesRef: unknown = null;
+  private lastTintKey = '';
   private role: SeatRole = 'player';
   private myCharacterId: string | null = null;
 
@@ -167,6 +176,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.terrainG);
     this.viewport.addChild(this.gridG);
     this.viewport.addChild(this.pinsC);
+    this.viewport.addChild(this.tintG);
     this.viewport.addChild(this.tokensC);
     this.viewport.addChild(this.pendingC);
     this.viewport.addChild(this.exploredC);
@@ -184,6 +194,7 @@ export class CanvasEngine {
       this.terrainG,
       this.gridG,
       this.pinsC,
+      this.tintG,
       this.pendingC,
       this.exploredC,
       this.fogC,
@@ -236,6 +247,9 @@ export class CanvasEngine {
       }
       if (u.dimUnexplored !== prev.dimUnexplored) {
         this.drawPins();
+      }
+      if (u.dayNightTint !== prev.dayNightTint) {
+        this.viewDirty = true;
       }
       if (u.senseHighlight !== prev.senseHighlight) {
         this.drawSenseHighlight();
@@ -312,6 +326,14 @@ export class CanvasEngine {
 
     const ms = state.mapState;
 
+    // Day/night tint tracks the clock and daylight settings, independent of
+    // the map layers above — redraw the (cheap) tint rect when either moves.
+    const tintKey = `${state.campaign.time.minutes}|${state.campaign.settings.sunriseHour}|${state.campaign.settings.sunsetHour}`;
+    if (tintKey !== this.lastTintKey) {
+      this.lastTintKey = tintKey;
+      this.viewDirty = true;
+    }
+
     if (layoutChanged || !hexCellsEqual(ms.hexes, this.lastHexes) || styleChanged) {
       this.lastHexes = ms.hexes;
       this.drawTerrain();
@@ -375,6 +397,7 @@ export class CanvasEngine {
     this.senseG.clear();
     this.trailHighlightG.clear();
     this.highlightG.clear();
+    this.tintG.clear();
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.tokensReset();
     for (const sprite of this.images.values()) sprite.destroy();
@@ -638,7 +661,32 @@ export class CanvasEngine {
     this.fogEraseG.fill({ color: 0xffffff });
     this.exploredG.fill({ color: 0x0b0d12 });
 
+    this.drawTint(bounds);
     this.updatePinScales();
+  }
+
+  /**
+   * Day/night map tint (#58): a single rect covering the visible area
+   * generously, tinted to match the campaign clock. Purely cosmetic — no
+   * per-hex work, cheap to redraw on every view/clock/toggle change.
+   */
+  private drawTint(bounds: { x: number; y: number; width: number; height: number }): void {
+    this.tintG.clear();
+    if (!useUi.getState().dayNightTint) return;
+    const state = useSession.getState().state;
+    const time = state?.campaign.time;
+    if (!time) return;
+    const settings = state.campaign.settings;
+    const tint = tintForClock(time.minutes, settings);
+    if (!tint) return;
+    const margin = Math.max(bounds.width, bounds.height);
+    this.tintG.rect(
+      bounds.x - margin,
+      bounds.y - margin,
+      bounds.width + margin * 2,
+      bounds.height + margin * 2,
+    );
+    this.tintG.fill({ color: tint.color, alpha: tint.alpha });
   }
 
   /**
@@ -822,6 +870,9 @@ export class CanvasEngine {
     glyph: string;
     label?: string;
     chip: boolean;
+    /** Player-placed party note: rounded-rect tag tinted with the owner's colour. */
+    note?: boolean;
+    tint?: number;
     dmOnly?: boolean;
     worldSize: number;
     minScreen: number;
@@ -833,6 +884,21 @@ export class CanvasEngine {
       chip.fill({ color: 0x12151d, alpha: 0.88 });
       chip.stroke({ width: PIN_BASE_FONT * 0.07, color: 0xdcb968, alpha: 0.95 });
       pin.addChild(chip);
+    }
+    if (opts.note) {
+      const tint = opts.tint ?? NOTE_DEFAULT_TINT;
+      const w = PIN_BASE_FONT * 1.6;
+      const h = PIN_BASE_FONT * 1.3;
+      const tag = new Graphics();
+      tag.roundRect(-w / 2, -h / 2, w, h, PIN_BASE_FONT * 0.32);
+      tag.fill({ color: 0x12151d, alpha: 0.82 });
+      tag.stroke({ width: PIN_BASE_FONT * 0.1, color: tint, alpha: 0.95 });
+      pin.addChild(tag);
+      // Owner-coloured dog-ear so a note reads as a note even at a glance.
+      const corner = new Graphics();
+      corner.circle(w / 2 - PIN_BASE_FONT * 0.12, -h / 2 + PIN_BASE_FONT * 0.12, PIN_BASE_FONT * 0.2);
+      corner.fill({ color: tint, alpha: 0.95 });
+      pin.addChild(corner);
     }
     const text = new Text({
       text: opts.glyph,
@@ -870,6 +936,18 @@ export class CanvasEngine {
     }
     (pin as PinContainer).__pin = { worldSize: opts.worldSize, minScreen: opts.minScreen };
     return pin;
+  }
+
+  /** seatId → the colour of the character that seat plays (for party notes). */
+  private seatTints(): Map<string, number> {
+    const st = useSession.getState().state;
+    const colors = new Map((st?.characters ?? []).map((c) => [c.id, c.color]));
+    const tints = new Map<string, number>();
+    for (const seat of st?.seats ?? []) {
+      const hex = seat.characterId ? colors.get(seat.characterId) : undefined;
+      if (hex) tints.set(seat.id, Number.parseInt(hex.replace('#', ''), 16));
+    }
+    return tints;
   }
 
   /** Disabled content: dimmed with a red X — staged, not live for players. */
@@ -971,6 +1049,8 @@ export class CanvasEngine {
       list.push(m);
       byHex.set(key, list);
     }
+    // Party notes (issue #74) get a tag in the placing player's colour.
+    const noteTint = this.lastMarkers.some((m) => m.playerPlaced) ? this.seatTints() : null;
     for (const markers of byHex.values()) {
       markers.forEach((m, i) => {
         const center = hexToPixel(this.layout!, { q: m.q, r: m.r });
@@ -978,9 +1058,12 @@ export class CanvasEngine {
         const pin = this.buildPin({
           glyph: m.glyph,
           chip: false,
+          note: m.playerPlaced,
+          tint: m.playerPlaced ? noteTint?.get(m.ownerSeatId ?? '') : undefined,
+          label: m.playerPlaced && m.label ? truncateLabel(m.label) : undefined,
           dmOnly: m.dmOnly,
-          worldSize: size * 1.0,
-          minScreen: 19,
+          worldSize: size * (m.playerPlaced ? 1.15 : 1.0),
+          minScreen: m.playerPlaced ? 21 : 19,
         });
         pin.position.set(center.x + spread, center.y + size * 0.55);
         if (fogByKey) {
@@ -1663,6 +1746,26 @@ export class CanvasEngine {
   }
 }
 
+// -- day/night tint ------------------------------------------------------------
+
+/**
+ * Tint color/alpha for the campaign clock: deep blue at night, a warm dusk/
+ * dawn wash in the hour to either side of sunset/sunrise, nothing by day.
+ */
+function tintForClock(
+  minutes: number,
+  settings: Pick<CampaignSettings, 'sunriseHour' | 'sunsetHour'>,
+): { color: number; alpha: number } | null {
+  if (isNight(minutes, settings)) return { color: 0x1a2244, alpha: 0.28 };
+  const sunrise = settings.sunriseHour ?? 6;
+  const sunset = settings.sunsetHour ?? 20;
+  const hour = (Math.max(0, Math.floor(minutes)) % MINUTES_PER_DAY) / 60;
+  const inDusk = hour >= sunset - 1 && hour < sunset;
+  const inDawn = hour >= sunrise && hour < sunrise + 1;
+  if (inDusk || inDawn) return { color: 0xd9822b, alpha: 0.12 };
+  return null;
+}
+
 // -- diff helpers ------------------------------------------------------------
 
 function hexCellsEqual(a: HexCell[], b: HexCell[]): boolean {
@@ -1685,8 +1788,18 @@ function fogCellsEqual(a: FogCell[], b: FogCell[]): boolean {
   return true;
 }
 
+/**
+ * `shallowEqual` walks every key of the marker, so fields added to
+ * `MarkerSchema` (playerPlaced / ownerSeatId) are diffed without touching
+ * this comparator — unlike the explicit-field ones below.
+ */
 function markersEqual(a: Marker[], b: Marker[]): boolean {
   return a.length === b.length && a.every((m, i) => shallowEqual(m, b[i]!));
+}
+
+/** Party-note captions render on the map; keep them to a glance. */
+function truncateLabel(label: string): string {
+  return label.length > 24 ? label.slice(0, 23) + '…' : label;
 }
 
 function contentsEqual(

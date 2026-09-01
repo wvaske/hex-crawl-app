@@ -29,6 +29,7 @@ import type {
 import {
   CampaignSettingsSchema,
   CampaignTimeSchema,
+  CharacterExtraSchema,
   EncounterCheckConfigSchema,
   GateSchema,
   GridStyleSchema,
@@ -176,6 +177,7 @@ export class CampaignRuntime {
         speed: c.speed as number,
         skills: SkillsSchema.parse(safeJson(c.skills as string)),
         ddbId: (c.ddb_id as string | null) ?? null,
+        extra: CharacterExtraSchema.parse(safeJson(c.extra as string)),
       });
     }
     for (const m of d
@@ -336,6 +338,8 @@ export class CampaignRuntime {
         glyph: m.glyph as string,
         label: m.label as string,
         dmOnly: Boolean(m.dm_only),
+        playerPlaced: Boolean(m.player_placed),
+        ownerSeatId: (m.owner_seat_id as string | null) ?? null,
       });
     }
     for (const c of d.prepare('SELECT * FROM content WHERE map_id = ?').all(mapId) as Array<
@@ -473,6 +477,10 @@ export class CampaignRuntime {
    * player's full state. Tokens, fog, pending moves, discoveries and the log
    * stay live; terrain, markers, content, images and trails hold at the
    * pause-time snapshot.
+   *
+   * Exception: player-placed party notes (issue #74) stay live through the
+   * pause. They are player output, not DM prep — freezing them would make a
+   * note a player drops mid-pause vanish for the whole party until resume.
    */
   applyPlayerFreeze(full: CampaignState): CampaignState {
     if (!this.campaign.settings.pausePlayerMapSync) return full;
@@ -480,13 +488,17 @@ export class CampaignRuntime {
     if (!mapId || !full.mapState) return full;
     const frozen = this.frozenPlayerMaps.get(mapId);
     if (!frozen) return full;
+    // Frozen DM markers, then every live player note (live wins by id, so an
+    // edit lands and a delete removes the frozen copy).
+    const markers = new Map(frozen.markers.filter((m) => !m.playerPlaced).map((m) => [m.id, m]));
+    for (const m of full.mapState.markers) if (m.playerPlaced) markers.set(m.id, m);
     return {
       ...full,
       mapState: {
         ...full.mapState,
         imageLayers: frozen.imageLayers,
         hexes: frozen.hexes,
-        markers: frozen.markers,
+        markers: [...markers.values()],
         contents: frozen.contents,
         trails: frozen.trails,
       },
@@ -639,8 +651,8 @@ export class CampaignRuntime {
     this.characters.set(character.id, character);
     this.db
       .prepare(
-        `INSERT INTO character (id, campaign_id, name, color, glyph, speed, skills, ddb_id) VALUES (?,?,?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, glyph=excluded.glyph, speed=excluded.speed, skills=excluded.skills, ddb_id=excluded.ddb_id`,
+        `INSERT INTO character (id, campaign_id, name, color, glyph, speed, skills, ddb_id, extra) VALUES (?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, glyph=excluded.glyph, speed=excluded.speed, skills=excluded.skills, ddb_id=excluded.ddb_id, extra=excluded.extra`,
       )
       .run(
         character.id,
@@ -651,6 +663,7 @@ export class CampaignRuntime {
         character.speed,
         JSON.stringify(character.skills),
         character.ddbId,
+        JSON.stringify(character.extra),
       );
   }
 
@@ -1026,8 +1039,20 @@ export class CampaignRuntime {
     const rt = this.requireMap(marker.mapId);
     rt.markers.set(marker.id, marker);
     this.db
-      .prepare('INSERT INTO marker (id, map_id, q, r, glyph, label, dm_only) VALUES (?,?,?,?,?,?,?)')
-      .run(marker.id, marker.mapId, marker.q, marker.r, marker.glyph, marker.label, marker.dmOnly ? 1 : 0);
+      .prepare(
+        'INSERT INTO marker (id, map_id, q, r, glyph, label, dm_only, player_placed, owner_seat_id) VALUES (?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        marker.id,
+        marker.mapId,
+        marker.q,
+        marker.r,
+        marker.glyph,
+        marker.label,
+        marker.dmOnly ? 1 : 0,
+        marker.playerPlaced ? 1 : 0,
+        marker.ownerSeatId,
+      );
   }
 
   updateMarker(markerId: string, patch: Partial<Marker>): Marker {
@@ -1037,8 +1062,19 @@ export class CampaignRuntime {
     const updated: Marker = { ...found, ...patch, id: found.id, mapId: found.mapId };
     rt.markers.set(markerId, updated);
     this.db
-      .prepare('UPDATE marker SET q=?, r=?, glyph=?, label=?, dm_only=? WHERE id=?')
-      .run(updated.q, updated.r, updated.glyph, updated.label, updated.dmOnly ? 1 : 0, markerId);
+      .prepare(
+        'UPDATE marker SET q=?, r=?, glyph=?, label=?, dm_only=?, player_placed=?, owner_seat_id=? WHERE id=?',
+      )
+      .run(
+        updated.q,
+        updated.r,
+        updated.glyph,
+        updated.label,
+        updated.dmOnly ? 1 : 0,
+        updated.playerPlaced ? 1 : 0,
+        updated.ownerSeatId,
+        markerId,
+      );
     return updated;
   }
 

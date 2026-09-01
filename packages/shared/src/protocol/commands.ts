@@ -67,6 +67,16 @@ const CampaignSettingsPatchSchema = z
   })
   .partial();
 
+const CharacterExtraPatchSchema = z
+  .object({
+    bio: z.string().max(5000),
+    appearance: z.string().max(5000),
+    goals: z.string().max(5000),
+    inventory: z.string().max(5000),
+    notes: z.string().max(5000),
+  })
+  .partial();
+
 const CharacterPatchSchema = z
   .object({
     name: z.string().min(1).max(60),
@@ -75,6 +85,7 @@ const CharacterPatchSchema = z
     speed: z.number().int().min(0).max(120),
     skills: z.record(z.string(), z.number().int().min(-10).max(20)),
     ddbId: z.string().nullable(),
+    extra: CharacterExtraPatchSchema,
   })
   .partial();
 
@@ -269,7 +280,14 @@ export const TokenDeleteCommand = z.object({
 export const MarkerPlaceCommand = z.object({
   ...base,
   kind: z.literal('marker.place'),
-  marker: MarkerSchema.omit({ id: true }),
+  // The ownership fields are `.optional()` rather than defaulted: a zod default
+  // would make them required in `CommandInput` and break every existing
+  // `marker.place` call site. The server fills them in (and forces them for
+  // player seats).
+  marker: MarkerSchema.omit({ id: true, playerPlaced: true, ownerSeatId: true }).extend({
+    playerPlaced: z.boolean().optional(),
+    ownerSeatId: z.string().nullable().optional(),
+  }),
 });
 
 export const MarkerUpdateCommand = z.object({
@@ -509,6 +527,8 @@ export const TimeAdvanceCommand = z.object({
   ...base,
   kind: z.literal('time.advance'),
   minutes: z.number().int().min(1).max(60 * 24 * 365),
+  /** Why the clock moved ("camp", "short rest") — shown in the log line. */
+  note: z.string().max(200).optional(),
 });
 
 /** DM: set the clock absolutely (session bookkeeping, fixing a mistake). */

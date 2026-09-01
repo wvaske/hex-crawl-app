@@ -147,6 +147,120 @@ on first boot.
 
 ## 9. Backups
 
+Two layers, and you want both:
+
+### 9a. Volume-level (everything, opaque)
+
 The entire state is the `hexcrawl_data` volume (SQLite `hexcrawl.db` + WAL +
-`uploads/`). Back up with the same tar-from-volume approach, or snapshot the
-zvol on TrueNAS.
+`uploads/`). Back up with the same tar-from-volume approach as step 8, or
+snapshot the zvol on TrueNAS. This is the disaster-recovery copy: it restores
+the whole instance, all campaigns, ids and invite keys intact.
+
+> Copy the volume with the container **stopped** (or snapshot the zvol) — a live
+> `hexcrawl.db` has a WAL alongside it, and a naive file copy can be torn.
+
+### 9b. Per-campaign export (portable, restorable anywhere)
+
+`GET /api/campaigns/<id>/export` returns one JSON document holding every row for
+that campaign plus its uploaded images (base64-embedded). It is authorized by
+the DM seat cookie **or** `?key=<dmKey>`, so cron and `curl` can pull it.
+
+The archive contains **no secrets**: no DM/player invite keys, no seat auth
+tokens (`"secrets": false` marks this). Restoring one therefore creates a *new*
+campaign with new ids and new invite links — it is a copy, not an in-place
+overwrite. Restore either way:
+
+- **UI:** landing page → *Restore from backup* → pick the `hexcrawl-*.json`
+  file. You land in the new campaign as its DM.
+- **API:** `POST /api/campaigns/import` with the JSON as the request body
+  (`Content-Type: application/json`) or as multipart field `file`. Max 100 MB.
+  Responds `{campaignId, dmKey, playerKey}`.
+
+```bash
+# Manual pull
+curl -fsS "https://hex-crawl.deeznuts.wiki/api/campaigns/<id>/export?key=<dmKey>" \
+  -o hexcrawl-<id>-$(date -u +%F).json
+
+# Manual restore (into any instance running this version)
+curl -fsS -X POST "https://hex-crawl.deeznuts.wiki/api/campaigns/import" \
+  -F "file=@hexcrawl-<id>-2026-08-30.json"
+```
+
+Because ids are remapped on import, an archive can be restored **into the same
+instance it came from** — handy for "fork the campaign before the session" or
+for recovering a single campaign without touching the others.
+
+Known limits (v1, `formatVersion: 1`):
+- Seats are not restored (they hold auth tokens). The importer gets a fresh DM
+  seat; players re-join with the new player link and re-claim characters.
+- Log entries whispered to a single seat come back DM-only — that seat is gone.
+- Log `data` blobs keep their original ids (they drive toasts/detail text only).
+
+### 9c. Cron the export: `deploy/backup.sh`
+
+`deploy/backup.sh` pulls one campaign, writes a dated file, and prunes to the N
+most recent. It fails loudly (non-zero, message on stderr) if the key is wrong,
+the campaign is gone, or the response is not an export — so cron mail is
+meaningful.
+
+```bash
+install -m 0755 deploy/backup.sh /usr/local/bin/hexcrawl-backup.sh
+install -d -m 0700 /var/backups/hexcrawl
+```
+
+Environment (all read from the env, nothing hard-coded):
+
+| Variable | Meaning |
+| --- | --- |
+| `HEXCRAWL_URL` | instance base URL, e.g. `https://hex-crawl.deeznuts.wiki` |
+| `HEXCRAWL_CAMPAIGN` | campaign id |
+| `HEXCRAWL_DM_KEY` | that campaign's DM key (from the DM's link, or `/api/campaigns/<id>/keys`) |
+| `BACKUP_DIR` | output dir (default `/var/backups/hexcrawl`) |
+| `KEEP` | archives to retain for this campaign (default 14) |
+| `COMPRESS` | `0` to keep raw `.json` (default gzips) |
+| `CURL_TIMEOUT` | seconds (default 600 — big image sets are slow) |
+
+Keep the DM key out of the crontab line (it would show in `ps`): put it in a
+root-only env file.
+
+```bash
+# /etc/hexcrawl-backup.env  (chmod 600)
+HEXCRAWL_URL=https://hex-crawl.deeznuts.wiki
+HEXCRAWL_CAMPAIGN=<campaign id>
+HEXCRAWL_DM_KEY=<dm key>
+BACKUP_DIR=/var/backups/hexcrawl
+KEEP=14
+```
+
+Cron (daily 04:15), one line per campaign — repeat with a second env file:
+
+```cron
+15 4 * * * root set -a; . /etc/hexcrawl-backup.env; set +a; /usr/local/bin/hexcrawl-backup.sh >> /var/log/hexcrawl-backup.log 2>&1
+```
+
+Or a systemd timer:
+
+```ini
+# /etc/systemd/system/hexcrawl-backup.service
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/hexcrawl-backup.env
+ExecStart=/usr/local/bin/hexcrawl-backup.sh
+
+# /etc/systemd/system/hexcrawl-backup.timer
+[Timer]
+OnCalendar=*-*-* 04:15:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+`systemctl enable --now hexcrawl-backup.timer`.
+
+**Test the restore, not just the backup.** Once in a while, POST a recent
+archive to `/api/campaigns/import`, open the resulting campaign and confirm the
+maps and pins look right. There is no campaign-delete API yet, so do this drill
+against a scratch instance (`docker run -e DATA_DIR=/tmp ...`) rather than
+production — otherwise the restored copy sticks around (unreachable without its
+link, but still on the volume; `DELETE FROM campaign WHERE id = '<id>'` in
+`hexcrawl.db` clears it, with the container stopped).

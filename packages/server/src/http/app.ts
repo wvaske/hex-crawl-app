@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
+import { bodyLimit } from 'hono/body-limit';
+import { stream } from 'hono/streaming';
 import fs from 'node:fs';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
@@ -11,6 +13,12 @@ import { evaluateTrails } from '../engine/trails.js';
 import { fetchDdbCharacter, parseDdbId } from '../engine/ddb.js';
 import { generateSettlementClues } from '../engine/settlements.js';
 import { MAX_UPLOAD_BYTES, UPLOADS_DIR } from '../config.js';
+import {
+  MAX_IMPORT_BYTES,
+  exportCampaignChunks,
+  exportFileName,
+  importCampaign,
+} from './portability.js';
 import type { Store } from '../state/store.js';
 import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
 import type { Hub } from '../ws/hub.js';
@@ -57,6 +65,82 @@ export function createApp(store: Store, hub: Hub): Hono {
       playerKey: runtime.playerSecret,
     });
   });
+
+  // -- portability: export / import -----------------------------------------
+  // Registered before the SPA fallback below; `/api/*` also gets an explicit
+  // 404 so a wrong method or typo can never fall through to index.html.
+
+  /**
+   * Full campaign archive (rows + base64 images) as one JSON attachment.
+   * Auth: DM seat cookie, or `?key=<dmSecret>` so cron/curl can pull it.
+   */
+  app.get('/api/campaigns/:id/export', (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const key = c.req.query('key');
+    const seat = getSeat(c, runtime);
+    if (key !== runtime.dmSecret && seat?.role !== 'dm') return c.json({ error: 'DM only' }, 403);
+    c.header('Content-Type', 'application/json; charset=utf-8');
+    c.header('Content-Disposition', `attachment; filename="${exportFileName(runtime.id)}"`);
+    c.header('Cache-Control', 'no-store');
+    return stream(c, async (s) => {
+      for (const chunk of exportCampaignChunks(store.db, runtime.id, UPLOADS_DIR)) {
+        await s.write(chunk);
+      }
+    });
+  });
+
+  /**
+   * Restore an archive as a NEW campaign (fresh ids and invite keys) and seat
+   * the caller as its DM. Accepts multipart (`file` field, from the Landing
+   * page picker) or a raw JSON body (from curl).
+   */
+  app.post(
+    '/api/campaigns/import',
+    bodyLimit({
+      maxSize: MAX_IMPORT_BYTES,
+      onError: (c) =>
+        c.json({ error: `Backup too large (max ${MAX_IMPORT_BYTES / 1024 / 1024}MB)` }, 413),
+    }),
+    async (c) => {
+      const contentType = c.req.header('Content-Type') ?? '';
+      let raw: unknown;
+      let dmName = 'DM';
+      try {
+        if (contentType.includes('multipart/form-data')) {
+          const body = await c.req.parseBody();
+          const file = body.file;
+          if (!(file instanceof File)) return c.json({ error: 'No backup file' }, 400);
+          if (typeof body.dmName === 'string' && body.dmName.trim()) {
+            dmName = body.dmName.trim().slice(0, 60);
+          }
+          raw = JSON.parse(await file.text());
+        } else {
+          raw = await c.req.json();
+        }
+      } catch {
+        return c.json({ error: 'Backup file is not valid JSON' }, 400);
+      }
+
+      let result;
+      try {
+        result = importCampaign(store.db, raw, { uploadsDir: UPLOADS_DIR });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : 'Import failed' }, 400);
+      }
+      store.forget(result.campaignId);
+      const runtime = store.getCampaign(result.campaignId);
+      if (!runtime) return c.json({ error: 'Import failed to load' }, 500);
+      const dmSeat = runtime.createSeat('dm', dmName);
+      setSeatCookie(c as never, runtime, dmSeat);
+      return c.json({
+        campaignId: runtime.id,
+        dmKey: runtime.dmSecret,
+        playerKey: runtime.playerSecret,
+        imported: result.counts,
+      });
+    },
+  );
 
   app.get('/api/campaigns/:id', (c) => {
     const runtime = store.getCampaign(c.req.param('id'));
@@ -413,6 +497,11 @@ export function createApp(store: Store, hub: Hub): Hono {
   });
 
   app.get('/api/health', (c) => c.json({ ok: true }));
+
+  // Unmatched API paths must 404 as JSON. Without this the SPA fallback below
+  // answers any unknown GET with index.html — a typo'd or wrong-method API call
+  // would silently look like a 200.
+  app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
   // -- production: serve the built client ------------------------------------
   // CLIENT_DIST points at packages/client/dist; any non-API GET falls back to
