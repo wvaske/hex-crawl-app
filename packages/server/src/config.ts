@@ -67,6 +67,17 @@ export const DATA_DIR = process.env.DATA_DIR ?? path.resolve(process.cwd(), '../
 export const DB_PATH = path.join(DATA_DIR, 'hexcrawl.db');
 export const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 
+/**
+ * Optional PostgreSQL connection string (issue #73). Unset — the default and
+ * the quickstart path — keeps the embedded SQLite file under DATA_DIR. Set it
+ * to `postgres://user:pass@host:5432/db` to put the rows on a database server
+ * instead, which is what makes network-mounted (NFS) storage safe: SQLite's WAL
+ * and its locking are not.
+ *
+ * Uploaded images stay on disk under DATA_DIR either way.
+ */
+export const DATABASE_URL = process.env.DATABASE_URL?.trim() ?? '';
+
 export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 
 // -- public-instance hardening (see .env.example / deploy/RUNBOOK.md) --------

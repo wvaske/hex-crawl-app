@@ -4,10 +4,12 @@
  * as a brand-new campaign with freshly minted ids and secrets.
  *
  * Design notes
- * - Rows are exported verbatim from SQLite (snake_case keys), so the format
- *   tracks the schema without a second mapping layer to keep in sync.
+ * - Rows are exported verbatim from the database (snake_case keys), so the
+ *   format tracks the schema without a second mapping layer to keep in sync.
+ *   The archive is backend-independent, which makes it the supported
+ *   SQLite -> Postgres migration path (issue #73, deploy/RUNBOOK.md).
  * - Inserts intersect the archive's columns with the live table columns
- *   (`PRAGMA table_info`), so an archive taken before/after an additive
+ *   (`db.tableColumns`), so an archive taken before/after an additive
  *   `ensureColumn` migration still imports: missing columns take their SQL
  *   defaults, unknown columns are dropped.
  * - Import remaps every id (campaign, character, map, image layer, token,
@@ -21,7 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-import type { DB } from '../db/index.js';
+import type { DB } from '../db/driver.js';
 
 export const EXPORT_FORMAT_VERSION = 1;
 
@@ -66,10 +68,11 @@ function inClause(n: number): string {
   return Array(n).fill('?').join(',');
 }
 
-function childRows(db: DB, table: string, column: string, parents: string[]): Row[] {
+function childRows(db: DB, table: string, column: string, parents: string[], order = ''): Row[] {
   if (!parents.length) return [];
+  const by = order ? ` ORDER BY ${order}` : '';
   return db
-    .prepare(`SELECT * FROM ${table} WHERE ${column} IN (${inClause(parents.length)})`)
+    .prepare(`SELECT * FROM ${table} WHERE ${column} IN (${inClause(parents.length)})${by}`)
     .all(...parents) as Row[];
 }
 
@@ -88,11 +91,16 @@ function collectExport(db: DB, campaignId: string): Omit<CampaignExport, 'images
   const characters = db
     .prepare('SELECT * FROM character WHERE campaign_id = ?')
     .all(campaignId) as Row[];
+  // `maps` and `contents` feed the `IN (...)` lists of the queries below, so
+  // both are ordered deterministically: an unordered SELECT may come back in a
+  // different order on a second call, which would change those queries'
+  // parameters — and on a driver that caches reads by (sql, params), a warmed
+  // cache would then miss (see `withReadCache` in db/driver.ts).
   const maps = db
-    .prepare('SELECT * FROM map WHERE campaign_id = ? ORDER BY sort_order')
+    .prepare('SELECT * FROM map WHERE campaign_id = ? ORDER BY sort_order, id')
     .all(campaignId) as Row[];
   const mapIds = maps.map((m) => m.id as string);
-  const contents = childRows(db, 'content', 'map_id', mapIds);
+  const contents = childRows(db, 'content', 'map_id', mapIds, 'id');
   const contentIds = contents.map((c) => c.id as string);
 
   return {
@@ -164,6 +172,23 @@ export function* exportCampaignChunks(
   yield ']}';
 }
 
+/**
+ * Issue every query `exportCampaignChunks` will issue, without touching the
+ * filesystem or building the archive. On a driver whose reads are async this is
+ * what fills the read cache so the generator above can then run synchronously;
+ * on SQLite nobody calls it. See `withReadCache` in `db/driver.ts`.
+ */
+export function exportReadPlan(db: DB, campaignId: string): void {
+  const base = collectExport(db, campaignId);
+  if (!base) return;
+  childRows(
+    db,
+    'image_layer',
+    'map_id',
+    base.maps.map((m) => m.id as string),
+  );
+}
+
 /** Convenience wrapper (tests, CLI): the whole export as one object. */
 export function exportCampaign(db: DB, campaignId: string, uploadsDir: string): CampaignExport {
   return JSON.parse([...exportCampaignChunks(db, campaignId, uploadsDir)].join('')) as CampaignExport;
@@ -209,27 +234,24 @@ export interface ImportResult {
   counts: Record<string, number>;
 }
 
-function tableColumns(db: DB, table: string): Set<string> {
-  return new Set(
-    (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name),
-  );
-}
-
 /**
  * Insert rows using the intersection of the archive's keys and the live table's
  * columns. Values outside SQLite's scalar domain are JSON-stringified so a
  * hand-edited archive can't crash the driver.
+ *
+ * `db.tableColumns` (not a `PRAGMA` query) so this works on every backend and
+ * stays safe to call inside the import transaction.
  */
 function insertRows(db: DB, table: string, rows: Row[]): number {
   if (!rows.length) return 0;
-  const cols = tableColumns(db, table);
+  const cols = db.tableColumns(table);
   const keys = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((k) => cols.has(k));
   if (!keys.length) return 0;
   const stmt = db.prepare(
     `INSERT INTO ${table} (${keys.join(',')}) VALUES (${inClause(keys.length)})`,
   );
   for (const row of rows) {
-    stmt.run(keys.map((k) => toSqlValue(row[k])));
+    stmt.run(...keys.map((k) => toSqlValue(row[k])));
   }
   return rows.length;
 }

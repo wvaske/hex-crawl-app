@@ -3,22 +3,45 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import { ClientCommandSchema, seededRng } from '@hexcrawl/shared';
 import { HOST, PORT } from './config.js';
-import { getDb } from './db/index.js';
+import { openDatabase } from './db/index.js';
 import { Store } from './state/store.js';
 import { Hub, type Conn } from './ws/hub.js';
 import { dispatchCommand } from './ws/handlers.js';
 import { createApp } from './http/app.js';
 import { seatCookieName } from './http/app.js';
 
-const db = getDb();
-const store = new Store(db);
+// Boot is the one asynchronous phase: an alternate backend (DATABASE_URL) has
+// to connect and migrate, and `Store.create` warms every campaign into memory
+// before the first request, because everything after this point reads from
+// memory synchronously. See db/driver.ts.
+const db = await openDatabase();
+const store = await Store.create(db);
 const hub = new Hub();
 const rng = seededRng(Date.now() ^ (Math.random() * 0xffffffff));
 const app = createApp(store, hub);
 
 const server = serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
-  console.log(`HexCrawl server listening on http://${info.address}:${info.port}`);
+  console.log(
+    `HexCrawl server listening on http://${info.address}:${info.port} (storage: ${db.dialect})`,
+  );
 });
+
+/**
+ * Postgres writes are queued, so a hard exit can drop the last few. Flush them
+ * (and close the connection) before going away. No-op on SQLite.
+ */
+let shuttingDown = false;
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    server.close();
+    void db
+      .close()
+      .catch((err) => console.error('[db] shutdown flush failed:', err))
+      .finally(() => process.exit(0));
+  });
+}
 
 const wss = new WebSocketServer({ noServer: true });
 

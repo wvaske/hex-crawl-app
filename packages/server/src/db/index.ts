@@ -1,33 +1,60 @@
-import Database from 'better-sqlite3';
 import fs from 'node:fs';
-import path from 'node:path';
-import { DATA_DIR, DB_PATH, UPLOADS_DIR } from '../config.js';
+import { DATA_DIR, DATABASE_URL, DB_PATH, UPLOADS_DIR } from '../config.js';
+import type { DB } from './driver.js';
+import { openSqlite } from './sqlite.js';
+import { PostgresDb, pgConnector } from './postgres.js';
+import { POSTGRES_SCHEMA, addColumnSql } from './schema.pg.js';
 
-export type DB = Database.Database;
+export type { DB } from './driver.js';
 
 let db: DB | null = null;
 
+/**
+ * The embedded SQLite database under DATA_DIR — the default and the quickstart
+ * path. Synchronous, so it can be called from anywhere.
+ */
 export function getDb(): DB {
   if (db) return db;
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  db = openSqlite(DB_PATH, { wal: true });
   migrate(db);
   return db;
 }
 
+/**
+ * Open whichever backend this instance is configured for: Postgres when
+ * `DATABASE_URL` is set, otherwise the embedded SQLite file. Async because the
+ * Postgres driver has to connect and migrate before anything can read.
+ */
+export async function openDatabase(): Promise<DB> {
+  if (!DATABASE_URL) return getDb();
+  // Uploaded images still live on disk; only the rows move to Postgres.
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  const pg = new PostgresDb(pgConnector(DATABASE_URL));
+  // Existing columns first, so `ensureColumn` knows what it has to add; then
+  // the queued DDL + ALTERs, then a refresh so `tableColumns` is accurate for
+  // the portability importer.
+  await pg.refreshColumns();
+  migrate(pg);
+  await pg.flush();
+  await pg.refreshColumns();
+  db = pg;
+  return pg;
+}
+
 /** For tests: an isolated in-memory database. */
 export function createTestDb(): DB {
-  const mem = new Database(':memory:');
-  mem.pragma('foreign_keys = ON');
+  const mem = openSqlite(':memory:');
   migrate(mem);
   return mem;
 }
 
-function migrate(d: DB): void {
-  d.exec(`
+export function migrate(d: DB): void {
+  d.exec(
+    d.dialect === 'postgres'
+      ? POSTGRES_SCHEMA
+      : `
     CREATE TABLE IF NOT EXISTS campaign (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -218,7 +245,8 @@ function migrate(d: DB): void {
     );
     CREATE INDEX IF NOT EXISTS trail_discovery_campaign ON trail_discovery(campaign_id);
     CREATE UNIQUE INDEX IF NOT EXISTS trail_discovery_unique ON trail_discovery(trail_id, cell_index, character_id);
-  `);
+  `,
+  );
   // Additive migrations for columns introduced after first release.
   ensureColumn(d, 'content', 'show_label', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'content', 'scale_visibility', 'INTEGER NOT NULL DEFAULT 1');
@@ -252,9 +280,13 @@ function migrate(d: DB): void {
   ensureColumn(d, 'content', 'area', "TEXT NOT NULL DEFAULT '[]'");
 }
 
+/**
+ * Add `column` if the table does not have it yet. `decl` is written in SQLite
+ * types and translated per dialect by `columnDecl` — one declaration list, both
+ * backends, so a new column can never land on only one of them.
+ */
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {
-  const cols = d.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === column)) {
-    d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  if (!d.tableColumns(table).has(column)) {
+    d.exec(addColumnSql(table, column, decl, d.dialect));
   }
 }
