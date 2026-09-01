@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { createCampaign } from '../api.js';
 import { Button, Field, Input } from '../ui/kit.js';
@@ -7,7 +7,9 @@ export function Landing() {
   const [name, setName] = useState('');
   const [dmName, setDmName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   const submit = async (e: React.FormEvent) => {
@@ -21,6 +23,31 @@ export function Landing() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create campaign');
       setBusy(false);
+    }
+  };
+
+  /** Restore a `hexcrawl-*.json` export as a brand-new campaign. */
+  const restore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setRestoring(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('dmName', dmName.trim() || 'DM');
+      const res = await fetch('/api/campaigns/import', { method: 'POST', body: form });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        campaignId?: string;
+        dmKey?: string;
+      };
+      if (!res.ok || !body.campaignId) throw new Error(body.error ?? `Restore failed (${res.status})`);
+      navigate(`/c/${body.campaignId}?key=${body.dmKey}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restore backup');
+      setRestoring(false);
     }
   };
 
@@ -57,12 +84,37 @@ export function Landing() {
             />
           </Field>
           {error && <p className="text-sm text-ember-500">{error}</p>}
-          <Button type="submit" variant="primary" className="w-full" disabled={busy || !name.trim()}>
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full"
+            disabled={busy || restoring || !name.trim()}
+          >
             {busy ? 'Creating…' : 'Create campaign'}
           </Button>
           <p className="text-xs text-ink-400 text-center">
             You'll get a DM link and a player invite link. No accounts needed.
           </p>
+          <div className="pt-3 border-t border-ink-700 space-y-2">
+            <input
+              ref={fileInput}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={restore}
+            />
+            <Button
+              type="button"
+              className="w-full"
+              disabled={busy || restoring}
+              onClick={() => fileInput.current?.click()}
+            >
+              {restoring ? 'Restoring…' : 'Restore from backup'}
+            </Button>
+            <p className="text-xs text-ink-400 text-center">
+              Loads a <code>hexcrawl-*.json</code> export as a new campaign with new invite links.
+            </p>
+          </div>
         </form>
       </div>
     </div>
