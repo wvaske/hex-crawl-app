@@ -164,6 +164,20 @@ export const SeatPublicSchema = z.object({
 });
 export type SeatPublic = z.infer<typeof SeatPublicSchema>;
 
+/**
+ * Player-editable free-form character info. Kept as plain strings — the
+ * `notes` field is the storage shape the future wiki-notes sync (issue #64)
+ * will read from, so it stays a simple string rather than rich content.
+ */
+export const CharacterExtraSchema = z.object({
+  bio: z.string().max(5000).default(''),
+  appearance: z.string().max(5000).default(''),
+  goals: z.string().max(5000).default(''),
+  inventory: z.string().max(5000).default(''),
+  notes: z.string().max(5000).default(''),
+});
+export type CharacterExtra = z.infer<typeof CharacterExtraSchema>;
+
 export const CharacterSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(60),
@@ -173,6 +187,8 @@ export const CharacterSchema = z.object({
   skills: SkillsSchema,
   /** D&D Beyond character id, for one-click skill sync (public sheets only). */
   ddbId: z.string().nullable().default(null),
+  /** Player-editable sheet extras: bio, appearance, goals, inventory, notes. */
+  extra: CharacterExtraSchema.default({ bio: '', appearance: '', goals: '', inventory: '', notes: '' }),
 });
 export type Character = z.infer<typeof CharacterSchema>;
 

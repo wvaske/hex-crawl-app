@@ -51,6 +51,7 @@ const scout: Character = {
   speed: 30,
   skills: { perception: 4, survival: 2 },
   ddbId: null,
+  extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' },
 };
 
 describe('gates', () => {
