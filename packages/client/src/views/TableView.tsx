@@ -14,6 +14,7 @@ import { SelectionBar } from '../components/SelectionBar.js';
 import { PinActions } from '../components/PinActions.js';
 import { LocationDialog } from '../components/LocationDialog.js';
 import { MapManagerDialog } from '../components/MapManagerDialog.js';
+import { RegionManagerDialog } from '../components/RegionManagerDialog.js';
 
 export function TableView({ campaignId }: { campaignId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -24,6 +25,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
   const contentDialogHex = useUi((s) => s.contentDialogHex);
   const locationDialogContentId = useUi((s) => s.locationDialogContentId);
   const mapManagerOpen = useUi((s) => s.mapManagerOpen);
+  const regionManagerOpen = useUi((s) => s.regionManagerOpen);
 
   useEffect(() => {
     connectWs(campaignId);
@@ -33,6 +35,21 @@ export function TableView({ campaignId }: { campaignId: string }) {
   // DM tool keyboard shortcuts + hold-space to pan.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // The region manager (issue #113) answers Escape even from inside its
+      // own inputs: a proposal bar cancels back to the dialog, and an open
+      // dialog closes. Both come before the form-field guard below.
+      if (e.key === 'Escape') {
+        const state = useUi.getState();
+        if (state.areaProposal) {
+          state.set('areaProposal', null);
+          state.set('areaHighlight', null);
+          return;
+        }
+        if (state.regionManagerOpen) {
+          state.set('regionManagerOpen', false);
+          return;
+        }
+      }
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
         return;
@@ -144,6 +161,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
       </div>
       {contentDialogHex && <ContentDialog />}
       {locationDialogContentId && <LocationDialog campaignId={campaignId} />}
+      {regionManagerOpen && role === 'dm' && <RegionManagerDialog />}
       {mapManagerOpen && role === 'dm' && (
         <MapManagerDialog
           campaignId={campaignId}

@@ -65,8 +65,21 @@ interface UiStore {
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
   /** Trail highlight: the full path (DM) or discovered cells (player) of a clicked trail. */
   trailHighlight: { trailId: string; cells: HexCoord[] } | null;
-  /** Region footprint highlight: the hexes of a clicked multi-hex content (issue #69). */
-  areaHighlight: { contentId: string; cells: HexCoord[] } | null;
+  /**
+   * Region footprint highlight: the hexes of a clicked multi-hex content
+   * (issue #69). `proposal` marks an auto-detect recommendation that has not
+   * been applied yet (issue #113) — the engine tints it differently so a
+   * suggestion never looks like the stored footprint.
+   */
+  areaHighlight: { contentId: string; cells: HexCoord[]; proposal?: boolean } | null;
+  /**
+   * Auto-detect result awaiting Accept/Cancel (issue #113). Set alongside a
+   * `proposal` highlight; while it's up the region manager collapses to a
+   * floating bar so the DM can see the map underneath.
+   */
+  areaProposal: { contentId: string; cells: HexCoord[] } | null;
+  /** DM region manager dialog (opened from the Region tool panel). */
+  regionManagerOpen: boolean;
   /**
    * DM "paint area" mode (armed from the content dialog): while set, dragging
    * the map brushes hexes into (or out of) `cells` instead of running the
@@ -155,6 +168,8 @@ export const useUi = create<UiStore>((set) => ({
   senseHighlight: null,
   trailHighlight: null,
   areaHighlight: null,
+  areaProposal: null,
+  regionManagerOpen: false,
   areaPaint: null,
   regionTargetId: null,
   regionErase: false,

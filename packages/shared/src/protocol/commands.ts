@@ -468,6 +468,21 @@ export const ContentAreaCommand = z
     message: 'content.area needs add or remove',
   });
 
+/**
+ * DM: paint one terrain across a region's whole footprint (issue #113).
+ * `skipOtherRegions` (default true, server-side — a zod default here would
+ * make the field required in `CommandInput` at every call site) leaves the
+ * hexes that also belong to ANOTHER region's footprint alone; anchor-only
+ * pins are not regions and never block. `terrain: null` erases.
+ */
+export const ContentApplyTerrainCommand = z.object({
+  ...base,
+  kind: z.literal('content.applyTerrain'),
+  contentId: z.string(),
+  terrain: TerrainIdSchema.nullable(),
+  skipOtherRegions: z.boolean().optional(),
+});
+
 /** Any seat: view a different map on this connection (handled per-connection). */
 export const ViewMapCommand = z.object({
   ...base,
@@ -687,6 +702,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   ContentSetQuestCommand,
   ContentMoveCommand,
   ContentAreaCommand,
+  ContentApplyTerrainCommand,
   ViewMapCommand,
   TrailUpsertCommand,
   TrailDeleteCommand,

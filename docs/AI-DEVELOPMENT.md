@@ -152,6 +152,27 @@ player-facing data).
   standing party opens its entering gate), and merges consecutive deltas on
   one content within 3s into a single undo entry — the same trick
   `recordCellUndo` plays for terrain, so one drag is one undo.
+- **Region auto-detect is a proposal, not a write** (#113): the region manager
+  (`components/RegionManagerDialog.tsx`, opened from the Region tool panel)
+  runs detection client-side and parks the result in `ui.areaProposal` +
+  an `areaHighlight` carrying `proposal: true` (the engine tints those amber
+  and `syncRegionHighlight` refuses to touch the highlight while a proposal
+  stands). Accept sends the usual `content.area` delta — nothing new server
+  side. The traversal itself is `shared/rules/flood.ts` (`floodFill` with an
+  `accept` predicate, unit-tested); only pixel sampling lives in the client
+  (`engine/regionDetect.ts`), because there is no client test runner. Colour
+  mode reads the BOTTOM-most visible non-`dmOnly` image layer, samples a
+  5-point kernel per hex against a FIXED seed colour (a running mean drifts
+  across gradients) with weighted-RGB (2/4/3) distance on a 0–441 scale, and
+  is bounded by both a cell cap and a 60-hex radius. Its transform is the
+  sprite's: `image = (world − layer.xy) / layer.scale` — get that backwards
+  and the proposal lands on the wrong part of the map.
+- **`content.applyTerrain`** (#113) paints one terrain over a whole footprint
+  and, by default, skips hexes that any OTHER content's non-empty area also
+  covers — anchor-only pins never block, so a mill inside a wood gets painted
+  with the wood. It reuses `recordCellUndo('terrain', …)`, so a fill merges
+  with neighbouring brush strokes into one undo, and reports painted/skipped
+  counts as a DM-only `note` log entry rather than a command reply.
 - **Seat cookies are per-hostname.** To run a DM and a player session against
   one dev server, open one on `localhost` and one on `127.0.0.1` — separate
   cookie jars.
