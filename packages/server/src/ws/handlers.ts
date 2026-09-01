@@ -999,6 +999,18 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       }
     }
   }) as Handler,
+
+  // -- sessions (issue #78) ---------------------------------------------------
+  'session.mark': ((cmd: Extract<ClientCommand, { kind: 'session.mark' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const atMinutes = ctx.runtime.campaign.time.minutes;
+    const label = cmd.action === 'start' ? 'Session started' : 'Session ended';
+    const entry = ctx.runtime.appendLog('session', `${label} — ${formatClock(atMinutes)}`, 'all', {
+      action: cmd.action,
+      atMinutes,
+    });
+    notifyLog(ctx, entry);
+  }) as Handler,
 };
 
 /**

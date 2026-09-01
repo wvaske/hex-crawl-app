@@ -560,6 +560,13 @@ export const NarrateCommand = z.object({
   seatIds: z.array(z.string()),
 });
 
+/** DM: mark a session boundary (issue #78) — drives recap grouping. */
+export const SessionMarkCommand = z.object({
+  ...base,
+  kind: z.literal('session.mark'),
+  action: z.union([z.literal('start'), z.literal('end')]),
+});
+
 // ---------------------------------------------------------------------------
 
 export const ClientCommandSchema = z.discriminatedUnion('kind', [
@@ -610,6 +617,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   TimeConfigCommand,
   UndoCommand,
   NarrateCommand,
+  SessionMarkCommand,
 ]);
 
 export type ClientCommand = z.infer<typeof ClientCommandSchema>;
