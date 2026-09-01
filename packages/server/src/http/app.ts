@@ -29,6 +29,7 @@ import {
   MAX_IMPORT_BYTES,
   exportCampaignChunks,
   exportFileName,
+  exportReadPlan,
   importCampaign,
 } from './portability.js';
 import { fetchWikiPage, isWikiError, wikiApiEndpoint } from './wiki.js';
@@ -179,9 +180,21 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     c.header('Content-Disposition', `attachment; filename="${exportFileName(runtime.id)}"`);
     c.header('Cache-Control', 'no-store');
     return stream(c, async (s) => {
-      for (const chunk of exportCampaignChunks(store.db, runtime.id, uploadsDir)) {
-        await s.write(chunk);
-      }
+      // The export generator reads rows straight from the database (that is the
+      // point — the archive is the schema). On a driver with async reads the
+      // rows have to be pulled into the read cache first; `withReadCache` keeps
+      // that cache in scope across the writes below. SQLite streams directly.
+      const withReadCache = store.db.withReadCache?.bind(store.db);
+      const write = async (): Promise<void> => {
+        for (const chunk of exportCampaignChunks(store.db, runtime.id, uploadsDir)) {
+          await s.write(chunk);
+        }
+      };
+      if (!withReadCache) return write();
+      await withReadCache(async (prime) => {
+        await prime(() => exportReadPlan(store.db, runtime.id));
+        await write();
+      });
     });
   });
 
@@ -231,8 +244,11 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : 'Import failed' }, 400);
       }
+      // The importer writes rows behind the runtime's back, so the campaign has
+      // to be read back in. `loadCampaign` awaits that read (and, on Postgres,
+      // the queued inserts) instead of assuming it can happen synchronously.
       store.forget(result.campaignId);
-      const runtime = store.getCampaign(result.campaignId);
+      const runtime = await store.loadCampaign(result.campaignId);
       if (!runtime) return c.json({ error: 'Import failed to load' }, 500);
       const dmSeat = runtime.createSeat('dm', dmName);
       setSeatCookie(c as never, runtime, dmSeat);
@@ -646,7 +662,14 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     return c.json({ deleted: true });
   });
 
-  app.get('/api/health', (c) => c.json({ ok: true }));
+  /**
+   * Liveness. `db.failedWrites` is the one number worth alerting on: a queued
+   * write that never landed means memory and the database have diverged for
+   * that campaign (see `db/postgres.ts`). It is always 0 on SQLite, where a
+   * write is durable before `run` returns. The status stays 200 either way, so
+   * the container healthcheck keeps its meaning.
+   */
+  app.get('/api/health', (c) => c.json({ ok: true, db: store.db.health() }));
 
   // Unmatched API paths must 404 as JSON. Without this the SPA fallback below
   // answers any unknown GET with index.html — a typo'd or wrong-method API call

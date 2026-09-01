@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/server.mjs --external:better-sqlite3 --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\""
+    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/server.mjs --external:better-sqlite3 --external:pg-native --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\""
   },
   "dependencies": {
     "@hexcrawl/shared": "workspace:*",
@@ -17,6 +17,7 @@
     "better-sqlite3": "^12.4.0",
     "hono": "^4.11.0",
     "nanoid": "^5.0.9",
+    "pg": "^8.23.0",
     "ws": "^8.18.0",
     "zod": "^4.0.0"
   },
@@ -24,9 +25,9 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.24.0",
     "tsx": "^4.19.0",
     "typescript": "~5.8.0",
-    "vitest": "^4.0.18",
-    "esbuild": "^0.24.0"
+    "vitest": "^4.0.18"
   }
 }

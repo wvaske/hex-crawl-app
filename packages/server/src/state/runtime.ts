@@ -38,7 +38,7 @@ import {
   hexKey,
   parseHexKey,
 } from '@hexcrawl/shared';
-import type { DB } from '../db/index.js';
+import type { DB } from '../db/driver.js';
 
 export interface SeatRecord {
   id: string;
@@ -57,6 +57,12 @@ export type CampaignSettingsPatch = Partial<Omit<CampaignSettings, 'mapDefaults'
 };
 
 export interface MapRuntime {
+  /**
+   * Image layers, keyed by id. Held in memory like every other map layer
+   * (issue #73): `mapState()` runs on every snapshot, and a DB read there is
+   * the one hot-path query an async backend could not serve synchronously.
+   */
+  imageLayers: Map<string, ImageLayer>;
   hexes: Map<string, TerrainId>;
   fog: Map<string, FogState>;
   tokens: Map<string, Token>;
@@ -93,9 +99,11 @@ export interface UndoEntry {
 }
 
 /**
- * All state for one campaign, held in memory and written through to SQLite
- * on every mutation. better-sqlite3 is synchronous, so memory and disk can
- * never drift.
+ * All state for one campaign, held in memory and written through to the
+ * database on every mutation. The write-through is synchronous from this
+ * class's point of view whichever backend is configured (`db/driver.ts`):
+ * SQLite writes are durable when `run` returns, Postgres queues them in order.
+ * Every read after boot comes from memory — the runtime IS the cache.
  */
 export class CampaignRuntime {
   readonly id: string;
@@ -135,6 +143,12 @@ export class CampaignRuntime {
       /** Added after first release; absent on rows selected before the column. */
       time?: string | null;
     },
+    /**
+     * Set for a campaign this process just INSERTed: there is nothing on disk
+     * to load yet, and skipping `load()` keeps `Store.createCampaign`
+     * synchronous on backends whose reads are async (`db/driver.ts`).
+     */
+    opts: { fresh?: boolean } = {},
   ) {
     this.id = row.id;
     this.dmSecret = row.dm_secret;
@@ -146,7 +160,7 @@ export class CampaignRuntime {
       settings: CampaignSettingsSchema.parse(safeJson(row.settings)),
       time: CampaignTimeSchema.parse(safeJson(row.time)),
     };
-    this.load();
+    if (!opts.fresh) this.load();
     if (this.campaign.settings.pausePlayerMapSync) this.capturePlayerFreeze();
   }
 
@@ -267,6 +281,7 @@ export class CampaignRuntime {
   private loadMapRuntime(mapId: string): MapRuntime {
     const d = this.db;
     const rt: MapRuntime = {
+      imageLayers: new Map(),
       hexes: new Map(),
       fog: new Map(),
       tokens: new Map(),
@@ -276,6 +291,11 @@ export class CampaignRuntime {
       trails: new Map(),
       visits: new Map(),
     };
+    for (const l of d
+      .prepare('SELECT * FROM image_layer WHERE map_id = ? ORDER BY z')
+      .all(mapId) as Array<Record<string, unknown>>) {
+      rt.imageLayers.set(l.id as string, imageLayerFromRow(mapId, l));
+    }
     for (const v of d.prepare('SELECT * FROM hex_visit WHERE map_id = ?').all(mapId) as Array<
       Record<string, unknown>
     >) {
@@ -348,7 +368,9 @@ export class CampaignRuntime {
       Record<string, unknown>
     >) {
       const clues = (
-        d.prepare('SELECT * FROM clue WHERE content_id = ? ORDER BY sort_order').all(c.id) as Array<
+        d.prepare('SELECT * FROM clue WHERE content_id = ? ORDER BY sort_order').all(
+          c.id as string,
+        ) as Array<
           Record<string, unknown>
         >
       ).map((cl) => ({
@@ -412,24 +434,11 @@ export class CampaignRuntime {
     };
   }
 
+  /** A map's image layers, bottom to top (was `ORDER BY z` in SQL). */
   imageLayersFor(mapId: string): ImageLayer[] {
-    return (
-      this.db.prepare('SELECT * FROM image_layer WHERE map_id = ? ORDER BY z').all(mapId) as Array<
-        Record<string, unknown>
-      >
-    ).map((l) => ({
-      id: l.id as string,
-      mapId,
-      path: l.path as string,
-      name: l.name as string,
-      x: l.x as number,
-      y: l.y as number,
-      scale: l.scale as number,
-      opacity: l.opacity as number,
-      z: l.z as number,
-      dmOnly: Boolean(l.dm_only),
-      visible: Boolean(l.visible),
-    }));
+    const rt = this.mapStates.get(mapId);
+    if (!rt) return [];
+    return [...rt.imageLayers.values()].sort((a, b) => a.z - b.z);
   }
 
   /**
@@ -706,6 +715,7 @@ export class CampaignRuntime {
   createMap(info: MapInfo): void {
     this.maps.set(info.id, info);
     this.mapStates.set(info.id, {
+      imageLayers: new Map(),
       hexes: new Map(),
       fog: new Map(),
       tokens: new Map(),
@@ -856,6 +866,7 @@ export class CampaignRuntime {
   // -- image layers ----------------------------------------------------------
 
   addImageLayer(layer: ImageLayer): void {
+    this.requireMap(layer.mapId).imageLayers.set(layer.id, layer);
     this.db
       .prepare(
         'INSERT INTO image_layer (id, map_id, path, name, x, y, scale, opacity, z, dm_only, visible) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
@@ -876,57 +887,37 @@ export class CampaignRuntime {
   }
 
   updateImageLayer(layerId: string, patch: Partial<ImageLayer>): ImageLayer {
-    const row = this.db.prepare('SELECT * FROM image_layer WHERE id = ?').get(layerId) as
-      | Record<string, unknown>
-      | undefined;
-    if (!row) throw new Error('Image layer not found');
-    const current: ImageLayer = {
-      id: row.id as string,
-      mapId: row.map_id as string,
-      path: row.path as string,
-      name: row.name as string,
-      x: row.x as number,
-      y: row.y as number,
-      scale: row.scale as number,
-      opacity: row.opacity as number,
-      z: row.z as number,
-      dmOnly: Boolean(row.dm_only),
-      visible: Boolean(row.visible),
-    };
+    const current = this.findImageLayer(layerId);
+    if (!current) throw new Error('Image layer not found');
     const updated = { ...current, ...patch, id: current.id, mapId: current.mapId, path: current.path };
+    this.requireMap(current.mapId).imageLayers.set(layerId, updated);
     this.db
       .prepare('UPDATE image_layer SET name=?, x=?, y=?, scale=?, opacity=?, z=?, dm_only=?, visible=? WHERE id=?')
       .run(updated.name, updated.x, updated.y, updated.scale, updated.opacity, updated.z, updated.dmOnly ? 1 : 0, updated.visible ? 1 : 0, layerId)
     return updated;
   }
 
+  /**
+   * Returns the removed layer's upload path, so the caller can unlink it.
+   *
+   * Scoped to this campaign's maps: the lookup used to be a bare
+   * `SELECT ... WHERE id = ?` and the DELETE ran unconditionally, so a DM
+   * could name another campaign's layer id and drop its row.
+   */
   deleteImageLayer(layerId: string): string | null {
-    const row = this.db.prepare('SELECT path FROM image_layer WHERE id = ?').get(layerId) as
-      | { path: string }
-      | undefined;
+    const current = this.findImageLayer(layerId);
+    if (!current) return null;
+    this.mapStates.get(current.mapId)?.imageLayers.delete(layerId);
     this.db.prepare('DELETE FROM image_layer WHERE id = ?').run(layerId);
-    return row?.path ?? null;
+    return current.path;
   }
 
   findImageLayer(layerId: string): ImageLayer | null {
-    const row = this.db.prepare('SELECT * FROM image_layer WHERE id = ?').get(layerId) as
-      | Record<string, unknown>
-      | undefined;
-    if (!row) return null;
-    if (!this.maps.has(row.map_id as string)) return null;
-    return {
-      id: row.id as string,
-      mapId: row.map_id as string,
-      path: row.path as string,
-      name: row.name as string,
-      x: row.x as number,
-      y: row.y as number,
-      scale: row.scale as number,
-      opacity: row.opacity as number,
-      z: row.z as number,
-      dmOnly: Boolean(row.dm_only),
-      visible: Boolean(row.visible),
-    };
+    for (const rt of this.mapStates.values()) {
+      const layer = rt.imageLayers.get(layerId);
+      if (layer) return layer;
+    }
+    return null;
   }
 
   // -- terrain & fog ---------------------------------------------------------
@@ -1348,6 +1339,22 @@ export class CampaignRuntime {
     if (!rt) throw new Error('Map not found');
     return rt;
   }
+}
+
+function imageLayerFromRow(mapId: string, row: Record<string, unknown>): ImageLayer {
+  return {
+    id: row.id as string,
+    mapId,
+    path: row.path as string,
+    name: row.name as string,
+    x: row.x as number,
+    y: row.y as number,
+    scale: row.scale as number,
+    opacity: row.opacity as number,
+    z: row.z as number,
+    dmOnly: Boolean(row.dm_only),
+    visible: Boolean(row.visible),
+  };
 }
 
 function safeJson(text: string | null | undefined, fallback: unknown = {}): unknown {
