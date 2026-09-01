@@ -9,6 +9,7 @@ import {
   TravelPaceSchema,
   EncounterTableSchema,
   FogStateSchema,
+  HexRefSchema,
   INHERITABLE_MAP_FIELDS,
   MarkerSchema,
   TerrainIdSchema,
@@ -448,6 +449,25 @@ export const ContentMoveCommand = z.object({
   r: z.number().int(),
 });
 
+/**
+ * DM: grow or shrink a region footprint by whole brush strokes (issue #108).
+ * A delta, not a replacement: painting sends only the hexes the stroke
+ * touched, so a 200-hex forest never resends its whole payload — and two
+ * strokes in flight can't clobber each other. The anchor hex is an implicit
+ * member and is silently ignored in both lists.
+ */
+export const ContentAreaCommand = z
+  .object({
+    ...base,
+    kind: z.literal('content.area'),
+    contentId: z.string(),
+    add: z.array(HexRefSchema).max(5000).optional(),
+    remove: z.array(HexRefSchema).max(5000).optional(),
+  })
+  .refine((c) => c.add !== undefined || c.remove !== undefined, {
+    message: 'content.area needs add or remove',
+  });
+
 /** Any seat: view a different map on this connection (handled per-connection). */
 export const ViewMapCommand = z.object({
   ...base,
@@ -647,6 +667,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   ContentSetEnabledCommand,
   ContentSetQuestCommand,
   ContentMoveCommand,
+  ContentAreaCommand,
   ViewMapCommand,
   TrailUpsertCommand,
   TrailDeleteCommand,

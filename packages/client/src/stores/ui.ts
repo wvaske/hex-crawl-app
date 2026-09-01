@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 import type { FogState, HexCoord, TerrainId } from '@hexcrawl/shared';
 
-export type Tool = 'select' | 'paint' | 'fog' | 'marker' | 'content' | 'trail' | 'measure';
+export type Tool =
+  | 'select'
+  | 'paint'
+  | 'fog'
+  | 'marker'
+  | 'content'
+  | 'trail'
+  | 'region'
+  | 'measure';
 
 /**
  * Side pop-out panels (issue #61). Three player-facing headings plus two
@@ -60,12 +68,20 @@ interface UiStore {
   /** Region footprint highlight: the hexes of a clicked multi-hex content (issue #69). */
   areaHighlight: { contentId: string; cells: HexCoord[] } | null;
   /**
-   * DM "paint area" mode (armed from the content dialog): while set, a map
-   * click toggles the hex in `cells` instead of running the active tool. The
-   * dialog owns the draft until it's saved, so this holds live cells, not an
-   * id — a brand-new content item has no id yet.
+   * DM "paint area" mode (armed from the content dialog): while set, dragging
+   * the map brushes hexes into (or out of) `cells` instead of running the
+   * active tool. The dialog owns the draft until it's saved, so this holds
+   * live cells, not an id — a brand-new content item has no id yet.
    */
   areaPaint: { cells: HexCoord[] } | null;
+  /**
+   * Region tool (issue #108): which existing content the brush paints into.
+   * Unlike `areaPaint`, strokes here go straight to the server as
+   * `content.area` deltas — no dialog, no save step.
+   */
+  regionTargetId: string | null;
+  /** Region brush polarity: true removes hexes from the footprint. */
+  regionErase: boolean;
   /** DM trail tool: cells of the trail being drawn, in click order. */
   trailDraft: HexCoord[];
   /** DM trail tool: id of the trail whose nodes are being edited (null = new). */
@@ -140,6 +156,8 @@ export const useUi = create<UiStore>((set) => ({
   trailHighlight: null,
   areaHighlight: null,
   areaPaint: null,
+  regionTargetId: null,
+  regionErase: false,
   trailDraft: [],
   editingTrailId: null,
   contentSelection: null,

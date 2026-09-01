@@ -138,6 +138,20 @@ player-facing data).
   `contentCoversHex`, `distanceToContent`) in shared `domain.ts` are the
   single source of area truth — never compare `c.q === hex.q` directly for
   content-on-hex checks.
+- **Region painting is a stroke, not a click** (#108): the engine's brush
+  machinery (`beginStroke`/`strokeApply`/`flushStroke`) has a third mode,
+  `region`, driven by the same `ui.brushRadius` as terrain. Two flavours:
+  with `ui.areaPaint` set (the content dialog's collapsed paint bar) the
+  stroke only edits that local draft — the dialog commits it with
+  `content.upsert` on save, because a brand-new item has no id yet; with the
+  Region tool (`ui.tool === 'region'` + `ui.regionTargetId`) each flush sends
+  a `content.area {contentId, add?, remove?}` delta, so a 200-hex forest never
+  resends its payload. `ui.regionErase` is the polarity, latched at stroke
+  start. The server merges by hex key, never stores the anchor (it's an
+  implicit member), re-runs `evaluateKnowledge` (a region grown over a
+  standing party opens its entering gate), and merges consecutive deltas on
+  one content within 3s into a single undo entry — the same trick
+  `recordCellUndo` plays for terrain, so one drag is one undo.
 - **Seat cookies are per-hostname.** To run a DM and a player session against
   one dev server, open one on `localhost` and one on `127.0.0.1` — separate
   cookie jars.

@@ -148,8 +148,21 @@ export class CanvasEngine {
   private resizeObserver: ResizeObserver | null = null;
   private unsubs: (() => void)[] = [];
 
-  private stroke: { mode: 'paint' | 'fog'; pending: Map<string, HexCoord>; timer: number } | null =
-    null;
+  /**
+   * A brush stroke in progress. Terrain and fog paint cells; `region` paints
+   * membership of a content footprint (issue #108) — either into the content
+   * dialog's local draft (`contentId: null`, committed on save) or straight to
+   * the server as `content.area` deltas.
+   */
+  private stroke: {
+    mode: 'paint' | 'fog' | 'region';
+    pending: Map<string, HexCoord>;
+    timer: number;
+    /** Region mode: the content being painted, or null for the dialog draft. */
+    contentId?: string | null;
+    /** Region mode: polarity, latched at stroke start so it can't flip mid-drag. */
+    erase?: boolean;
+  } | null = null;
   /**
    * A token grab in progress. It starts *armed* (`active: false`): the token
    * only follows the pointer once it has travelled past DRAG_THRESHOLD, so a
@@ -290,6 +303,13 @@ export class CanvasEngine {
         this.drawAreaHighlight();
         if ((u.areaPaint !== null) !== (prev.areaPaint !== null)) {
           this.viewport.cursor = u.areaPaint ? 'crosshair' : 'default';
+          this.drawHighlight(); // the brush ring follows the pointer in paint mode
+        }
+      }
+      if (u.tool !== prev.tool || u.regionTargetId !== prev.regionTargetId) {
+        this.syncRegionHighlight();
+        if ((u.tool === 'region') !== (prev.tool === 'region')) {
+          this.viewport.cursor = u.tool === 'region' ? 'crosshair' : 'default';
         }
       }
       if (u.selectedHex !== prev.selectedHex) {
@@ -404,6 +424,9 @@ export class CanvasEngine {
       this.lastTrails = ms.trails;
       this.lastTrailSigns = ms.trailSigns;
       this.drawPins();
+      // The brush target may have grown/shrunk (this snapshot, another DM, an
+      // undo) — refresh its preview unless a stroke is mid-flight.
+      if (useUi.getState().tool === 'region') this.syncRegionHighlight();
     }
 
     this.drawHighlight();
@@ -813,7 +836,9 @@ export class CanvasEngine {
     g.clear();
     if (!this.layout) return;
     const ui = useUi.getState();
-    const painting = ui.areaPaint !== null;
+    // "Painting" (a warmer wash) covers both authoring modes: the dialog's
+    // draft and the Region tool's live target.
+    const painting = ui.areaPaint !== null || (ui.tool === 'region' && this.role === 'dm');
     const cells = ui.areaPaint?.cells ?? ui.areaHighlight?.cells ?? [];
     if (cells.length === 0) return;
     const color = painting ? 0x6fae6a : 0x59a5c4;
@@ -828,6 +853,34 @@ export class CanvasEngine {
       g.poly(this.polyPoints(center, corners));
     }
     g.stroke({ width: 1.5 / this.viewport.scale.x, color, alpha: 0.6 });
+  }
+
+  /** The content item on this map with that id, if it's still there. */
+  private findContent(contentId: string): Content | ContentPlayerView | null {
+    return this.lastContents.find((c) => c.id === contentId) ?? null;
+  }
+
+  /**
+   * Point the footprint highlight at the region tool's target (issue #108):
+   * picking a tool or a target shows what the brush will paint into. A stroke
+   * in progress owns the highlight — a snapshot landing mid-drag must not
+   * yank the optimistic cells back.
+   */
+  private syncRegionHighlight(): void {
+    if (this.stroke?.mode === 'region') return;
+    const ui = useUi.getState();
+    if (ui.tool !== 'region' || this.role !== 'dm') {
+      // Leaving the tool takes its own preview with it; a highlight the DM
+      // opened from a panel (a different item) stays put.
+      if (ui.areaHighlight && ui.areaHighlight.contentId === ui.regionTargetId) {
+        ui.set('areaHighlight', null);
+        this.drawAreaHighlight();
+      }
+      return;
+    }
+    const target = ui.regionTargetId ? this.findContent(ui.regionTargetId) : null;
+    ui.set('areaHighlight', target ? { contentId: target.id, cells: contentCells(target) } : null);
+    this.drawAreaHighlight();
   }
 
   /** Keep the DM pin-action popup glued above the selected hex. */
@@ -862,7 +915,9 @@ export class CanvasEngine {
       g.stroke({ width: lineW * 1.5, color: 0xc9a24b, alpha: 1 });
     }
     if (ui.hoverHex) {
-      const isBrush = (ui.tool === 'paint' || ui.tool === 'fog') && this.role === 'dm';
+      const isBrush =
+        (ui.tool === 'paint' || ui.tool === 'fog' || ui.tool === 'region' || ui.areaPaint !== null) &&
+        this.role === 'dm';
       let centers: { x: number; y: number }[];
       if (lvl === 0) {
         const cells = isBrush ? hexRange(ui.hoverHex, ui.brushRadius) : [ui.hoverHex];
@@ -1562,13 +1617,11 @@ export class CanvasEngine {
         return;
       }
 
-      // Armed "paint area" mode: clicks toggle footprint membership until
-      // the dialog's Done (or Escape) ends it. Nothing is sent until save.
+      // Armed "paint area" mode: drag the brush over footprint membership
+      // until the dialog's Done (or Escape) ends it. Nothing is sent until
+      // save — the dialog owns this draft (a new item has no id yet).
       if (ui.areaPaint && isDm) {
-        const cells = ui.areaPaint.cells;
-        const idx = cells.findIndex((c) => c.q === hex.q && c.r === hex.r);
-        const next = idx >= 0 ? cells.filter((_, i) => i !== idx) : [...cells, hex];
-        useUi.getState().set('areaPaint', { cells: next });
+        this.beginStroke('region', hex, null);
         return;
       }
 
@@ -1668,6 +1721,15 @@ export class CanvasEngine {
           this.drawHighlight();
           break;
         }
+        case 'region': {
+          // Region brush (issue #108): drag over the map to grow (or erase)
+          // the chosen region's footprint. Without a target there's nothing
+          // to paint into — the toolbar panel says so.
+          if (!isDm || !ui.regionTargetId) return;
+          if (!this.findContent(ui.regionTargetId)) return;
+          this.beginStroke('region', hex, ui.regionTargetId);
+          break;
+        }
         case 'measure':
           if (ui.measureStart && hexDistance(ui.measureStart, hex) > 0) {
             useUi.getState().set('measureStart', null);
@@ -1740,9 +1802,21 @@ export class CanvasEngine {
     useUi.getState().set('contentSelection', ids.length ? ids : null);
   }
 
-  private beginStroke(mode: 'paint' | 'fog', hex: HexCoord): void {
+  private beginStroke(mode: 'paint' | 'fog', hex: HexCoord): void;
+  private beginStroke(mode: 'region', hex: HexCoord, contentId: string | null): void;
+  private beginStroke(
+    mode: 'paint' | 'fog' | 'region',
+    hex: HexCoord,
+    contentId: string | null = null,
+  ): void {
     this.viewport.plugins.pause('drag');
-    this.stroke = { mode, pending: new Map(), timer: 0 };
+    this.stroke = {
+      mode,
+      pending: new Map(),
+      timer: 0,
+      contentId,
+      erase: useUi.getState().regionErase,
+    };
     this.strokeApply(hex);
   }
 
@@ -1768,13 +1842,46 @@ export class CanvasEngine {
     const session = useSession.getState();
     if (this.stroke.mode === 'paint') {
       session.optimisticPaint(this.lastMap.id, fresh, ui.paintTerrain);
-    } else {
+    } else if (this.stroke.mode === 'fog') {
       session.optimisticFog(this.lastMap.id, fresh, ui.fogTarget);
+    } else {
+      this.regionStrokePreview(fresh);
     }
     const now = performance.now();
     if (now - this.stroke.timer > STROKE_FLUSH_MS) {
       this.flushStroke(false);
       this.stroke.timer = now;
+    }
+  }
+
+  /**
+   * Show a region stroke the moment the brush passes: the dialog's draft and
+   * the tool's footprint highlight are the same wash on screen, so both get
+   * the cells before any server round trip.
+   */
+  private regionStrokePreview(fresh: HexCoord[]): void {
+    const stroke = this.stroke;
+    if (!stroke) return;
+    const ui = useUi.getState();
+    const target = stroke.contentId ? this.findContent(stroke.contentId) : null;
+    const source = stroke.contentId ? ui.areaHighlight?.cells : ui.areaPaint?.cells;
+    const cells = new Map<string, HexCoord>();
+    for (const cell of source ?? []) cells.set(hexKey(cell.q, cell.r), cell);
+    // The anchor hex is a member no matter what the brush does to it.
+    const anchorKey = target ? hexKey(target.q, target.r) : null;
+    for (const cell of fresh) {
+      const key = hexKey(cell.q, cell.r);
+      if (stroke.erase) {
+        if (key !== anchorKey) cells.delete(key);
+      } else {
+        cells.set(key, cell);
+      }
+    }
+    const next = [...cells.values()];
+    if (stroke.contentId) {
+      ui.set('areaHighlight', { contentId: stroke.contentId, cells: next });
+    } else {
+      ui.set('areaPaint', { cells: next });
     }
   }
 
@@ -1785,8 +1892,16 @@ export class CanvasEngine {
       const ui = useUi.getState();
       if (this.stroke.mode === 'paint') {
         send({ kind: 'terrain.paint', mapId: this.lastMap.id, cells, terrain: ui.paintTerrain });
-      } else {
+      } else if (this.stroke.mode === 'fog') {
         send({ kind: 'fog.set', mapId: this.lastMap.id, cells, state: ui.fogTarget });
+      } else if (this.stroke.contentId) {
+        // The dialog's draft (contentId === null) is committed by its save;
+        // the region tool paints an existing item, one delta per flush.
+        send(
+          this.stroke.erase
+            ? { kind: 'content.area', contentId: this.stroke.contentId, remove: cells }
+            : { kind: 'content.area', contentId: this.stroke.contentId, add: cells },
+        );
       }
     }
     if (final) this.stroke = null;

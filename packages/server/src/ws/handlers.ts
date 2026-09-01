@@ -624,6 +624,77 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, found.mapId));
   }) as Handler,
 
+  /**
+   * Region brush strokes (issue #108): a delta on one content item's
+   * footprint. Add/remove merge into the stored area by hex key, the anchor
+   * is never stored (it's an implicit member, and removing it is a no-op),
+   * and growing a footprint re-runs the knowledge engine — a party standing
+   * where the region just spread has now "entered" it.
+   */
+  'content.area': ((cmd: Extract<ClientCommand, { kind: 'content.area' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    let found: Content | null = null;
+    for (const rt of ctx.runtime.mapStates.values()) {
+      const c = rt.contents.get(cmd.contentId);
+      if (c) { found = c; break; }
+    }
+    if (!found) throw new Error('Content not found');
+    const anchorKey = hexKey(found.q, found.r);
+    const cells = new Map<string, { q: number; r: number }>();
+    for (const cell of found.area) cells.set(hexKey(cell.q, cell.r), { q: cell.q, r: cell.r });
+    for (const cell of cmd.add ?? []) {
+      const key = hexKey(cell.q, cell.r);
+      if (key === anchorKey) continue; // the anchor is always a member
+      cells.set(key, { q: cell.q, r: cell.r });
+    }
+    for (const cell of cmd.remove ?? []) cells.delete(hexKey(cell.q, cell.r));
+    const area = [...cells.values()];
+    const priorArea = found.area;
+    if (area.length === priorArea.length && area.every((c, i) => {
+      const p = priorArea[i];
+      return p && p.q === c.q && p.r === c.r;
+    })) {
+      return; // stroke changed nothing (repainting hexes already in the area)
+    }
+    const mapId = found.mapId;
+    const title = found.title;
+    ctx.runtime.upsertContent({ ...found, area });
+    // One drag is one undo. A stroke flushes several times on its way across
+    // the map, so consecutive deltas on the same region within a short window
+    // merge — keeping the EARLIEST area, the one the drag started from.
+    const now = Date.now();
+    const top = ctx.runtime.undoStack[ctx.runtime.undoStack.length - 1];
+    if (
+      top &&
+      top.kind === 'content.area' &&
+      top.mapId === mapId &&
+      now - top.at < 3000 &&
+      top.restore?.has(cmd.contentId)
+    ) {
+      top.at = now;
+    } else {
+      const restore = new Map<string, unknown>([[cmd.contentId, priorArea]]);
+      ctx.runtime.pushUndo({
+        at: now,
+        kind: 'content.area',
+        mapId,
+        description: `restore the area of "${title}"`,
+        restore,
+        run: (runtime) => {
+          for (const [contentId, priorCells] of restore) {
+            const current = runtime.mapStates.get(mapId)?.contents.get(contentId);
+            if (current) {
+              runtime.upsertContent({ ...current, area: priorCells as { q: number; r: number }[] });
+            }
+          }
+        },
+      });
+    }
+    // A grown footprint can open entering-the-region gates for whoever is
+    // already standing there; a shrunk one costs nothing to re-evaluate.
+    deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, found.mapId));
+  }) as Handler,
+
   'view.map': ((_cmd: Extract<ClientCommand, { kind: 'view.map' }>, _ctx: Ctx) => {
     // Handled at the connection layer (per-connection state); never dispatched.
     throw new Error('view.map is connection-scoped');

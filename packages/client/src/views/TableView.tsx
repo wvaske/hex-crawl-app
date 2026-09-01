@@ -65,6 +65,9 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.set('trailHighlight', null);
         ui.set('trailDraft', []);
         ui.set('editingTrailId', null);
+        // The region brush's target owns the footprint preview cleared above;
+        // dropping both together keeps the tool and the map in step.
+        ui.set('regionTargetId', null);
         ui.set('contentSelection', null);
         return;
       }
@@ -74,7 +77,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         send({ kind: 'undo' });
         return;
       }
-      const tools = { v: 'select', b: 'paint', f: 'fog', m: 'marker', c: 'content', t: 'trail', r: 'measure' } as const;
+      const tools = { v: 'select', b: 'paint', f: 'fog', m: 'marker', c: 'content', t: 'trail', g: 'region', r: 'measure' } as const;
       const tool = tools[e.key.toLowerCase() as keyof typeof tools];
       if (tool && !e.metaKey && !e.ctrlKey && !e.altKey) ui.setTool(tool);
     };
