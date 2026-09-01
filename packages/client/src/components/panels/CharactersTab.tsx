@@ -68,6 +68,7 @@ export function CharactersTab() {
                     </span>
                     <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
                   </button>
+                  {canEdit && <RollSkillButton characterId={ch.id} skill="perception" />}
                   {canCommand && <SendTokenButton tokenId={token.id} name={ch.name} />}
                 </div>
                 {open && (
@@ -92,7 +93,7 @@ export function CharactersTab() {
                         Release character
                       </Button>
                     )}
-                    <CharacterEditor character={ch} readOnly={!canEdit} />
+                    <CharacterEditor character={ch} readOnly={!canEdit} canRoll={canEdit} />
                     {isDm && (
                       <Button
                         variant="danger"
@@ -116,6 +117,38 @@ export function CharactersTab() {
       </Section>
       {creating && <NewCharacterForm onDone={() => setCreating(false)} />}
     </div>
+  );
+}
+
+/**
+ * Fires a check.roll for one character/skill directly from wherever skills
+ * are listed. The server rejects rolls for characters a player doesn't own
+ * (it substitutes their own claimed character), so this is only rendered for
+ * the DM (any character) or a player's own claimed character. Results arrive
+ * as a 'check' log toast (see ws.ts) — no result UI needed here.
+ */
+function RollSkillButton({
+  characterId,
+  skill,
+  className,
+}: {
+  characterId: string;
+  skill: string;
+  className?: string;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={cx('!px-1.5 !py-0.5 shrink-0', className)}
+      title={`Roll ${skill}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        send({ kind: 'check.roll', skill, dc: null, characterIds: [characterId], mapId: null, hex: null });
+      }}
+    >
+      🎲
+    </Button>
   );
 }
 
@@ -227,7 +260,15 @@ function DdbSync({ character }: { character: Character }) {
   );
 }
 
-function CharacterEditor({ character, readOnly }: { character: Character; readOnly: boolean }) {
+function CharacterEditor({
+  character,
+  readOnly,
+  canRoll,
+}: {
+  character: Character;
+  readOnly: boolean;
+  canRoll: boolean;
+}) {
   const [customName, setCustomName] = useState('');
   const patch = (p: Partial<Character>) =>
     send({ kind: 'character.update', characterId: character.id, patch: p });
@@ -265,30 +306,33 @@ function CharacterEditor({ character, readOnly }: { character: Character; readOn
         </p>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
           {allSkills.map((skill) => (
-            <label key={skill} className="flex items-center justify-between gap-1 text-xs text-ink-200">
+            <div key={skill} className="flex items-center justify-between gap-1 text-xs text-ink-200">
               <span className="capitalize truncate">{skill}</span>
-              {readOnly ? (
-                <span className="font-mono text-ink-100">
-                  {(character.skills[skill] ?? 0) >= 0 ? '+' : ''}
-                  {character.skills[skill] ?? 0}
-                </span>
-              ) : (
-                <input
-                  type="number"
-                  min={-10}
-                  max={20}
-                  className="w-13 rounded bg-ink-900 border border-ink-600 px-1 py-0.5 text-xs text-right focus:outline-none focus:border-brass-500"
-                  key={`${skill}-${character.skills[skill] ?? 0}`}
-                  defaultValue={character.skills[skill] ?? 0}
-                  onBlur={(e) => {
-                    const v = Math.round(Number(e.target.value));
-                    if (Number.isFinite(v) && v !== (character.skills[skill] ?? 0)) {
-                      patch({ skills: { ...character.skills, [skill]: Math.min(20, Math.max(-10, v)) } });
-                    }
-                  }}
-                />
-              )}
-            </label>
+              <span className="flex items-center gap-1 shrink-0">
+                {readOnly ? (
+                  <span className="font-mono text-ink-100">
+                    {(character.skills[skill] ?? 0) >= 0 ? '+' : ''}
+                    {character.skills[skill] ?? 0}
+                  </span>
+                ) : (
+                  <input
+                    type="number"
+                    min={-10}
+                    max={20}
+                    className="w-13 rounded bg-ink-900 border border-ink-600 px-1 py-0.5 text-xs text-right focus:outline-none focus:border-brass-500"
+                    key={`${skill}-${character.skills[skill] ?? 0}`}
+                    defaultValue={character.skills[skill] ?? 0}
+                    onBlur={(e) => {
+                      const v = Math.round(Number(e.target.value));
+                      if (Number.isFinite(v) && v !== (character.skills[skill] ?? 0)) {
+                        patch({ skills: { ...character.skills, [skill]: Math.min(20, Math.max(-10, v)) } });
+                      }
+                    }}
+                  />
+                )}
+                {canRoll && <RollSkillButton characterId={character.id} skill={skill} />}
+              </span>
+            </div>
           ))}
         </div>
         {!readOnly && (
