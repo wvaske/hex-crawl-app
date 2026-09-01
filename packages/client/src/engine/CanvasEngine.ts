@@ -90,6 +90,7 @@ export class CanvasEngine {
   private tokensC = new Container();
   private pendingC = new Container();
   private senseG = new Graphics();
+  private trailHighlightG = new Graphics();
   private highlightG = new Graphics();
 
   private tokens = new Map<string, TokenView>();
@@ -171,6 +172,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.exploredC);
     this.viewport.addChild(this.fogC);
     this.viewport.addChild(this.senseG);
+    this.viewport.addChild(this.trailHighlightG);
     this.viewport.addChild(this.highlightG);
 
     // Every layer except tokensC must be event-transparent: Pixi treats any
@@ -186,6 +188,7 @@ export class CanvasEngine {
       this.exploredC,
       this.fogC,
       this.senseG,
+      this.trailHighlightG,
       this.highlightG,
     ]) {
       layer.eventMode = 'none';
@@ -236,6 +239,9 @@ export class CanvasEngine {
       }
       if (u.senseHighlight !== prev.senseHighlight) {
         this.drawSenseHighlight();
+      }
+      if (u.trailHighlight !== prev.trailHighlight) {
+        this.drawTrailHighlight();
       }
       if (u.selectedHex !== prev.selectedHex) {
         this.updatePinPopupPos();
@@ -349,9 +355,11 @@ export class CanvasEngine {
     if (layoutChanged && this.lastMapIdForCenter !== map.id) {
       this.lastMapIdForCenter = map.id;
       this.recenter();
-      // Sense-highlight cells belong to the previous map.
+      // Sense/trail-highlight cells belong to the previous map.
       useUi.getState().set('senseHighlight', null);
       this.drawSenseHighlight();
+      useUi.getState().set('trailHighlight', null);
+      this.drawTrailHighlight();
     }
   }
 
@@ -365,6 +373,7 @@ export class CanvasEngine {
     this.fogEraseG.clear();
     this.exploredG.clear();
     this.senseG.clear();
+    this.trailHighlightG.clear();
     this.highlightG.clear();
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.tokensReset();
@@ -673,6 +682,39 @@ export class CanvasEngine {
       g.poly(this.polyPoints(center, corners));
     }
     g.stroke({ width: 1.5 / this.viewport.scale.x, color: 0xd9b44f, alpha: 0.55 });
+  }
+
+  /**
+   * Highlight a clicked trail: soft fill over its cells plus a connecting
+   * line in cell order. The DM gets the whole path; players get only the
+   * cells passed in (their character's discovered signs) — the caller is
+   * responsible for that knowledge boundary, this just draws what it's given.
+   */
+  private drawTrailHighlight(): void {
+    const g = this.trailHighlightG;
+    g.clear();
+    if (!this.layout) return;
+    const highlight = useUi.getState().trailHighlight;
+    if (!highlight || highlight.cells.length === 0) return;
+    const corners = this.corners();
+    for (const cell of highlight.cells) {
+      const center = hexToPixel(this.layout, cell);
+      g.poly(this.polyPoints(center, corners));
+    }
+    g.fill({ color: 0x8b7fd4, alpha: 0.18 });
+    if (highlight.cells.length > 1) {
+      const pts = highlight.cells.map((c) => hexToPixel(this.layout!, c));
+      for (let i = 0; i < pts.length; i++) {
+        if (i === 0) g.moveTo(pts[i]!.x, pts[i]!.y);
+        else g.lineTo(pts[i]!.x, pts[i]!.y);
+      }
+      g.stroke({ width: 2.5 / this.viewport.scale.x, color: 0x8b7fd4, alpha: 0.75 });
+    }
+    for (const cell of highlight.cells) {
+      const center = hexToPixel(this.layout, cell);
+      g.poly(this.polyPoints(center, corners));
+    }
+    g.stroke({ width: 1.5 / this.viewport.scale.x, color: 0x8b7fd4, alpha: 0.55 });
   }
 
   /** Keep the DM pin-action popup glued above the selected hex. */

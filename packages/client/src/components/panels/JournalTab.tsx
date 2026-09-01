@@ -2,7 +2,7 @@ import React from 'react';
 import { CONTENT_TYPE_GLYPHS, isFullContent, type ContentPlayerView } from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
-import { EmptyNote, Section } from '../../ui/kit.js';
+import { EmptyNote, Section, cx } from '../../ui/kit.js';
 
 /** Player-side journal: everything their character has learned, grouped by place. */
 export function JournalTab() {
@@ -14,6 +14,16 @@ export function JournalTab() {
     (c): c is ContentPlayerView => !isFullContent(c),
   );
   const narrations = state.log.filter((l) => l.kind === 'narration');
+  const trailSigns = state.mapState?.trailSigns ?? [];
+  const trails: { trailId: string; glyph: string; cells: { q: number; r: number }[] }[] = [];
+  for (const s of trailSigns) {
+    let entry = trails.find((t) => t.trailId === s.trailId);
+    if (!entry) {
+      entry = { trailId: s.trailId, glyph: s.glyph, cells: [] };
+      trails.push(entry);
+    }
+    entry.cells.push({ q: s.q, r: s.r });
+  }
 
   return (
     <div>
@@ -51,6 +61,17 @@ export function JournalTab() {
         </div>
       </Section>
 
+      <Section title="Tracks you've found">
+        {trails.length === 0 && (
+          <EmptyNote>No tracks discovered yet — footprints and trail signs show up here.</EmptyNote>
+        )}
+        <div className="space-y-2">
+          {trails.map((t) => (
+            <TrackRow key={t.trailId} trail={t} />
+          ))}
+        </div>
+      </Section>
+
       <Section title="The story so far">
         {narrations.length === 0 && <EmptyNote>No narration shared yet.</EmptyNote>}
         <div className="space-y-1.5">
@@ -62,5 +83,46 @@ export function JournalTab() {
         </div>
       </Section>
     </div>
+  );
+}
+
+/**
+ * One known trail: clicking toggles the full-trail highlight on the map
+ * (every cell this character has discovered) without navigating the
+ * Inspect selection — this is a map overlay, not a "go to hex" shortcut.
+ */
+function TrackRow({
+  trail,
+}: {
+  trail: { trailId: string; glyph: string; cells: { q: number; r: number }[] };
+}) {
+  const highlighted = useUi((u) => u.trailHighlight?.trailId === trail.trailId);
+  const toggle = () => {
+    const ui = useUi.getState();
+    ui.set('trailHighlight', highlighted ? null : { trailId: trail.trailId, cells: trail.cells });
+  };
+  return (
+    <button
+      onClick={toggle}
+      className={cx(
+        'w-full text-left rounded-lg border px-2.5 py-2 cursor-pointer transition-colors',
+        highlighted
+          ? 'border-brass-500 bg-brass-500/10'
+          : 'border-ink-700 bg-ink-850 hover:border-ink-600',
+      )}
+      title={
+        highlighted
+          ? 'Hide this trail'
+          : `Show the ${trail.cells.length} place(s) you've spotted this trail`
+      }
+    >
+      <div className="flex items-center gap-2">
+        <span>{trail.glyph}</span>
+        <span className="text-sm font-medium text-ink-100 flex-1">
+          {trail.cells.length} place{trail.cells.length === 1 ? '' : 's'} spotted
+        </span>
+      </div>
+      {highlighted && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+    </button>
   );
 }

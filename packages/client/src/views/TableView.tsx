@@ -50,6 +50,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.set('measureStart', null);
         ui.set('movingTokenId', null);
         ui.set('senseHighlight', null);
+        ui.set('trailHighlight', null);
         ui.set('trailDraft', []);
         ui.set('editingTrailId', null);
         ui.set('contentSelection', null);
