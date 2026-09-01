@@ -19,6 +19,7 @@ import type {
 } from '@hexcrawl/shared';
 import {
   CONTENT_TYPE_GLYPHS,
+  contentCells,
   MAX_SCALE_LEVEL,
   SUPER_SCALE,
   TERRAINS,
@@ -99,6 +100,7 @@ export class CanvasEngine {
   private pendingC = new Container();
   private senseG = new Graphics();
   private trailHighlightG = new Graphics();
+  private areaHighlightG = new Graphics();
   private highlightG = new Graphics();
 
   private tokens = new Map<string, TokenView>();
@@ -183,6 +185,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.fogC);
     this.viewport.addChild(this.senseG);
     this.viewport.addChild(this.trailHighlightG);
+    this.viewport.addChild(this.areaHighlightG);
     this.viewport.addChild(this.highlightG);
 
     // Every layer except tokensC must be event-transparent: Pixi treats any
@@ -200,6 +203,7 @@ export class CanvasEngine {
       this.fogC,
       this.senseG,
       this.trailHighlightG,
+      this.areaHighlightG,
       this.highlightG,
     ]) {
       layer.eventMode = 'none';
@@ -256,6 +260,12 @@ export class CanvasEngine {
       }
       if (u.trailHighlight !== prev.trailHighlight) {
         this.drawTrailHighlight();
+      }
+      if (u.areaHighlight !== prev.areaHighlight || u.areaPaint !== prev.areaPaint) {
+        this.drawAreaHighlight();
+        if ((u.areaPaint !== null) !== (prev.areaPaint !== null)) {
+          this.viewport.cursor = u.areaPaint ? 'crosshair' : 'default';
+        }
       }
       if (u.selectedHex !== prev.selectedHex) {
         this.updatePinPopupPos();
@@ -377,11 +387,13 @@ export class CanvasEngine {
     if (layoutChanged && this.lastMapIdForCenter !== map.id) {
       this.lastMapIdForCenter = map.id;
       this.recenter();
-      // Sense/trail-highlight cells belong to the previous map.
+      // Sense/trail/area-highlight cells belong to the previous map.
       useUi.getState().set('senseHighlight', null);
       this.drawSenseHighlight();
       useUi.getState().set('trailHighlight', null);
       this.drawTrailHighlight();
+      useUi.getState().set('areaHighlight', null);
+      this.drawAreaHighlight();
     }
   }
 
@@ -396,6 +408,7 @@ export class CanvasEngine {
     this.exploredG.clear();
     this.senseG.clear();
     this.trailHighlightG.clear();
+    this.areaHighlightG.clear();
     this.highlightG.clear();
     this.tintG.clear();
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
@@ -765,6 +778,33 @@ export class CanvasEngine {
     g.stroke({ width: 1.5 / this.viewport.scale.x, color: 0x8b7fd4, alpha: 0.55 });
   }
 
+  /**
+   * Region footprint (issue #69): a wash over every hex of a clicked
+   * multi-hex content, or — while the DM is painting — the live draft. The
+   * draft wins so the DM always sees what they're editing.
+   */
+  private drawAreaHighlight(): void {
+    const g = this.areaHighlightG;
+    g.clear();
+    if (!this.layout) return;
+    const ui = useUi.getState();
+    const painting = ui.areaPaint !== null;
+    const cells = ui.areaPaint?.cells ?? ui.areaHighlight?.cells ?? [];
+    if (cells.length === 0) return;
+    const color = painting ? 0x6fae6a : 0x59a5c4;
+    const corners = this.corners();
+    for (const cell of cells) {
+      const center = hexToPixel(this.layout, cell);
+      g.poly(this.polyPoints(center, corners));
+    }
+    g.fill({ color, alpha: painting ? 0.3 : 0.2 });
+    for (const cell of cells) {
+      const center = hexToPixel(this.layout, cell);
+      g.poly(this.polyPoints(center, corners));
+    }
+    g.stroke({ width: 1.5 / this.viewport.scale.x, color, alpha: 0.6 });
+  }
+
   /** Keep the DM pin-action popup glued above the selected hex. */
   private updatePinPopupPos(): void {
     const ui = useUi.getState();
@@ -963,6 +1003,30 @@ export class CanvasEngine {
     pin.addChild(x);
   }
 
+  /** World-space midpoint of a footprint, for labelling a region across it. */
+  private footprintCentroid(cells: HexCoord[]): { x: number; y: number } {
+    let x = 0;
+    let y = 0;
+    for (const cell of cells) {
+      const p = hexToPixel(this.layout!, cell);
+      x += p.x;
+      y += p.y;
+    }
+    return { x: x / cells.length, y: y / cells.length };
+  }
+
+  /** World-space horizontal extent of a footprint. */
+  private footprintWidth(cells: HexCoord[]): number {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const cell of cells) {
+      const p = hexToPixel(this.layout!, cell);
+      min = Math.min(min, p.x);
+      max = Math.max(max, p.x);
+    }
+    return max - min;
+  }
+
   private drawPins(): void {
     this.pinsC.removeChildren().forEach((c) => c.destroy({ children: true }));
     if (!this.layout) return;
@@ -983,7 +1047,13 @@ export class CanvasEngine {
 
     for (const content of this.lastContents) {
       if (content.scaleVisibility < this.scaleLevel) continue;
-      const center = hexToPixel(this.layout, { q: content.q, r: content.r });
+      // A multi-hex region reads best labelled across the middle of its
+      // footprint; single-hex content (and every pin) stays on its anchor.
+      const anchor = hexToPixel(this.layout, { q: content.q, r: content.r });
+      const center =
+        content.type === 'region' && content.area.length > 0
+          ? this.footprintCentroid(contentCells(content))
+          : anchor;
 
       // Regions render as printed-map style text labels, not pins.
       if (content.type === 'region') {
@@ -1005,7 +1075,12 @@ export class CanvasEngine {
         const pin = new Container();
         pin.addChild(label);
         // Bigger footprint for bigger regions; readable minimum when far out.
-        const worldSize = size * (content.scaleVisibility === 2 ? 2.6 : 1.8);
+        // A painted area sizes the label to the ground it actually covers.
+        const base = size * (content.scaleVisibility === 2 ? 2.6 : 1.8);
+        const worldSize =
+          content.area.length > 0
+            ? Math.min(base * 3, Math.max(base, this.footprintWidth(contentCells(content)) * 0.7))
+            : base;
         (pin as PinContainer).__pin = { worldSize, minScreen: 15 };
         pin.position.set(center.x, center.y);
         if (discoveredClues) {
@@ -1410,6 +1485,16 @@ export class CanvasEngine {
         return;
       }
 
+      // Armed "paint area" mode: clicks toggle footprint membership until
+      // the dialog's Done (or Escape) ends it. Nothing is sent until save.
+      if (ui.areaPaint && isDm) {
+        const cells = ui.areaPaint.cells;
+        const idx = cells.findIndex((c) => c.q === hex.q && c.r === hex.r);
+        const next = idx >= 0 ? cells.filter((_, i) => i !== idx) : [...cells, hex];
+        useUi.getState().set('areaPaint', { cells: next });
+        return;
+      }
+
       // Armed "move content" mode: next click relocates the entry.
       if (ui.movingContentId && isDm) {
         send({ kind: 'content.move', contentId: ui.movingContentId, q: hex.q, r: hex.r });
@@ -1802,6 +1887,11 @@ function truncateLabel(label: string): string {
   return label.length > 24 ? label.slice(0, 23) + '…' : label;
 }
 
+/** Cheap identity for a content footprint, for the pin redraw diff. */
+function areaKey(area: { q: number; r: number }[]): string {
+  return area.map((c) => `${c.q},${c.r}`).join('|');
+}
+
 function contentsEqual(
   a: (Content | ContentPlayerView)[],
   b: (Content | ContentPlayerView)[],
@@ -1817,6 +1907,7 @@ function contentsEqual(
       c.type === o.type &&
       c.title === o.title &&
       c.showLabel === o.showLabel &&
+      areaKey(c.area) === areaKey(o.area) &&
       ('enabled' in c ? c.enabled : true) === ('enabled' in o ? o.enabled : true) &&
       ('knownLocation' in c ? c.knownLocation : false) ===
         ('knownLocation' in o ? o.knownLocation : false)

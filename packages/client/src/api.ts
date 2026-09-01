@@ -22,13 +22,36 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 export async function createCampaign(
   name: string,
   dmName: string,
+  createPassword?: string,
 ): Promise<{ campaignId: string; dmKey: string; playerKey: string }> {
   const res = await fetch('/api/campaigns', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, dmName }),
+    body: JSON.stringify({ name, dmName, createPassword }),
   });
   return jsonOrThrow(res);
+}
+
+/**
+ * Instance-level policy, probed by the Landing page. `createGated` means the
+ * operator set CREATE_PASSWORD and new campaigns need it.
+ */
+export async function fetchInstanceInfo(): Promise<{ createGated: boolean }> {
+  const res = await fetch('/api/instance');
+  if (!res.ok) return { createGated: false };
+  return (await res.json()) as { createGated: boolean };
+}
+
+export interface InviteKeys {
+  dmKey: string;
+  playerKey: string;
+}
+
+/** DM only: the campaign's current invite secrets. */
+export async function fetchInviteKeys(campaignId: string): Promise<InviteKeys | null> {
+  const res = await fetch(`/api/campaigns/${campaignId}/keys`);
+  if (!res.ok) return null;
+  return (await res.json()) as InviteKeys;
 }
 
 export async function fetchCampaignInfo(campaignId: string, key: string | null): Promise<CampaignInfo> {

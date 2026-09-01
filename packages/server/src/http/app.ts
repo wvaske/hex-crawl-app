@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { Hono, type Context, type Next } from 'hono';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { getCookie, setCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
@@ -12,7 +13,18 @@ import { evaluateKnowledge } from '../engine/knowledge.js';
 import { evaluateTrails } from '../engine/trails.js';
 import { fetchDdbCharacter, parseDdbId } from '../engine/ddb.js';
 import { generateSettlementClues } from '../engine/settlements.js';
-import { MAX_UPLOAD_BYTES, UPLOADS_DIR } from '../config.js';
+import {
+  CREATE_PASSWORD,
+  MAX_UPLOAD_BYTES,
+  RATE_LIMIT_CREATE,
+  RATE_LIMIT_EXPORT,
+  RATE_LIMIT_IMPORT,
+  RATE_LIMIT_JOIN,
+  RATE_LIMIT_WINDOW_MS,
+  TRUST_PROXY,
+  UPLOAD_QUOTA_BYTES,
+  UPLOADS_DIR,
+} from '../config.js';
 import {
   MAX_IMPORT_BYTES,
   exportCampaignChunks,
@@ -20,6 +32,15 @@ import {
   importCampaign,
 } from './portability.js';
 import { fetchWikiPage, isWikiError, wikiApiEndpoint } from './wiki.js';
+import {
+  RateLimiter,
+  clientIp,
+  dirSizeBytes,
+  extensionFor,
+  secretEquals,
+  sniffImage,
+  type RateLimitRule,
+} from './security.js';
 import type { Store } from '../state/store.js';
 import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
 import type { Hub } from '../ws/hub.js';
@@ -28,14 +49,78 @@ export function seatCookieName(campaignId: string): string {
   return `hc_seat_${campaignId}`;
 }
 
-const IMAGE_TYPES: Record<string, string> = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/webp': '.webp',
-};
+/**
+ * Remote socket address, or null when there is none (unit tests drive the app
+ * through `app.request`, which has no connection behind it).
+ */
+function socketAddress(c: Context): string | null {
+  try {
+    return getConnInfo(c).remote.address ?? null;
+  } catch {
+    return null;
+  }
+}
 
-export function createApp(store: Store, hub: Hub): Hono {
+/**
+ * Test/embedding overrides for the public-instance hardening. Production passes
+ * nothing and the values come from the environment (`config.ts`).
+ */
+export interface SecurityOptions {
+  /** Non-empty = campaign creation and restore require this password. */
+  createPassword?: string;
+  uploadQuotaBytes?: number;
+  /** Where uploaded images live. Defaults to config's UPLOADS_DIR. */
+  uploadsDir?: string;
+  trustProxy?: boolean;
+  rateLimits?: Partial<Record<RateLimitName, RateLimitRule>>;
+  /** Injectable clock so tests can step past a rate-limit window. */
+  now?: () => number;
+}
+
+type RateLimitName = 'create' | 'import' | 'join' | 'export';
+
+export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}): Hono {
   const app = new Hono();
+
+  // -- hardening: per-IP rate limits, create gate, upload quota --------------
+
+  const createPassword = security.createPassword ?? CREATE_PASSWORD;
+  const uploadQuotaBytes = security.uploadQuotaBytes ?? UPLOAD_QUOTA_BYTES;
+  const uploadsDir = security.uploadsDir ?? UPLOADS_DIR;
+  const trustProxy = security.trustProxy ?? TRUST_PROXY;
+  const now = security.now ?? Date.now;
+  const window = RATE_LIMIT_WINDOW_MS;
+  const rule = (name: RateLimitName, limit: number): RateLimitRule =>
+    security.rateLimits?.[name] ?? { limit, windowMs: window };
+  const limiters: Record<RateLimitName, RateLimiter> = {
+    create: new RateLimiter(rule('create', RATE_LIMIT_CREATE), now),
+    import: new RateLimiter(rule('import', RATE_LIMIT_IMPORT), now),
+    join: new RateLimiter(rule('join', RATE_LIMIT_JOIN), now),
+    export: new RateLimiter(rule('export', RATE_LIMIT_EXPORT), now),
+  };
+
+  /** Hono middleware: 429 (with Retry-After) once an IP outruns the window. */
+  const rateLimit =
+    (name: RateLimitName) =>
+    async (c: Context, next: Next): Promise<Response | void> => {
+      const ip = clientIp(c.req.raw, socketAddress(c), trustProxy);
+      const verdict = limiters[name].check(ip);
+      if (!verdict.ok) {
+        c.header('Retry-After', String(verdict.retryAfterSec));
+        return c.json(
+          { error: `Too many requests — try again in ${verdict.retryAfterSec}s` },
+          429,
+        );
+      }
+      await next();
+    };
+
+  /** True when the instance is open, or the caller sent the right password. */
+  const createAllowed = (supplied: unknown): boolean =>
+    !createPassword || (typeof supplied === 'string' && secretEquals(createPassword, supplied));
+
+  /** Advertise instance-level policy to the Landing page (no secrets). */
+  app.get('/api/instance', (c) => c.json({ createGated: Boolean(createPassword) }));
 
   const getSeat = (c: { req: { raw: Request } }, runtime: CampaignRuntime): SeatRecord | null => {
     const token = getCookie(c as never, seatCookieName(runtime.id)) ?? null;
@@ -53,11 +138,19 @@ export function createApp(store: Store, hub: Hub): Hono {
 
   // -- campaign lifecycle ----------------------------------------------------
 
-  app.post('/api/campaigns', async (c) => {
+  app.post('/api/campaigns', rateLimit('create'), async (c) => {
     const body = z
-      .object({ name: z.string().min(1).max(120), dmName: z.string().min(1).max(60).default('DM') })
+      .object({
+        name: z.string().min(1).max(120),
+        dmName: z.string().min(1).max(60).default('DM'),
+        /** Only required when the instance sets CREATE_PASSWORD. */
+        createPassword: z.string().max(200).optional(),
+      })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'Campaign name required' }, 400);
+    if (!createAllowed(body.data.createPassword)) {
+      return c.json({ error: 'Wrong instance password' }, 403);
+    }
     const { runtime, dmSeat } = store.createCampaign(body.data.name, body.data.dmName);
     setSeatCookie(c as never, runtime, dmSeat);
     return c.json({
@@ -75,8 +168,9 @@ export function createApp(store: Store, hub: Hub): Hono {
    * Full campaign archive (rows + base64 images) as one JSON attachment.
    * Auth: DM seat cookie, or `?key=<dmSecret>` so cron/curl can pull it.
    */
-  app.get('/api/campaigns/:id/export', (c) => {
-    const runtime = store.getCampaign(c.req.param('id'));
+  app.get('/api/campaigns/:id/export', rateLimit('export'), (c) => {
+    // `param('id')` widens to `string | undefined` once middleware is chained.
+    const runtime = store.getCampaign(c.req.param('id') ?? '');
     if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
     const key = c.req.query('key');
     const seat = getSeat(c, runtime);
@@ -85,7 +179,7 @@ export function createApp(store: Store, hub: Hub): Hono {
     c.header('Content-Disposition', `attachment; filename="${exportFileName(runtime.id)}"`);
     c.header('Cache-Control', 'no-store');
     return stream(c, async (s) => {
-      for (const chunk of exportCampaignChunks(store.db, runtime.id, UPLOADS_DIR)) {
+      for (const chunk of exportCampaignChunks(store.db, runtime.id, uploadsDir)) {
         await s.write(chunk);
       }
     });
@@ -98,6 +192,7 @@ export function createApp(store: Store, hub: Hub): Hono {
    */
   app.post(
     '/api/campaigns/import',
+    rateLimit('import'),
     bodyLimit({
       maxSize: MAX_IMPORT_BYTES,
       onError: (c) =>
@@ -107,6 +202,9 @@ export function createApp(store: Store, hub: Hub): Hono {
       const contentType = c.req.header('Content-Type') ?? '';
       let raw: unknown;
       let dmName = 'DM';
+      // Restoring a backup creates a campaign, so it passes the same gate as
+      // POST /api/campaigns — otherwise the gate is trivially side-stepped.
+      let supplied: unknown;
       try {
         if (contentType.includes('multipart/form-data')) {
           const body = await c.req.parseBody();
@@ -115,9 +213,13 @@ export function createApp(store: Store, hub: Hub): Hono {
           if (typeof body.dmName === 'string' && body.dmName.trim()) {
             dmName = body.dmName.trim().slice(0, 60);
           }
+          supplied = body.createPassword;
+          if (!createAllowed(supplied)) return c.json({ error: 'Wrong instance password' }, 403);
           raw = JSON.parse(await file.text());
         } else {
           raw = await c.req.json();
+          supplied = (raw as { createPassword?: unknown } | null)?.createPassword;
+          if (!createAllowed(supplied)) return c.json({ error: 'Wrong instance password' }, 403);
         }
       } catch {
         return c.json({ error: 'Backup file is not valid JSON' }, 400);
@@ -125,7 +227,7 @@ export function createApp(store: Store, hub: Hub): Hono {
 
       let result;
       try {
-        result = importCampaign(store.db, raw, { uploadsDir: UPLOADS_DIR });
+        result = importCampaign(store.db, raw, { uploadsDir });
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : 'Import failed' }, 400);
       }
@@ -169,8 +271,8 @@ export function createApp(store: Store, hub: Hub): Hono {
     });
   });
 
-  app.post('/api/campaigns/:id/join', async (c) => {
-    const runtime = store.getCampaign(c.req.param('id'));
+  app.post('/api/campaigns/:id/join', rateLimit('join'), async (c) => {
+    const runtime = store.getCampaign(c.req.param('id') ?? '');
     if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
     const body = z
       .object({ key: z.string(), name: z.string().min(1).max(60) })
@@ -280,16 +382,31 @@ export function createApp(store: Store, hub: Hub): Hono {
     const body = await c.req.parseBody();
     const file = body.file;
     if (!(file instanceof File)) return c.json({ error: 'No file' }, 400);
-    const ext = IMAGE_TYPES[file.type];
-    if (!ext) return c.json({ error: 'Only PNG, JPEG, or WebP images' }, 400);
     if (file.size > MAX_UPLOAD_BYTES) {
       return c.json({ error: `Image too large (max ${MAX_UPLOAD_BYTES / 1024 / 1024}MB)` }, 400);
     }
 
-    const dir = path.join(UPLOADS_DIR, runtime.id);
+    // Trust the bytes, not the Content-Type or the filename: a script or HTML
+    // payload renamed `map.png` must never land in the uploads dir, which is
+    // served back to browsers.
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const sniffed = sniffImage(bytes);
+    if (!sniffed) return c.json({ error: 'Only PNG, JPEG, or WebP images' }, 400);
+    const ext = extensionFor(sniffed);
+
+    const dir = path.join(uploadsDir, runtime.id);
+    if (uploadQuotaBytes > 0 && dirSizeBytes(dir) + bytes.length > uploadQuotaBytes) {
+      return c.json(
+        {
+          error: `Upload quota reached (${Math.round(uploadQuotaBytes / 1024 / 1024)}MB per campaign) — delete some images first`,
+        },
+        413,
+      );
+    }
+
     fs.mkdirSync(dir, { recursive: true });
     const fileName = `${nanoid(12)}${ext}`;
-    fs.writeFileSync(path.join(dir, fileName), Buffer.from(await file.arrayBuffer()));
+    fs.writeFileSync(path.join(dir, fileName), bytes);
 
     const existing = runtime.imageLayersFor(mapId);
     const layer: ImageLayer = {
@@ -336,7 +453,7 @@ export function createApp(store: Store, hub: Hub): Hono {
     if (!/^[\w-]+$/.test(campaignId) || !/^[\w-]+\.\w+$/.test(file)) {
       return c.text('Bad path', 400);
     }
-    const filePath = path.join(UPLOADS_DIR, campaignId, file);
+    const filePath = path.join(uploadsDir, campaignId, file);
     if (!fs.existsSync(filePath)) return c.text('Not found', 404);
     const ext = path.extname(filePath);
     const mime =
@@ -402,6 +519,8 @@ export function createApp(store: Store, hub: Hub): Hono {
     scaleVisibility: z.number().int().min(0).max(2).optional(),
     enabled: z.boolean().optional(),
     knownLocation: z.boolean().optional(),
+    /** Multi-hex footprint (issue #69): members beside the anchor q/r. */
+    area: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(2000).optional(),
     quest: z.string().max(120).default(''),
     clues: z
       .array(
@@ -449,6 +568,7 @@ export function createApp(store: Store, hub: Hub): Hono {
       mapId: input.mapId,
       q,
       r,
+      area: input.area ?? existing?.area ?? [],
       type: input.type ?? existing?.type ?? 'landmark',
       title: input.title,
       dmNotes: input.dmNotes || existing?.dmNotes || '',

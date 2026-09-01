@@ -103,6 +103,17 @@ export const CampaignUpdateCommand = z.object({
   settings: CampaignSettingsPatchSchema.optional(),
 });
 
+/**
+ * DM only: mint a fresh player or DM invite secret. Every link built from the
+ * old secret stops working; already-seated browsers keep their seat cookie.
+ * Rotating the DM key also invalidates integration/MCP Bearer tokens.
+ */
+export const CampaignRotateKeyCommand = z.object({
+  ...base,
+  kind: z.literal('campaign.rotateKey'),
+  which: z.enum(['player', 'dm']),
+});
+
 // --- maps -------------------------------------------------------------------
 
 export const MapCreateCommand = z.object({
@@ -368,6 +379,12 @@ export const ContentUpsertCommand = z.object({
     mapId: z.string(),
     q: z.number().int(),
     r: z.number().int(),
+    /**
+     * Multi-hex footprint. Optional (not defaulted) so existing senders that
+     * don't know about areas — the pin popup's quick toggles — keep the
+     * footprint they never touched; the server merges omitted areas.
+     */
+    area: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(2000).optional(),
     type: ContentTypeSchema,
     title: z.string().min(1).max(120),
     dmNotes: z.string().max(10000).default(''),
@@ -560,10 +577,18 @@ export const NarrateCommand = z.object({
   seatIds: z.array(z.string()),
 });
 
+/** DM: mark a session boundary (issue #78) — drives recap grouping. */
+export const SessionMarkCommand = z.object({
+  ...base,
+  kind: z.literal('session.mark'),
+  action: z.union([z.literal('start'), z.literal('end')]),
+});
+
 // ---------------------------------------------------------------------------
 
 export const ClientCommandSchema = z.discriminatedUnion('kind', [
   CampaignUpdateCommand,
+  CampaignRotateKeyCommand,
   MapCreateCommand,
   MapUpdateCommand,
   MapSetInheritCommand,
@@ -610,6 +635,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   TimeConfigCommand,
   UndoCommand,
   NarrateCommand,
+  SessionMarkCommand,
 ]);
 
 export type ClientCommand = z.infer<typeof ClientCommandSchema>;

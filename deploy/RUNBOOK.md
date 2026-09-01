@@ -264,3 +264,52 @@ against a scratch instance (`docker run -e DATA_DIR=/tmp ...`) rather than
 production — otherwise the restored copy sticks around (unreachable without its
 link, but still on the volume; `DELETE FROM campaign WHERE id = '<id>'` in
 `hexcrawl.db` clears it, with the container stopped).
+
+---
+
+## 10. Security
+
+The trust model in one paragraph: **there are no accounts.** A campaign has two
+secrets — a player key and a DM key — and knowing one is the entire
+authorization story. Following an invite link exchanges the key for a
+long-lived `hc_seat_<campaignId>` cookie (HttpOnly, SameSite=Lax) that names a
+seat; every WebSocket command and REST call is authorized from that seat. The
+DM key doubles as the Bearer token for the integration API and as `?key=` on
+the export endpoint, so it is the crown jewel: it grants full DM access,
+including a complete campaign archive. Player-visible data is filtered
+server-side (`shared/src/rules/filter.ts`) — clients never receive DM notes,
+hidden content, or fogged terrain, so a hostile player's dev tools buy nothing.
+Uploaded images are served from unguessable paths under `/uploads/` and are
+**not** access-controlled; treat a leaked image URL as public.
+
+What that leaves exposed, and what the app now does about it:
+
+| Risk | Mitigation | Knob |
+|---|---|---|
+| Brute-forcing an invite key | Per-IP sliding-window rate limits on join, campaign create, import, and export; 429 + `Retry-After` | `RATE_LIMIT_*`, `TRUST_PROXY` |
+| A leaked link (pasted in a public Discord, an ex-player, a rotated laptop) | DM can regenerate either key from *Settings → Invite links*; old links die instantly, seated browsers stay connected | — |
+| Drive-by campaign creation on a public instance | Optional instance password on create **and** restore | `CREATE_PASSWORD` |
+| Malicious "image" uploads | Magic-byte sniffing (PNG/JPEG/WebP only); the client's Content-Type and filename are ignored, the stored extension comes from the bytes | — |
+| Disk exhaustion via uploads | 30 MB per file plus a per-campaign total quota (413 past it) | `UPLOAD_QUOTA_MB` |
+
+Operational notes:
+
+- **`TRUST_PROXY` must match reality.** Behind Traefik (the deployment above)
+  leave it on, or every client shares one rate-limit bucket. Exposed directly,
+  set `TRUST_PROXY=0` — otherwise a client spoofs `X-Forwarded-For` and the
+  limits do nothing.
+- **The limiter is in-memory and per-process.** One container is the supported
+  topology; running several behind a load balancer divides every limit by the
+  number of instances.
+- **Rotating the DM key breaks integrations.** The MCP server's
+  `HEXCRAWL_TOKEN`, `/etc/hexcrawl-backup.env`'s `HEXCRAWL_DM_KEY`, and any
+  saved `?key=` URLs all carry the old value. Rotate, then update them in the
+  same maintenance window, then run the backup script once by hand to confirm.
+- **Always terminate TLS in front of the app.** The seat cookie is not marked
+  `Secure`, and invite keys travel in URLs; plain HTTP over the open internet
+  hands both to anyone on the path.
+- **Uploads are public-by-URL.** Do not put spoiler maps in an instance whose
+  `/uploads/` you would mind being fetched by anyone holding the link.
+- **Still missing** (issue #80's remaining bullets): seat expiry, kick+ban, and
+  a per-campaign seat cap. A removed seat can re-join with the same invite key,
+  so the ban story today is "rotate the key and re-invite everyone else".

@@ -7,6 +7,7 @@ import {
   type Content,
   type ContentType,
   type Gate,
+  type HexCoord,
 } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
@@ -46,6 +47,21 @@ export function ContentDialog() {
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
   const [knownLocation, setKnownLocation] = useState(existing?.knownLocation ?? false);
   const [quest, setQuest] = useState(existing?.quest ?? '');
+  const [area, setArea] = useState<HexCoord[]>(existing?.area ?? []);
+  const areaPaint = useUi((s) => s.areaPaint);
+
+  // Painting lives in the ui store (the engine writes the toggles); the draft
+  // comes back here whenever the mode ends — Done, Escape, or otherwise — so
+  // no route out of paint mode silently drops the work.
+  const painted = React.useRef<HexCoord[] | null>(null);
+  React.useEffect(() => {
+    if (areaPaint) {
+      painted.current = areaPaint.cells;
+    } else if (painted.current) {
+      setArea(painted.current);
+      painted.current = null;
+    }
+  }, [areaPaint]);
   const [clues, setClues] = useState<ClueDraft[]>(
     existing?.clues.map((c) => ({
       id: c.id,
@@ -57,11 +73,37 @@ export function ContentDialog() {
   );
 
   const close = () => {
+    setUi('areaPaint', null);
     setUi('contentDialogHex', null);
     setUi('editingContentId', null);
   };
 
+  // Painting hands the map over to the DM: the modal would swallow the
+  // clicks, so it collapses to a floating bar until they're done. The
+  // component stays mounted, so the rest of the draft survives untouched.
+  const startPaint = () => setUi('areaPaint', { cells: area });
+
   if (!map) return null;
+
+  if (areaPaint) {
+    return (
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-ink-850/95 border border-brass-500/60 rounded-xl shadow-2xl px-4 py-2.5 backdrop-blur">
+        <span className="text-sm text-ink-100">
+          Painting the area of <span className="font-medium">{title.trim() || 'this content'}</span>
+        </span>
+        <span className="text-xs text-ink-400">
+          {areaPaint.cells.length} extra hex{areaPaint.cells.length === 1 ? '' : 'es'} · click to
+          toggle
+        </span>
+        <Button size="sm" variant="ghost" onClick={() => setUi('areaPaint', { cells: [] })}>
+          Clear
+        </Button>
+        <Button size="sm" variant="primary" onClick={() => setUi('areaPaint', null)}>
+          Done
+        </Button>
+      </div>
+    );
+  }
 
   const save = () => {
     if (!title.trim()) return;
@@ -72,6 +114,8 @@ export function ContentDialog() {
         mapId: map.id,
         q: hex.q,
         r: hex.r,
+        // The anchor is always a member; only the extra hexes travel here.
+        area: area.filter((c) => !(c.q === hex.q && c.r === hex.r)),
         type,
         title: title.trim(),
         dmNotes,
@@ -166,6 +210,31 @@ export function ContentDialog() {
               maxLength={300}
             />
           </Field>
+        </div>
+
+        <div className="border border-ink-700 rounded-lg p-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
+              Area
+            </span>
+            <span className="text-xs text-ink-300">
+              {area.length === 0
+                ? 'single hex'
+                : `${area.length + 1} hexes (anchor + ${area.length})`}
+            </span>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={startPaint}>
+              🖌 Paint area
+            </Button>
+            {area.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setArea([])}>
+                Clear area
+              </Button>
+            )}
+          </div>
+          <p className="text-[11px] text-ink-400 mt-1">
+            A multi-hex region is explored if the party reaches <em>any</em> of its hexes: gates,
+            searches and distances all use the nearest one.
+          </p>
         </div>
 
         <div>

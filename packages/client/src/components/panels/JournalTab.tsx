@@ -1,5 +1,13 @@
 import React from 'react';
-import { CONTENT_TYPE_GLYPHS, isFullContent, type ContentPlayerView } from '@hexcrawl/shared';
+import {
+  CONTENT_TYPE_GLYPHS,
+  computeRecap,
+  computeSessions,
+  contentCells,
+  isFullContent,
+  recapHighlights,
+  type ContentPlayerView,
+} from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { EmptyNote, Section, cx } from '../../ui/kit.js';
@@ -30,6 +38,8 @@ export function JournalTab() {
 
   return (
     <div>
+      <PreviouslyOnCard />
+
       <Section title="Discoveries">
         {contents.length === 0 && (
           <EmptyNote>
@@ -39,27 +49,7 @@ export function JournalTab() {
         )}
         <div className="space-y-2">
           {contents.map((c) => (
-            <button
-              key={c.id}
-              className="w-full text-left bg-ink-850 border border-ink-700 rounded-lg p-2.5 cursor-pointer hover:border-ink-600"
-              onClick={() => selectHex({ q: c.q, r: c.r })}
-              title="Show on map"
-            >
-              <div className="flex items-center gap-2">
-                <span>{c.glyph || CONTENT_TYPE_GLYPHS[c.type]}</span>
-                <span className="text-sm font-medium text-ink-100 truncate flex-1">{c.title}</span>
-                <span className="text-xs text-ink-400">
-                  {c.q},{c.r}
-                </span>
-              </div>
-              <ul className="mt-1.5 space-y-1">
-                {c.discoveredClues.map((clue) => (
-                  <li key={clue.clueId} className="text-xs text-ink-200">
-                    {clue.text}
-                  </li>
-                ))}
-              </ul>
-            </button>
+            <DiscoveryRow key={c.id} content={c} />
           ))}
         </div>
       </Section>
@@ -111,12 +101,100 @@ export function JournalTab() {
         {narrations.length === 0 && <EmptyNote>No narration shared yet.</EmptyNote>}
         <div className="space-y-1.5">
           {narrations.map((n) => (
-            <div key={n.id} className="text-xs bg-ink-850 border border-ink-700 rounded-md px-2.5 py-2">
+            <div
+              key={n.id}
+              className="text-xs bg-ink-850 border border-ink-700 rounded-md px-2.5 py-2"
+            >
               <p className="text-ink-100 whitespace-pre-wrap">{n.text}</p>
             </div>
           ))}
         </div>
       </Section>
+    </div>
+  );
+}
+
+/**
+ * One discovered place. Clicking selects its hex; for a multi-hex region it
+ * also toggles the footprint highlight, so "where is the Forest of Wyrms?"
+ * is one click from the journal (issue #69).
+ */
+function DiscoveryRow({ content }: { content: ContentPlayerView }) {
+  const selectHex = useUi((s) => s.selectHex);
+  const setUi = useUi((s) => s.set);
+  const active = useUi((u) => u.areaHighlight?.contentId === content.id);
+  const isRegion = content.area.length > 0;
+  const cells = contentCells(content);
+  return (
+    <button
+      className={cx(
+        'w-full text-left border rounded-lg p-2.5 cursor-pointer',
+        active ? 'border-brass-500 bg-brass-500/10' : 'border-ink-700 bg-ink-850 hover:border-ink-600',
+      )}
+      onClick={() => {
+        selectHex({ q: content.q, r: content.r });
+        if (isRegion) {
+          setUi('areaHighlight', active ? null : { contentId: content.id, cells });
+        }
+      }}
+      title={isRegion ? `Show its ${cells.length} hexes on the map` : 'Show on map'}
+    >
+      <div className="flex items-center gap-2">
+        <span>{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
+        <span className="text-sm font-medium text-ink-100 truncate flex-1">{content.title}</span>
+        <span className="text-xs text-ink-400">
+          {isRegion ? `${cells.length} hexes` : `${content.q},${content.r}`}
+        </span>
+      </div>
+      <ul className="mt-1.5 space-y-1">
+        {content.discoveredClues.map((clue) => (
+          <li key={clue.clueId} className="text-xs text-ink-200">
+            {clue.text}
+          </li>
+        ))}
+      </ul>
+      {active && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+    </button>
+  );
+}
+
+/**
+ * A small "previously on…" teaser at the top of the journal (issue #78): as
+ * soon as the DM starts a new session, players get a quick reminder of the
+ * highlights from the one before it. Deliberately simple — no per-player
+ * "seen this already" tracking, it just shows whenever the most recent
+ * session mark is a 'start'. Runs on `state.log`, which is already filtered
+ * to what this viewer is allowed to see, so the recap it builds respects the
+ * same security boundary as the rest of the journal.
+ */
+function PreviouslyOnCard() {
+  const state = useSession((s) => s.state);
+  if (!state) return null;
+
+  const lastMark = [...state.log].reverse().find((e) => e.kind === 'session');
+  const lastAction = (lastMark?.data as { action?: string } | undefined)?.action;
+  if (lastAction !== 'start') return null;
+
+  const sessions = computeSessions(state.log);
+  const previous = sessions[sessions.length - 2];
+  if (!previous) return null;
+
+  const recap = computeRecap(state.log, { fromAt: previous.fromAt, toAt: previous.toAt });
+  const highlights = recapHighlights(recap, 3);
+  if (highlights.length === 0) return null;
+
+  return (
+    <div className="mb-4 bg-brass-500/10 border border-brass-500/30 rounded-lg p-2.5">
+      <div className="text-[11px] uppercase tracking-wider text-brass-300 font-semibold mb-1.5">
+        Previously on…
+      </div>
+      <ul className="space-y-1">
+        {highlights.map((h) => (
+          <li key={h.id} className="text-xs text-ink-100">
+            {h.text}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -157,7 +235,9 @@ function TrackRow({
           {trail.cells.length} place{trail.cells.length === 1 ? '' : 's'} spotted
         </span>
       </div>
-      {highlighted && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+      {highlighted && (
+        <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>
+      )}
     </button>
   );
 }

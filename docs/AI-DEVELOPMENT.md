@@ -11,6 +11,13 @@ Architecture background: [DESIGN.md](./DESIGN.md).
 - Before opening a PR: `pnpm typecheck && pnpm test` must pass from the repo
   root. Add server/shared tests for new mechanics (see
   `packages/server/src/server.test.ts` for the dispatch-based test harness).
+- **Put new tests in a NEW per-issue file** (`packages/server/src/<topic>.test.ts`)
+  rather than appending to `server.test.ts` — vitest picks up any `*.test.ts`,
+  and parallel branches appending to one file conflict on every merge.
+- When parallel work is in flight, keep edits to shared hotspot files
+  (`domain.ts`, `commands.ts`, `handlers.ts`, `filter.ts`) tightly scoped to
+  your feature's region; merge conflicts in the command-union list and
+  `ensureColumn` block are trivial keep-both resolutions.
 - PRs reference their issue (`Closes #n`). Small, reviewable, self-contained.
 - Keep this file and DESIGN.md current: new subsystems, new gotchas, new
   process. Docs changes ride along in the PR that motivated them.
@@ -98,6 +105,20 @@ player-facing data).
   for players via an in-memory snapshot in `CampaignRuntime`
   (`capturePlayerFreeze`) — recaptured at boot. New player-visible map-layer
   data should be added to `FrozenMapLayers` or it will leak during a pause.
+  The converse also holds: data players *produce* (e.g. party notes) must be
+  merged back over the frozen layer in `applyPlayerFreeze` or a player's own
+  action vanishes for the party until the DM resumes. Rule of thumb:
+  freeze DM prep, never freeze player output.
+- **Reusing a domain schema in a command** (`Schema.omit({id})`) transmits
+  its `.default()`s into `CommandInput` and breaks client call sites exactly
+  like adding a defaulted command field. Fix: omit the new fields from the
+  command schema and re-`.extend()` them as `.optional()`, defaulting
+  server-side.
+- **Map-settings inheritance** (map manager) is propagation-on-write: to make
+  a new map setting shareable, extend `INHERITABLE_MAP_FIELDS` +
+  `MapDefaultsSchema` in shared `domain.ts` and the propagation follows.
+- Shell scripting: `grep -c` exits 1 on zero matches and silently breaks
+  `&&` chains; never name a variable `GZIP` (gzip reads it as options).
 - **Seat cookies are per-hostname.** To run a DM and a player session against
   one dev server, open one on `localhost` and one on `127.0.0.1` — separate
   cookie jars.

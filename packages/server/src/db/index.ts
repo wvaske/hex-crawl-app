@@ -247,6 +247,9 @@ function migrate(d: DB): void {
   ensureColumn(d, 'marker', 'owner_seat_id', 'TEXT');
   // Character sheet extras (issue #63): JSON blob (bio/appearance/goals/inventory/notes).
   ensureColumn(d, 'character', 'extra', "TEXT NOT NULL DEFAULT '{}'");
+  // Multi-hex region footprints (issue #69): JSON array of {q,r} members
+  // beside the anchor. Existing content stays single-hex.
+  ensureColumn(d, 'content', 'area', "TEXT NOT NULL DEFAULT '[]'");
 }
 
 function ensureColumn(d: DB, table: string, column: string, decl: string): void {

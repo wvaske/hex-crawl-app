@@ -12,6 +12,8 @@ import type {
 } from '@hexcrawl/shared';
 import {
   compassDirection,
+  contentCoversHex,
+  distanceToContent,
   formatClock,
   formatDuration,
   GridStyleSchema,
@@ -188,6 +190,15 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     // releases the snapshot so the next sync shows everything at once.
     if (nowPaused && !wasPaused) ctx.runtime.capturePlayerFreeze();
     if (!nowPaused && wasPaused) ctx.runtime.clearPlayerFreeze();
+  }) as Handler,
+
+  /**
+   * DM only: rotate an invite secret. Nothing player-visible changes, so the
+   * Settings tab re-reads /api/campaigns/:id/keys after sending this.
+   */
+  'campaign.rotateKey': ((cmd: Extract<ClientCommand, { kind: 'campaign.rotateKey' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    ctx.runtime.rotateSecret(cmd.which);
   }) as Handler,
 
   // -- maps ------------------------------------------------------------------
@@ -510,11 +521,16 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   'content.upsert': ((cmd: Extract<ClientCommand, { kind: 'content.upsert' }>, ctx: Ctx) => {
     requireDm(ctx);
     const id = cmd.content.id ?? nanoid(10);
+    // An omitted area MERGES with what's stored: senders that predate
+    // footprints (the pin popup's quick toggles) must not wipe a painted
+    // region. Clearing an area sends an explicit empty list.
+    const priorArea = ctx.runtime.mapStates.get(cmd.content.mapId)?.contents.get(id)?.area;
     const content: Content = {
       id,
       mapId: cmd.content.mapId,
       q: cmd.content.q,
       r: cmd.content.r,
+      area: cmd.content.area ?? priorArea ?? [],
       type: cmd.content.type,
       title: cmd.content.title,
       dmNotes: cmd.content.dmNotes,
@@ -791,8 +807,9 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
           const character = ctx.runtime.characters.get(r.characterId)!;
           for (const content of rt.contents.values()) {
             if (!content.enabled) continue;
-            if (content.q !== cmd.hex.q || content.r !== cmd.hex.r) continue;
-            const distance = hexDistance({ q: token.q, r: token.r }, cmd.hex);
+            // A search on ANY hex of a region's footprint searches the region.
+            if (!contentCoversHex(content, cmd.hex)) continue;
+            const distance = distanceToContent(content, { q: token.q, r: token.r });
             for (const clue of content.clues) {
               if (clue.gate.kind !== 'skill' || clue.gate.skill !== cmd.skill) continue;
               if (distance > clue.gate.maxDistance) continue;
@@ -998,6 +1015,18 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         notifyLog(ctx, entry);
       }
     }
+  }) as Handler,
+
+  // -- sessions (issue #78) ---------------------------------------------------
+  'session.mark': ((cmd: Extract<ClientCommand, { kind: 'session.mark' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const atMinutes = ctx.runtime.campaign.time.minutes;
+    const label = cmd.action === 'start' ? 'Session started' : 'Session ended';
+    const entry = ctx.runtime.appendLog('session', `${label} — ${formatClock(atMinutes)}`, 'all', {
+      action: cmd.action,
+      atMinutes,
+    });
+    notifyLog(ctx, entry);
   }) as Handler,
 };
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
+import { fetchInviteKeys, type InviteKeys } from '../../api.js';
 import { Button, Field, Input, Section, TextArea } from '../../ui/kit.js';
 
 export function SettingsTab({ campaignId }: { campaignId: string }) {
@@ -47,6 +48,8 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
       </Section>
 
       <ShareLinks campaignId={campaignId} />
+
+      <Backup campaignId={campaignId} />
 
       <Section title="Seats">
         <p className="text-xs text-ink-400 mb-2">
@@ -102,14 +105,19 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
   );
 }
 
+const ROTATE_WARNINGS: Record<'player' | 'dm', string> = {
+  player:
+    'Regenerate the PLAYER invite link?\n\nEvery copy of the old player link stops working — anyone who has not joined yet will need the new one. Players who already have a seat stay connected.',
+  dm: 'Regenerate the DM link?\n\nThe old DM link stops working, and so does every integration that uses this campaign\'s DM key as its Bearer token (the MCP server, backup cron jobs, wiki sync). You will need to update HEXCRAWL_TOKEN and any saved ?key= URLs.',
+};
+
 function ShareLinks({ campaignId }: { campaignId: string }) {
-  const [keys, setKeys] = useState<{ dmKey: string; playerKey: string } | null>(null);
+  const [keys, setKeys] = useState<InviteKeys | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [rotating, setRotating] = useState<'player' | 'dm' | null>(null);
 
   useEffect(() => {
-    void fetch(`/api/campaigns/${campaignId}/keys`)
-      .then((r) => (r.ok ? (r.json() as Promise<{ dmKey: string; playerKey: string }>) : null))
-      .then((data) => data && setKeys(data));
+    void fetchInviteKeys(campaignId).then((data) => data && setKeys(data));
   }, [campaignId]);
 
   const copy = (label: string, url: string) => {
@@ -117,6 +125,27 @@ function ShareLinks({ campaignId }: { campaignId: string }) {
       setCopied(label);
       setTimeout(() => setCopied(null), 1500);
     });
+  };
+
+  /**
+   * Rotation happens over the WebSocket, and secrets are deliberately absent
+   * from the state snapshot — so poll /keys briefly until the new one shows up.
+   */
+  const rotate = async (which: 'player' | 'dm') => {
+    if (!keys || rotating) return;
+    if (!confirm(ROTATE_WARNINGS[which])) return;
+    const before = which === 'dm' ? keys.dmKey : keys.playerKey;
+    setRotating(which);
+    send({ kind: 'campaign.rotateKey', which });
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const fresh = await fetchInviteKeys(campaignId);
+      if (fresh && (which === 'dm' ? fresh.dmKey : fresh.playerKey) !== before) {
+        setKeys(fresh);
+        break;
+      }
+    }
+    setRotating(null);
   };
 
   const base = `${location.origin}/c/${campaignId}`;
@@ -129,22 +158,70 @@ function ShareLinks({ campaignId }: { campaignId: string }) {
         <div className="space-y-2">
           <div>
             <p className="text-xs text-ink-400 mb-1">Player invite — share with your table</p>
-            <Button
-              size="sm"
-              className="w-full"
-              onClick={() => copy('player', `${base}?key=${keys.playerKey}`)}
-            >
-              {copied === 'player' ? '✓ Copied!' : '📋 Copy player link'}
-            </Button>
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={() => copy('player', `${base}?key=${keys.playerKey}`)}
+              >
+                {copied === 'player' ? '✓ Copied!' : '📋 Copy player link'}
+              </Button>
+              <Button
+                size="sm"
+                title="Mint a new player key — old player links stop working"
+                disabled={rotating !== null}
+                onClick={() => void rotate('player')}
+              >
+                {rotating === 'player' ? '…' : '♻︎ Regenerate'}
+              </Button>
+            </div>
           </div>
           <div>
             <p className="text-xs text-ink-400 mb-1">DM link — keep this one private</p>
-            <Button size="sm" className="w-full" onClick={() => copy('dm', `${base}?key=${keys.dmKey}`)}>
-              {copied === 'dm' ? '✓ Copied!' : '📋 Copy DM link'}
-            </Button>
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={() => copy('dm', `${base}?key=${keys.dmKey}`)}
+              >
+                {copied === 'dm' ? '✓ Copied!' : '📋 Copy DM link'}
+              </Button>
+              <Button
+                size="sm"
+                title="Mint a new DM key — old DM links AND integration tokens stop working"
+                disabled={rotating !== null}
+                onClick={() => void rotate('dm')}
+              >
+                {rotating === 'dm' ? '…' : '♻︎ Regenerate'}
+              </Button>
+            </div>
           </div>
+          <p className="text-xs text-ink-400">
+            Regenerating kills every old copy of that link. The DM key is also the Bearer token for
+            the integration API — rotate it and you must update the MCP server's{' '}
+            <code>HEXCRAWL_TOKEN</code>, backup scripts, and any saved <code>?key=</code> URLs.
+          </p>
         </div>
       )}
+    </Section>
+  );
+}
+
+function Backup({ campaignId }: { campaignId: string }) {
+  return (
+    <Section title="Backup">
+      <p className="text-xs text-ink-400 mb-2">
+        A full campaign archive (maps, content, images, log) as one JSON file. Restore it from the
+        landing page as a new campaign with new invite links.
+      </p>
+      {/* Plain link: the DM seat cookie rides along and authorizes the download. */}
+      <a
+        href={`/api/campaigns/${campaignId}/export`}
+        download
+        className="block w-full rounded-md border border-ink-600 bg-ink-800 px-2.5 py-1.5 text-center text-sm text-ink-100 hover:border-brass-500 hover:text-brass-300"
+      >
+        ⬇ Download backup
+      </a>
     </Section>
   );
 }
