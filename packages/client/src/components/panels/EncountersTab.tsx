@@ -193,9 +193,12 @@ function TablesPanel() {
   const [editing, setEditing] = useState<EncounterTable | 'new' | null>(null);
   const tables = state?.encounterTables ?? [];
 
-  // Presets whose terrain isn't already covered by an existing table.
-  const missingPresets = ENCOUNTER_PRESETS.filter(
-    (p) => !tables.some((t) => p.terrains.some((tr) => t.terrains.includes(tr))),
+  // Presets whose terrain isn't already covered by an existing table. The
+  // any-terrain preset counts as covered once any terrain-agnostic table exists.
+  const missingPresets = ENCOUNTER_PRESETS.filter((p) =>
+    p.terrains.length === 0
+      ? !tables.some((t) => t.terrains.length === 0)
+      : !tables.some((t) => p.terrains.some((tr) => t.terrains.includes(tr))),
   );
   const loadPresets = () => {
     for (const p of missingPresets) {

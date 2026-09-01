@@ -196,4 +196,20 @@ export const ENCOUNTER_PRESETS: EncounterPreset[] = [
     ['Colossal weathered bones jutting from a ridge'],
     ['Cracked earth and shimmering heat — no encounter'],
   ]),
+  // The terrain-agnostic fallback: rolls on unpainted hexes, or wherever no
+  // terrain table matches, land here instead of "improvise!".
+  preset('Wilderness (any terrain)', [], [
+    ['Ogre looking for an easy meal'],
+    ['Bandits sizing up the party', '2d6'],
+    ['Goblin scouts who bolt toward their warren', '2d4'],
+    ['Wolves keeping pace at the treeline', '1d6'],
+    ['Worgs hunting without riders', '1d2'],
+    ['Stirges dropping from above', '1d6'],
+    ['Skeletons of an old battle, still standing watch', '1d6'],
+    ['Traveling peddler with an overloaded mule'],
+    ['Pilgrims or refugees, footsore and wary'],
+    ['Abandoned campsite — cold fire, scattered gear'],
+    ['The weather turns fast — seek shelter or push through'],
+    ['An uneventful stretch — no encounter'],
+  ]),
 ];

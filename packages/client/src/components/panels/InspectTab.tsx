@@ -65,6 +65,28 @@ export function InspectTab() {
       </div>
 
       {isDm && (
+        <div className="mb-3">
+          <Button
+            size="sm"
+            className="w-full"
+            title={`Wandering encounter check (${map.encounterCheck.die}, ${map.encounterCheck.threshold}+) using this hex's terrain — result lands in the DM log`}
+            onClick={() =>
+              send({
+                kind: 'encounter.roll',
+                mapId: map.id,
+                q: hex.q,
+                r: hex.r,
+                tableId: null,
+                skipCheck: false,
+              })
+            }
+          >
+            🎲 Roll encounter here
+          </Button>
+        </div>
+      )}
+
+      {isDm && (
         <Section title="Fog">
           <div className="flex gap-1">
             {(['visible', 'explored', 'hidden'] as FogState[]).map((s) => (
@@ -87,9 +109,10 @@ export function InspectTab() {
 
       {tokens.length > 0 && (
         <Section title="Tokens here">
-          <ul className="space-y-1">
+          {/* auto-fill: one column in a narrow sidebar, more as it widens */}
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-3 gap-y-1">
             {tokens.map((t) => (
-              <li key={t.id} className="flex items-center gap-2 text-sm text-ink-100">
+              <li key={t.id} className="flex items-center gap-2 text-sm text-ink-100 min-w-0">
                 <span
                   className="w-4 h-4 rounded-full inline-block border border-white/40 shrink-0"
                   style={{ background: t.color }}
