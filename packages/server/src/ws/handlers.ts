@@ -893,12 +893,17 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   'time.advance': ((cmd: Extract<ClientCommand, { kind: 'time.advance' }>, ctx: Ctx) => {
     requireDm(ctx);
     const time = ctx.runtime.advanceTime(cmd.minutes);
-    const entry = ctx.runtime.appendLog(
-      'time',
-      `Time advances ${formatDuration(cmd.minutes)} — ${formatClock(time.minutes)}`,
-      'all',
-      { minutes: time.minutes, advancedBy: cmd.minutes },
-    );
+    let text = `Time advances ${formatDuration(cmd.minutes)}`;
+    if (cmd.note) text += ` (${cmd.note})`;
+    text += ` — ${formatClock(time.minutes)}`;
+    if (time.partyHex) {
+      text += ` at ${hexLocationLabel(ctx.runtime, time.partyHex)}`;
+    }
+    const entry = ctx.runtime.appendLog('time', text, 'all', {
+      minutes: time.minutes,
+      advancedBy: cmd.minutes,
+      note: cmd.note ?? null,
+    });
     notifyLog(ctx, entry);
   }) as Handler,
 
@@ -944,6 +949,23 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     }
   }) as Handler,
 };
+
+/**
+ * A human-readable label for a party-hex reference: the title of enabled
+ * content sitting on that hex (a town, a dungeon), or a bare hex coordinate.
+ */
+function hexLocationLabel(
+  runtime: CampaignRuntime,
+  hex: { mapId: string; q: number; r: number },
+): string {
+  const rt = runtime.mapStates.get(hex.mapId);
+  if (rt) {
+    for (const content of rt.contents.values()) {
+      if (content.q === hex.q && content.r === hex.r && content.enabled) return content.title;
+    }
+  }
+  return `hex ${hex.q},${hex.r}`;
+}
 
 /** Fog auto-reveal + knowledge evaluation after a PC token appears or moves. */
 function afterPartyMoved(ctx: Ctx, mapId: string, token: Token): FogDelta {

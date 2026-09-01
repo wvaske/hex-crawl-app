@@ -1,5 +1,12 @@
 import React from 'react';
-import { TERRAINS, hexDistance, hexKey } from '@hexcrawl/shared';
+import {
+  TERRAINS,
+  formatDuration,
+  hexDistance,
+  hexKey,
+  minutesPerHex,
+  resolveTravelMode,
+} from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 
@@ -17,6 +24,18 @@ export function HexReadout() {
   const measuring = tool === 'measure' && measureStart;
   const dist = measuring ? hexDistance(measureStart, hover) : null;
 
+  // Travel-time estimate (#77): distance at the campaign's current travel
+  // mode/pace. Both roles see it — it's the "should we push on?" question.
+  let travelEstimate: string | null = null;
+  const time = state.campaign.time;
+  if (dist !== null && dist > 0 && time) {
+    const mode = resolveTravelMode(time.travelMode, state.campaign.settings.customTravelModes);
+    const totalMinutes = dist * minutesPerHex(map.milesPerHex, mode, time.pace);
+    if (totalMinutes > 0) {
+      travelEstimate = `~${formatDuration(totalMinutes)} · ${mode.label} (${time.pace})`;
+    }
+  }
+
   return (
     <div className="absolute bottom-3 left-3 z-30 bg-ink-900/90 border border-ink-700 rounded-md px-2.5 py-1.5 text-xs text-ink-300 backdrop-blur pointer-events-none">
       <span className="text-ink-100 font-medium">
@@ -29,6 +48,7 @@ export function HexReadout() {
           · {dist} hex{dist === 1 ? '' : 'es'} ≈ {dist * map.milesPerHex} mi
         </span>
       )}
+      {travelEstimate && <span className="text-ink-400"> · {travelEstimate}</span>}
     </div>
   );
 }

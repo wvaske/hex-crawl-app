@@ -1033,6 +1033,41 @@ describe('campaign clock (issue #57)', () => {
     expect(setEntry.visibility).toBe('dm');
   });
 
+  it('time.advance appends a note and the party hex/location (issue #59)', () => {
+    const { mapId } = setupPartyWithScout();
+    // The PC token appears at (0,0), which stamps partyHex there.
+    expect(runtime.campaign.time.partyHex).toMatchObject({ mapId, q: 0, r: 0 });
+
+    dm({ kind: 'time.advance', minutes: 60, note: 'short rest' } as never);
+    let entry = runtime.log.filter((e) => e.kind === 'time').at(-1)!;
+    expect(entry.text).toBe('Time advances 1 hour (short rest) — Day 1, 9:00 AM at hex 0,0');
+    expect(entry.data.note).toBe('short rest');
+
+    // Enabled content on the party's hex is named instead of the bare coords.
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 0, r: 0, type: 'settlement', title: "Durlag's Tower", dmNotes: '',
+        glyph: '', clues: [],
+      },
+    } as never);
+    dm({ kind: 'time.advance', minutes: 8 * 60, note: 'camp' } as never);
+    entry = runtime.log.filter((e) => e.kind === 'time').at(-1)!;
+    expect(entry.text).toBe("Time advances 8 hours (camp) — Day 1, 5:00 PM at Durlag's Tower");
+
+    // No note: unchanged from the plain "advances ... — clock" shape, plus location.
+    dm({ kind: 'time.advance', minutes: 30 } as never);
+    entry = runtime.log.filter((e) => e.kind === 'time').at(-1)!;
+    expect(entry.text).toBe("Time advances 30 minutes — Day 1, 5:30 PM at Durlag's Tower");
+
+    // Disabled content doesn't exist yet — falls back to the bare hex.
+    const content = [...runtime.requireMap(mapId).contents.values()][0]!;
+    dm({ kind: 'content.upsert', content: { ...content, enabled: false } } as never);
+    dm({ kind: 'time.advance', minutes: 60 } as never);
+    entry = runtime.log.filter((e) => e.kind === 'time').at(-1)!;
+    expect(entry.text).toBe('Time advances 1 hour — Day 1, 6:30 PM at hex 0,0');
+  });
+
   it('accumulates per-hex time while the party lingers, and persists it', () => {
     const { mapId, tokenId, playerSeat } = setupPartyWithScout();
     // The starting hex is stamped when the PC token appears.
