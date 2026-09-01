@@ -4,13 +4,13 @@ import { activeMap, useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { uploadMapImage } from '../../api.js';
 import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
-import { MapManagerDialog } from '../MapManagerDialog.js';
+import { useUi } from '../../stores/ui.js';
 
 export function MapsTab({ campaignId }: { campaignId: string }) {
   const state = useSession((s) => s.state);
   const map = activeMap(state);
   const [newName, setNewName] = useState('');
-  const [managing, setManaging] = useState(false);
+  const setUi = useUi((s) => s.set);
 
   if (!state) return null;
 
@@ -22,16 +22,13 @@ export function MapsTab({ campaignId }: { campaignId: string }) {
 
   return (
     <div>
-      {managing && (
-        <MapManagerDialog campaignId={campaignId} onClose={() => setManaging(false)} />
-      )}
       <Section
         title="Maps"
         actions={
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setManaging(true)}
+            onClick={() => setUi('mapManagerOpen', true)}
             title="Thumbnails, per-map settings, and campaign defaults in one place"
           >
             Manage maps

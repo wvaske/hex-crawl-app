@@ -13,6 +13,7 @@ import { PendingMoves } from '../components/PendingMoves.js';
 import { SelectionBar } from '../components/SelectionBar.js';
 import { PinActions } from '../components/PinActions.js';
 import { LocationDialog } from '../components/LocationDialog.js';
+import { MapManagerDialog } from '../components/MapManagerDialog.js';
 
 export function TableView({ campaignId }: { campaignId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -22,6 +23,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
   const role = useSession((s) => s.role);
   const contentDialogHex = useUi((s) => s.contentDialogHex);
   const locationDialogContentId = useUi((s) => s.locationDialogContentId);
+  const mapManagerOpen = useUi((s) => s.mapManagerOpen);
 
   useEffect(() => {
     connectWs(campaignId);
@@ -139,6 +141,12 @@ export function TableView({ campaignId }: { campaignId: string }) {
       </div>
       {contentDialogHex && <ContentDialog />}
       {locationDialogContentId && <LocationDialog campaignId={campaignId} />}
+      {mapManagerOpen && role === 'dm' && (
+        <MapManagerDialog
+          campaignId={campaignId}
+          onClose={() => useUi.getState().set('mapManagerOpen', false)}
+        />
+      )}
     </div>
   );
 }

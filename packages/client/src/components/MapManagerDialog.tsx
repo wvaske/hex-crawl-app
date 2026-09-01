@@ -476,6 +476,19 @@ function CampaignDefaults() {
     send({ kind: 'campaign.update', settings: { mapDefaults: p } });
   const linked = (field: InheritableMapField) =>
     maps.filter((m) => m.inheritedFields.includes(field)).length;
+  /** Point every map at the campaign default for one field. */
+  const linkAll = (field: InheritableMapField) => {
+    for (const m of maps) {
+      if (!m.inheritedFields.includes(field)) {
+        send({ kind: 'map.setInherit', mapId: m.id, field, inherit: true });
+      }
+    }
+  };
+  const row = (field: InheritableMapField) => ({
+    count: linked(field),
+    total: maps.length,
+    onLinkAll: () => linkAll(field),
+  });
 
   return (
     <div className="mb-4 rounded-lg border border-brass-500/40 bg-brass-500/5 p-3">
@@ -487,7 +500,7 @@ function CampaignDefaults() {
         {maps.length === 1 ? '' : 's'} total).
       </p>
       <div className="space-y-1">
-        <DefaultRow label="Miles per hex" count={linked('milesPerHex')}>
+        <DefaultRow label="Miles per hex" {...row('milesPerHex')}>
           <Input
             type="number"
             key={`d-mph-${defaults.milesPerHex}`}
@@ -495,7 +508,7 @@ function CampaignDefaults() {
             onBlur={(e) => set({ milesPerHex: Math.max(0, num(e.target.value, defaults.milesPerHex)) })}
           />
         </DefaultRow>
-        <DefaultRow label="Sight radius" count={linked('sightRadius')}>
+        <DefaultRow label="Sight radius" {...row('sightRadius')}>
           <Input
             type="number"
             min={0}
@@ -507,13 +520,13 @@ function CampaignDefaults() {
             }
           />
         </DefaultRow>
-        <DefaultRow label="Fog mode" count={linked('fogMode')}>
+        <DefaultRow label="Fog mode" {...row('fogMode')}>
           <Select value={defaults.fogMode} onChange={(e) => set({ fogMode: e.target.value })}>
             <option value="auto">Auto-reveal</option>
             <option value="manual">Manual only</option>
           </Select>
         </DefaultRow>
-        <DefaultRow label="Fog decay" count={linked('fogDecay')}>
+        <DefaultRow label="Fog decay" {...row('fogDecay')}>
           <CheckLine
             disabled={false}
             checked={defaults.fogDecay}
@@ -521,13 +534,13 @@ function CampaignDefaults() {
             onChange={(v) => set({ fogDecay: v })}
           />
         </DefaultRow>
-        <DefaultRow label="Movement" count={linked('moveMode')}>
+        <DefaultRow label="Movement" {...row('moveMode')}>
           <Select value={defaults.moveMode} onChange={(e) => set({ moveMode: e.target.value })}>
             <option value="free">Free drag</option>
             <option value="step">One hex/step</option>
           </Select>
         </DefaultRow>
-        <DefaultRow label="Move approval" count={linked('moveApproval')}>
+        <DefaultRow label="Move approval" {...row('moveApproval')}>
           <CheckLine
             disabled={false}
             checked={defaults.moveApproval}
@@ -535,7 +548,7 @@ function CampaignDefaults() {
             onChange={(v) => set({ moveApproval: v })}
           />
         </DefaultRow>
-        <DefaultRow label="Encounter check" count={linked('encounterCheck')}>
+        <DefaultRow label="Encounter check" {...row('encounterCheck')}>
           <EncounterFields
             disabled={false}
             value={defaults.encounterCheck}
@@ -550,19 +563,38 @@ function CampaignDefaults() {
 function DefaultRow({
   label,
   count,
+  total,
+  onLinkAll,
   children,
 }: {
   label: string;
   count: number;
+  total: number;
+  onLinkAll: () => void;
   children: React.ReactNode;
 }) {
+  const allLinked = total > 0 && count === total;
   return (
     <div className="flex items-center gap-2 py-1">
       <span className="w-40 shrink-0 text-[11px] uppercase tracking-wider text-ink-400">{label}</span>
       <div className="flex-1 min-w-0">{children}</div>
       <span className="w-16 shrink-0 text-right text-[10px] text-ink-500" title="Maps following this default">
-        🔗 {count}
+        🔗 {count}/{total}
       </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="!px-1.5 !py-0.5 shrink-0 text-[10px] border border-ink-600 disabled:opacity-30"
+        disabled={allLinked}
+        onClick={onLinkAll}
+        title={
+          allLinked
+            ? 'Every map already follows this default'
+            : 'Point every map at this campaign default (overwrites their map-specific values)'
+        }
+      >
+        Link all
+      </Button>
     </div>
   );
 }

@@ -36,6 +36,8 @@ interface UiStore {
   editingContentId: string | null;
   /** Content whose full detail dialog (app data + wiki) is open (#66). */
   locationDialogContentId: string | null;
+  /** DM map manager dialog (opened from the top bar or Build → Maps). */
+  mapManagerOpen: boolean;
   /** Which side pop-out panel is open (null = none). */
   openPanel: PanelId | null;
   /** Pop-out panel width in px (drag the left edge to resize). */
@@ -125,6 +127,7 @@ export const useUi = create<UiStore>((set) => ({
   contentDialogHex: null,
   editingContentId: null,
   locationDialogContentId: null,
+  mapManagerOpen: false,
   openPanel: 'information',
   panelWidth: initialPanelWidth(),
   measureStart: null,
