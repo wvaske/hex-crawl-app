@@ -41,6 +41,8 @@ export interface CampaignExport {
   maps: Row[];
   hexes: Row[];
   fog: Row[];
+  /** Per-hex time accounting (campaign clock); absent in pre-clock archives. */
+  hexVisits: Row[];
   tokens: Row[];
   markers: Row[];
   contents: Row[];
@@ -103,6 +105,7 @@ function collectExport(db: DB, campaignId: string): Omit<CampaignExport, 'images
     maps,
     hexes: childRows(db, 'hex', 'map_id', mapIds),
     fog: childRows(db, 'fog', 'map_id', mapIds),
+    hexVisits: childRows(db, 'hex_visit', 'map_id', mapIds),
     tokens: childRows(db, 'token', 'map_id', mapIds),
     markers: childRows(db, 'marker', 'map_id', mapIds),
     contents,
@@ -184,6 +187,8 @@ export const CampaignImportSchema = z.object({
   maps: RowsSchema,
   hexes: RowsSchema,
   fog: RowsSchema,
+  // Absent in archives exported before the campaign clock existed.
+  hexVisits: RowsSchema.default([]),
   tokens: RowsSchema,
   markers: RowsSchema,
   contents: RowsSchema,
@@ -319,6 +324,22 @@ export function importCampaign(
 
   const counts: Record<string, number> = {};
   const tx = db.transaction(() => {
+    // The clock blob's partyHex references a map id — remap it (or drop it
+    // when the map didn't survive) so linger-time accounting stays coherent.
+    let timeJson = str(data.campaign.time) ?? null;
+    if (timeJson) {
+      try {
+        const time = JSON.parse(timeJson) as { partyHex?: { mapId?: string } | null };
+        if (time.partyHex?.mapId) {
+          const remapped = mapMap.get(time.partyHex.mapId);
+          if (remapped) time.partyHex.mapId = remapped;
+          else time.partyHex = null;
+          timeJson = JSON.stringify(time);
+        }
+      } catch {
+        timeJson = null;
+      }
+    }
     counts.campaign = insertRows(db, 'campaign', [
       {
         ...data.campaign,
@@ -328,6 +349,7 @@ export function importCampaign(
         player_secret: playerSecret,
         active_map_id: activeMapId,
         created_at: Date.now(),
+        time: timeJson,
       },
     ]);
     counts.character = insertRows(
@@ -347,11 +369,13 @@ export function importCampaign(
       }),
     );
     counts.image_layer = insertRows(db, 'image_layer', images);
-    for (const table of ['hex', 'fog'] as const) {
+    for (const table of ['hex', 'fog', 'hex_visit'] as const) {
+      const rows =
+        table === 'hex' ? data.hexes : table === 'fog' ? data.fog : data.hexVisits;
       counts[table] = insertRows(
         db,
         table,
-        keep(table === 'hex' ? data.hexes : data.fog, (row) => {
+        keep(rows, (row) => {
           const mapId = mapMap.get(str(row.map_id) ?? '');
           return mapId ? { ...row, map_id: mapId } : null;
         }),

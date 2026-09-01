@@ -3,6 +3,8 @@ import {
   CharacterSchema,
   ContentTypeSchema,
   ClueSchema,
+  CustomTravelModeSchema,
+  TravelPaceSchema,
   EncounterTableSchema,
   FogStateSchema,
   MarkerSchema,
@@ -44,6 +46,9 @@ const CampaignSettingsPatchSchema = z
     description: z.string().max(2000),
     wikiBaseUrl: z.string().max(300),
     pausePlayerMapSync: z.boolean(),
+    customTravelModes: z.array(CustomTravelModeSchema),
+    sunriseHour: z.number().min(0).max(23),
+    sunsetHour: z.number().min(0).max(24),
   })
   .partial();
 
@@ -465,6 +470,35 @@ export const EncounterTableDeleteCommand = z.object({
   tableId: z.string(),
 });
 
+// --- campaign clock ---------------------------------------------------------
+
+/**
+ * DM: push the campaign clock forward (rests, downtime, a searched hex).
+ * Capped at a year so a fat-fingered entry can't send the party to the
+ * far future. Fields stay `.optional()` rather than `.default()`ed — a
+ * default would make them required in `CommandInput` at every call site.
+ */
+export const TimeAdvanceCommand = z.object({
+  ...base,
+  kind: z.literal('time.advance'),
+  minutes: z.number().int().min(1).max(60 * 24 * 365),
+});
+
+/** DM: set the clock absolutely (session bookkeeping, fixing a mistake). */
+export const TimeSetCommand = z.object({
+  ...base,
+  kind: z.literal('time.set'),
+  minutes: z.number().int().min(0).max(60 * 24 * 365 * 1000),
+});
+
+/** DM: change how fast the party travels. */
+export const TimeConfigCommand = z.object({
+  ...base,
+  kind: z.literal('time.config'),
+  travelMode: z.string().min(1).max(40).optional(),
+  pace: TravelPaceSchema.optional(),
+});
+
 /** DM: undo the most recent undoable change (fog, terrain, moves, edits). */
 export const UndoCommand = z.object({
   ...base,
@@ -523,6 +557,9 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   EncounterRollCommand,
   EncounterTableUpsertCommand,
   EncounterTableDeleteCommand,
+  TimeAdvanceCommand,
+  TimeSetCommand,
+  TimeConfigCommand,
   UndoCommand,
   NarrateCommand,
 ]);

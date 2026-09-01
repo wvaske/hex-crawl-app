@@ -1290,3 +1290,116 @@ describe('campaign export / import (issue #76)', () => {
     });
   });
 });
+
+describe('campaign clock (issue #57)', () => {
+  // The default map is 6 mi/hex and the default mode is foot (3 mph), so a
+  // hex costs 120 minutes at normal pace.
+  it('starts at 8:00 AM on day 1', () => {
+    expect(runtime.campaign.time.minutes).toBe(8 * 60);
+    expect(runtime.campaign.time.travelMode).toBe('foot');
+    expect(runtime.campaign.time.pace).toBe('normal');
+  });
+
+  it('advances on travel by hexes crossed, and not on a teleport', () => {
+    const { tokenId, playerSeat } = setupPartyWithScout();
+    expect(runtime.campaign.time.minutes).toBe(480);
+
+    // 3 hexes on foot at 6 mi/hex = 6 hours.
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 3, r: 0 } as never);
+    expect(runtime.campaign.time.minutes).toBe(480 + 3 * 120);
+
+    // Teleports cost no time but still relocate the party.
+    dm({ kind: 'token.move', tokenId, q: 20, r: 0, teleport: true } as never);
+    expect(runtime.campaign.time.minutes).toBe(480 + 3 * 120);
+    expect(runtime.campaign.time.partyHex).toMatchObject({ q: 20, r: 0 });
+  });
+
+  it('applies travel mode and pace to the cost of a hex', () => {
+    const { tokenId, playerSeat } = setupPartyWithScout();
+    dm({ kind: 'time.config', pace: 'careful' } as never);
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 1, r: 0 } as never);
+    expect(runtime.campaign.time.minutes).toBe(480 + 180);
+
+    // Horseback at fast pace: 6 mph × 4/3 = 8 mph → 45 minutes per hex.
+    dm({ kind: 'time.config', travelMode: 'horse', pace: 'fast' } as never);
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 2, r: 0 } as never);
+    expect(runtime.campaign.time.minutes).toBe(480 + 180 + 45);
+  });
+
+  it('npc moves leave the clock alone', () => {
+    const mapId = activeMapId();
+    dm({
+      kind: 'token.create', mapId, q: 0, r: 0, tokenKind: 'npc', characterId: null,
+      label: 'Ogre', color: '#aa0000', glyph: '', playerVisible: true,
+    } as never);
+    const tokenId = [...runtime.requireMap(mapId).tokens.keys()][0]!;
+    dm({ kind: 'token.move', tokenId, q: 4, r: 0 } as never);
+    expect(runtime.campaign.time.minutes).toBe(480);
+  });
+
+  it('time.advance and time.set log and require the DM', () => {
+    const player = runtime.createSeat('player', 'Mallory');
+    expect(() => asSeat(player, { kind: 'time.advance', minutes: 60 } as never)).toThrow(/DM/);
+    expect(() => asSeat(player, { kind: 'time.set', minutes: 0 } as never)).toThrow(/DM/);
+    expect(() => asSeat(player, { kind: 'time.config', pace: 'fast' } as never)).toThrow(/DM/);
+    expect(runtime.campaign.time.minutes).toBe(480);
+
+    dm({ kind: 'time.advance', minutes: 8 * 60 } as never);
+    expect(runtime.campaign.time.minutes).toBe(480 + 480);
+    const advanced = runtime.log.filter((e) => e.kind === 'time');
+    expect(advanced).toHaveLength(1);
+    expect(advanced[0]!.text).toBe('Time advances 8 hours — Day 1, 4:00 PM');
+    expect(advanced[0]!.visibility).toBe('all');
+
+    dm({ kind: 'time.set', minutes: 2 * 1440 + 18 * 60 + 40 } as never);
+    expect(runtime.campaign.time.minutes).toBe(2 * 1440 + 18 * 60 + 40);
+    const setEntry = runtime.log.filter((e) => e.kind === 'time')[1]!;
+    expect(setEntry.text).toBe('Clock set to Day 3, 6:40 PM');
+    expect(setEntry.visibility).toBe('dm');
+  });
+
+  it('accumulates per-hex time while the party lingers, and persists it', () => {
+    const { mapId, tokenId, playerSeat } = setupPartyWithScout();
+    // The starting hex is stamped when the PC token appears.
+    expect(runtime.hexVisit(mapId, 0, 0)).toMatchObject({ firstArrived: 480, totalMinutes: 0 });
+
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 1, r: 0 } as never);
+    expect(runtime.campaign.time.minutes).toBe(600);
+    expect(runtime.hexVisit(mapId, 1, 0)).toMatchObject({ firstArrived: 600, totalMinutes: 0 });
+
+    // Camp for eight hours, then move on: the parked hex banks the downtime,
+    // and travel time is charged to neither hex.
+    dm({ kind: 'time.advance', minutes: 8 * 60 } as never);
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 2, r: 0 } as never);
+    expect(runtime.hexVisit(mapId, 1, 0)!.totalMinutes).toBe(480);
+    expect(runtime.hexVisit(mapId, 2, 0)).toMatchObject({ totalMinutes: 0, lastArrived: 1200 });
+
+    // Coming back re-stamps lastArrived while keeping the history.
+    dm({ kind: 'time.advance', minutes: 30 } as never);
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 1, r: 0 } as never);
+    const revisit = runtime.hexVisit(mapId, 1, 0)!;
+    expect(revisit.firstArrived).toBe(600);
+    expect(revisit.lastArrived).toBe(1350);
+    expect(runtime.hexVisit(mapId, 2, 0)!.totalMinutes).toBe(30);
+
+    // Clock and visits survive a restart.
+    const db = (store as unknown as { db: unknown }).db;
+    const reloaded = new Store(db as never).getCampaign(runtime.id)!;
+    expect(reloaded.campaign.time.minutes).toBe(runtime.campaign.time.minutes);
+    expect(reloaded.campaign.time.partyHex).toEqual(runtime.campaign.time.partyHex);
+    expect(reloaded.hexVisit(mapId, 1, 0)).toEqual(revisit);
+  });
+
+  it('exposes visits to the DM snapshot only', () => {
+    const { mapId, charId, playerSeat, tokenId } = setupPartyWithScout();
+    asSeat(playerSeat, { kind: 'token.move', tokenId, q: 1, r: 0 } as never);
+    const full = runtime.buildFullState(mapId);
+    expect(full.mapState!.visits.length).toBeGreaterThan(0);
+    const playerView = filterStateForViewer(full, {
+      seatId: playerSeat.id, role: 'player', characterId: charId,
+    });
+    expect(playerView.mapState!.visits).toEqual([]);
+    // The clock itself is public.
+    expect(playerView.campaign.time.minutes).toBe(runtime.campaign.time.minutes);
+  });
+});

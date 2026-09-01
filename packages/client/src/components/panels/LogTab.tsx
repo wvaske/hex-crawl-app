@@ -9,9 +9,10 @@ const KIND_META: Record<string, { icon: string; label: string }> = {
   encounter: { icon: '🎲', label: 'Encounter' },
   narration: { icon: '📜', label: 'Narration' },
   share: { icon: '🤝', label: 'Shared' },
+  time: { icon: '🕐', label: 'Time' },
 };
 
-const FILTERS = ['all', 'discovery', 'check', 'encounter', 'narration', 'share'] as const;
+const FILTERS = ['all', 'discovery', 'check', 'encounter', 'narration', 'share', 'time'] as const;
 
 export function LogTab() {
   const state = useSession((s) => s.state);

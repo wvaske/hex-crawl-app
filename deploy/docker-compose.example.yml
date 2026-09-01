@@ -1,0 +1,100 @@
+# HexCrawl VTT — reference deployment.
+#
+# This is the generic, copy-and-run compose file. It pulls the published
+# multi-arch image from GHCR, keeps all state in a named Docker volume, and
+# reads instance config from a `.env` file next to this one.
+#
+#   curl -O https://raw.githubusercontent.com/wvaske/hex-crawl-app/main/deploy/docker-compose.example.yml
+#   curl -o .env https://raw.githubusercontent.com/wvaske/hex-crawl-app/main/.env.example
+#   docker compose -f docker-compose.example.yml up -d
+#
+# Then open http://localhost:3000 and create a campaign.
+#
+# All persistent state (SQLite db + uploaded map images) lives in the
+# `hexcrawl_data` volume. Back it up with:
+#   docker run --rm -v hexcrawl_data:/data -v "$PWD:/backup" alpine \
+#     tar czf /backup/hexcrawl-$(date +%F).tar.gz -C /data .
+#
+# Homelab-specific variants (macvlan IPs, iSCSI-backed volumes, Traefik file
+# provider) live alongside this file as docker-compose.yml /
+# traefik-hex-crawl.yml and are documented in RUNBOOK.md. Use those as advanced
+# examples only — this file is the one to start from.
+
+services:
+  hex-crawl:
+    # Published on every push to main (`:main`) and every version tag (`:v1.2.3`,
+    # `:1.2`, `:latest`). Pin a tag for production.
+    image: ${HEXCRAWL_IMAGE:-ghcr.io/wvaske/hex-crawl-app:latest}
+    container_name: hex-crawl
+    restart: unless-stopped
+    # Values from the .env file in this directory. Every one is optional; the
+    # image already sets sane defaults. See .env.example for what each does.
+    env_file:
+      - .env
+    environment:
+      # Fixed by the image layout — override only if you know why.
+      DATA_DIR: /data
+      CLIENT_DIST: /app/client-dist
+      HOST: 0.0.0.0
+    ports:
+      # host:container. Change the host side to move the app off :3000.
+      # Remove this block entirely if you put the app behind the Caddy service
+      # below — then only Caddy needs published ports.
+      - '${HEXCRAWL_PORT:-3000}:3000'
+    volumes:
+      - hexcrawl_data:/data
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --------------------------------------------------------------------------
+  # Optional: TLS-terminating reverse proxy.
+  #
+  # Uncomment this service (and the `caddy_data` / `caddy_config` volumes), drop
+  # the `ports:` block from hex-crawl above, point a DNS A record at this host,
+  # and set HEXCRAWL_DOMAIN + HEXCRAWL_ACME_EMAIL in .env. Caddy obtains and
+  # renews a Let's Encrypt certificate automatically and proxies WebSocket
+  # upgrades on /ws without extra configuration.
+  #
+  # Any reverse proxy works — the only requirement is that it forwards the
+  # WebSocket upgrade to /ws. There is a Traefik example in this directory.
+  # --------------------------------------------------------------------------
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: hex-crawl-caddy
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - hex-crawl
+  #   ports:
+  #     - '80:80'
+  #     - '443:443'
+  #   environment:
+  #     HEXCRAWL_DOMAIN: ${HEXCRAWL_DOMAIN:?set HEXCRAWL_DOMAIN in .env}
+  #     HEXCRAWL_ACME_EMAIL: ${HEXCRAWL_ACME_EMAIL:-}
+  #   volumes:
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   # Inline Caddyfile — no extra file to manage.
+  #   command:
+  #     - sh
+  #     - -c
+  #     - |
+  #       printf '%s\n' \
+  #         "{ email {\$HEXCRAWL_ACME_EMAIL} }" \
+  #         "{\$HEXCRAWL_DOMAIN} {" \
+  #         "  reverse_proxy hex-crawl:3000" \
+  #         "}" > /etc/caddy/Caddyfile
+  #       exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+
+volumes:
+  hexcrawl_data:
+  # caddy_data:
+  # caddy_config:

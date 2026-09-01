@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { diceBounds, parseDice, rollDice, seededRng } from './dice.js';
 import { gateOpensPassively } from './gates.js';
 import { filterStateForViewer } from './filter.js';
+import {
+  TRAVEL_MODES,
+  formatClock,
+  formatDuration,
+  formatTimeOfDay,
+  isNight,
+  minutesPerHex,
+  resolveTravelMode,
+  timeOfDay,
+  travelModes,
+} from './time.js';
 import type { CampaignState, Character } from '../domain.js';
 
 describe('dice', () => {
@@ -70,7 +81,20 @@ describe('gates', () => {
 
 function fullState(): CampaignState {
   return {
-    campaign: { id: 'c1', name: 'Test', activeMapId: 'm1', settings: { description: '', wikiBaseUrl: 'https://wiki.example/wiki/', pausePlayerMapSync: false } },
+    campaign: {
+      id: 'c1',
+      name: 'Test',
+      activeMapId: 'm1',
+      settings: {
+        description: '',
+        wikiBaseUrl: 'https://wiki.example/wiki/',
+        pausePlayerMapSync: false,
+        customTravelModes: [],
+        sunriseHour: 6,
+        sunsetHour: 20,
+      },
+      time: { minutes: 8 * 60, travelMode: 'foot', pace: 'normal', partyHex: null },
+    },
     seats: [
       { id: 'dm', role: 'dm', name: 'DM', characterId: null, online: true },
       { id: 's1', role: 'player', name: 'Alice', characterId: 'char1', online: true },
@@ -118,6 +142,7 @@ function fullState(): CampaignState {
       pendingMoves: [],
       trails: [],
       trailSigns: [],
+      visits: [{ q: 0, r: 0, firstArrived: 480, lastArrived: 480, totalMinutes: 30 }],
     },
     discoveries: [
       { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' }, direction: null, locates: true },
@@ -171,6 +196,15 @@ describe('filterStateForViewer', () => {
     expect((view as { discoveredClues: unknown[] }).discoveredClues).toHaveLength(1);
   });
 
+  it('withholds per-hex visit records from players', () => {
+    const full = fullState();
+    expect(full.mapState!.visits).toHaveLength(1);
+    const s = filterStateForViewer(full, viewer);
+    expect(s.mapState!.visits).toEqual([]);
+    // The clock itself is public: players see day, time and daylight.
+    expect(s.campaign.time).toEqual(full.campaign.time);
+  });
+
   it('filters discoveries, tables, and log', () => {
     const s = filterStateForViewer(fullState(), viewer);
     expect(s.discoveries.map((d) => d.id)).toEqual(['d1']);
@@ -182,5 +216,52 @@ describe('filterStateForViewer', () => {
     const s = filterStateForViewer(fullState(), { seatId: 's9', role: 'player', characterId: null });
     expect(s.mapState!.contents).toEqual([]);
     expect(s.discoveries).toEqual([]);
+  });
+});
+
+describe('campaign clock', () => {
+  it('computes minutes per hex from scale, mode speed and pace', () => {
+    const foot = resolveTravelMode('foot');
+    expect(foot.mph).toBe(3);
+    // 6 miles at 3 mph = 2 hours.
+    expect(minutesPerHex(6, foot, 'normal')).toBe(120);
+    // Fast pace is 4/3 speed: 90 minutes. Careful is 2/3: 180.
+    expect(minutesPerHex(6, foot, 'fast')).toBe(90);
+    expect(minutesPerHex(6, foot, 'careful')).toBe(180);
+    // A raw mph works too, and horses are twice as fast as boots.
+    expect(minutesPerHex(6, 6, 'normal')).toBe(60);
+    expect(minutesPerHex(6, resolveTravelMode('horse'), 'normal')).toBe(60);
+    // Degenerate inputs cost nothing rather than diverging.
+    expect(minutesPerHex(0, foot, 'normal')).toBe(0);
+    expect(minutesPerHex(6, 0, 'normal')).toBe(0);
+  });
+
+  it('resolves custom travel modes and falls back to foot', () => {
+    const custom = [{ id: 'griffon', name: 'Griffon', mph: 12 }];
+    expect(resolveTravelMode('griffon', custom).mph).toBe(12);
+    expect(travelModes(custom)).toHaveLength(TRAVEL_MODES.length + 1);
+    expect(resolveTravelMode('nonsense', custom).id).toBe('foot');
+  });
+
+  it('derives day, time of day and formatting', () => {
+    expect(timeOfDay(8 * 60)).toEqual({ day: 1, hour: 8, minute: 0 });
+    expect(timeOfDay(2 * 1440 + 18 * 60 + 40)).toEqual({ day: 3, hour: 18, minute: 40 });
+    expect(formatClock(2 * 1440 + 18 * 60 + 40)).toBe('Day 3, 6:40 PM');
+    expect(formatTimeOfDay(0)).toBe('12:00 AM');
+    expect(formatTimeOfDay(12 * 60)).toBe('12:00 PM');
+    expect(formatDuration(8 * 60)).toBe('8 hours');
+    expect(formatDuration(1500)).toBe('1 day 1 hour');
+    expect(formatDuration(45)).toBe('45 minutes');
+  });
+
+  it('derives night from configurable sunrise/sunset', () => {
+    expect(isNight(8 * 60)).toBe(false);
+    expect(isNight(22 * 60)).toBe(true);
+    expect(isNight(3 * 60)).toBe(true);
+    // Second day, still daylight at noon.
+    expect(isNight(1440 + 12 * 60)).toBe(false);
+    // A campaign with long nights.
+    expect(isNight(8 * 60, { sunriseHour: 9, sunsetHour: 16 })).toBe(true);
+    expect(isNight(15 * 60, { sunriseHour: 9, sunsetHour: 16 })).toBe(false);
   });
 });
