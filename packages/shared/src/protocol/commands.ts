@@ -103,6 +103,17 @@ export const CampaignUpdateCommand = z.object({
   settings: CampaignSettingsPatchSchema.optional(),
 });
 
+/**
+ * DM only: mint a fresh player or DM invite secret. Every link built from the
+ * old secret stops working; already-seated browsers keep their seat cookie.
+ * Rotating the DM key also invalidates integration/MCP Bearer tokens.
+ */
+export const CampaignRotateKeyCommand = z.object({
+  ...base,
+  kind: z.literal('campaign.rotateKey'),
+  which: z.enum(['player', 'dm']),
+});
+
 // --- maps -------------------------------------------------------------------
 
 export const MapCreateCommand = z.object({
@@ -564,6 +575,7 @@ export const NarrateCommand = z.object({
 
 export const ClientCommandSchema = z.discriminatedUnion('kind', [
   CampaignUpdateCommand,
+  CampaignRotateKeyCommand,
   MapCreateCommand,
   MapUpdateCommand,
   MapSetInheritCommand,

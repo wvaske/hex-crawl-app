@@ -104,6 +104,29 @@ precedence over the file. **Never commit `.env`.**
 | `DATA_DIR` | `./data` (`/data` in the image) | All persistent state: SQLite db and uploaded images. Back up this directory. |
 | `CLIENT_DIST` | unset (`/app/client-dist` in the image) | Path to the built client. When set, the server serves the web UI too; unset means API/WebSocket only (development, where Vite serves the client). |
 
+Optional hardening, worth setting if strangers can reach your instance:
+
+| Variable | Default | What it is |
+|---|---|---|
+| `CREATE_PASSWORD` | unset | **Secret.** When set, creating *or* restoring a campaign requires this password (the landing page grows a password field). Unset means anyone who can load the page can create a campaign. |
+| `UPLOAD_QUOTA_MB` | `200` | Per-campaign cap on total uploaded image bytes. `0` disables. |
+| `RATE_LIMIT_WINDOW_SEC` | `60` | Window for the per-IP rate limits below. |
+| `RATE_LIMIT_CREATE` / `RATE_LIMIT_IMPORT` | `3` / `3` | Campaign creations / restores per IP per window. `0` disables. |
+| `RATE_LIMIT_JOIN` / `RATE_LIMIT_EXPORT` | `10` / `10` | Join attempts / archive downloads per IP per window. `0` disables. |
+| `TRUST_PROXY` | `1` | Take the client IP from the first `X-Forwarded-For` hop. Correct behind a reverse proxy; set `0` when the server is exposed directly, or the limits can be spoofed away. |
+
+**Threat model in short.** There are no accounts: a campaign's player key and DM
+key *are* the authorization, exchanged at join time for an HttpOnly seat cookie.
+The DM key is also the integration API's Bearer token and the export endpoint's
+`?key=`, so it grants everything — treat it like a password, and regenerate
+either key from *Settings → Invite links* when a link leaks (old links stop
+working immediately; already-seated players stay connected). Player clients only
+ever receive server-filtered state, so DM notes and fogged terrain are not
+hiding in the browser. Uploaded images, however, are served from unguessable but
+uncontrolled URLs, and the app expects TLS to be terminated in front of it.
+[`deploy/RUNBOOK.md`](deploy/RUNBOOK.md) § Security has the full table, including
+what is still missing (seat expiry, kick/ban, seat caps).
+
 Optional, for the AI integration bridge (`mcp/hexcrawl-mcp.mjs`) rather than the
 app server:
 
