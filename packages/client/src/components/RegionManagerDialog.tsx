@@ -73,7 +73,10 @@ export function RegionManagerDialog() {
   const [detect, setDetect] = useState<DetectSettings>({
     mode: 'terrain',
     terrains: [],
-    tolerance: 25,
+    // Calibrated against the real Sword Coast art: 25 (the synthetic-test
+    // default) barely grew past the anchor on textured sourcebook scans, while
+    // 45–65 tracked the painted blob stably without flooding. 50 sits mid-band.
+    tolerance: 50,
     maxCells: 800,
   });
   // The terrain chips default to the selected region's own terrain; the rest
