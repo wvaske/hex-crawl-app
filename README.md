@@ -212,11 +212,11 @@ most of this was built): **[docs/AI-DEVELOPMENT.md](docs/AI-DEVELOPMENT.md)**.
 ## Integration API + MCP
 
 Other tools — e.g. a DM-companion agent that maintains a campaign wiki — can
-manage map locations through `/api/integration/campaigns/:id/...` using the
-campaign DM key as a Bearer token: list maps, list locations, upsert by title
-(with pixel→hex conversion in the map-image frame that wiki DataMaps use), and
-delete. `mcp/hexcrawl-mcp.mjs` is a dependency-free stdio MCP server wrapping
-that API:
+manage map locations, trails, and settlement clues through
+`/api/integration/campaigns/:id/...` using the campaign DM key as a Bearer
+token. `mcp/hexcrawl-mcp.mjs` is a dependency-free stdio MCP server wrapping
+that API so any MCP-capable AI assistant can be wired to a deployment in
+minutes:
 
 ```bash
 claude mcp add hexcrawl \
@@ -228,6 +228,16 @@ claude mcp add hexcrawl \
 
 Locations can carry a `wikiPage`; players get a "wiki ↗" link on discovered
 content (base URL configurable in Setup).
+
+## AI integration
+
+Full setup (env contract, registration for Claude Code/opencode/generic
+stdio clients, tool reference, REST API reference, troubleshooting) lives in
+**[docs/MCP.md](docs/MCP.md)**. If you're connecting an assistant to
+maintain campaign content, also hand it
+**[docs/skills/hexcrawl-campaign-assistant.md](docs/skills/hexcrawl-campaign-assistant.md)**
+— it covers the knowledge model, spoiler hygiene, and upsert semantics an
+assistant needs to avoid leaking DM-only information to players.
 
 ## License
 
