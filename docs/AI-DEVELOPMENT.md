@@ -138,6 +138,17 @@ player-facing data).
   That's the intended forcing function: you must decide player visibility.
 - **New log `kind` strings** just need `KIND_META` + `FILTERS` entries in
   `LogTab.tsx`; unknown kinds render with a `·` fallback.
+- **The side panels are compositions, not screens** (#61): `PanelShell.tsx`
+  owns the right-edge heading rail and one open pop-out at a time
+  (`ui.openPanel`, swap-on-click, `panelWidth` still drag-resizable). The
+  panels themselves just arrange the existing `components/panels/*Tab`
+  components — Information = InspectTab + (players) SensesTab, Character =
+  the claimed character's sheet button + CharactersTab, History = JournalTab /
+  LogTab, Build = Maps / Tokens / Encounters, Setup = SettingsTab. Put new
+  content in a `*Tab` component and compose it here; anything that wants to
+  *navigate* the user sets `ui.openPanel` (and `selectHex` already opens
+  Information, which is how a map click, a token row and a journal row all
+  land on the inspected hex).
 - **Move-handler ordering**: post-move hooks (auto encounters, clock) run
   after `executePartyMove`; the clock credits the departed hex *before*
   advancing, so lingering time lands on the hex and travel time on neither.

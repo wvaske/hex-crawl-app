@@ -3,16 +3,20 @@ import type { FogState, HexCoord, TerrainId } from '@hexcrawl/shared';
 
 export type Tool = 'select' | 'paint' | 'fog' | 'marker' | 'content' | 'trail' | 'measure';
 
-export type PanelTab =
-  | 'inspect'
-  | 'maps'
-  | 'characters'
-  | 'tokens'
-  | 'encounters'
-  | 'senses'
-  | 'log'
-  | 'journal'
-  | 'settings';
+/**
+ * Side pop-out panels (issue #61). Three player-facing headings plus two
+ * DM-only ones; each is a task, not a data type:
+ *
+ * - `information` — the inspected hex + (players) what your character senses
+ * - `character`   — your sheet and the rest of the party
+ * - `history`     — the journal of what you've learned + the session log
+ * - `build`       — DM prep: maps, tokens, encounter tables
+ * - `setup`       — DM campaign settings
+ *
+ * Exactly one is open at a time; clicking another heading swaps it, and
+ * clicking the open one closes it (`null` = map only).
+ */
+export type PanelId = 'information' | 'character' | 'history' | 'build' | 'setup';
 
 interface UiStore {
   tool: Tool;
@@ -28,9 +32,9 @@ interface UiStore {
   editingContentId: string | null;
   /** Content whose full detail dialog (app data + wiki) is open (#66). */
   locationDialogContentId: string | null;
-  panelTab: PanelTab;
-  panelOpen: boolean;
-  /** Right sidebar width in px (drag the left edge to resize). */
+  /** Which side pop-out panel is open (null = none). */
+  openPanel: PanelId | null;
+  /** Pop-out panel width in px (drag the left edge to resize). */
   panelWidth: number;
   measureStart: HexCoord | null;
   /** Held spacebar: pan with left-drag regardless of the active tool. */
@@ -115,8 +119,7 @@ export const useUi = create<UiStore>((set) => ({
   contentDialogHex: null,
   editingContentId: null,
   locationDialogContentId: null,
-  panelTab: 'inspect',
-  panelOpen: true,
+  openPanel: 'information',
   panelWidth: initialPanelWidth(),
   measureStart: null,
   spacePan: false,
@@ -139,6 +142,13 @@ export const useUi = create<UiStore>((set) => ({
 
   set: (key, value) => set({ [key]: value } as Partial<UiStore>),
   setTool: (tool) => set({ tool, measureStart: null }),
+  // Selecting a hex is the deep link into the Information panel: a map click
+  // (or a journal row) pops it open. Clearing the selection — Escape, mostly —
+  // deliberately leaves the panels as they were, so Escape never opens one.
   selectHex: (hex) =>
-    set({ selectedHex: hex, selectedTokenId: null, panelTab: hex ? 'inspect' : 'inspect' }),
+    set((s) => ({
+      selectedHex: hex,
+      selectedTokenId: null,
+      openPanel: hex ? 'information' : s.openPanel,
+    })),
 }));

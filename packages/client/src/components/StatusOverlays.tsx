@@ -66,7 +66,7 @@ export function EmptyMapHint() {
         <div className="text-3xl mb-2">🗺️</div>
         <p className="text-sm text-ink-100 font-medium mb-1">Your map awaits</p>
         <p className="text-xs text-ink-400">
-          Paint terrain with the 🖌️ tool, or upload a map image from the Maps tab. Scroll to zoom,
+          Paint terrain with the 🖌️ tool, or upload a map image from Build → Maps. Scroll to zoom,
           drag to pan.
         </p>
       </div>

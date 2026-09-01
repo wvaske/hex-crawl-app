@@ -5,7 +5,7 @@ import { useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { TopBar } from '../components/TopBar.js';
 import { Toolbar } from '../components/Toolbar.js';
-import { SidePanel } from '../components/SidePanel.js';
+import { PanelShell } from '../components/PanelShell.js';
 import { Toasts } from '../components/Toasts.js';
 import { ContentDialog } from '../components/ContentDialog.js';
 import { EmptyMapHint, HexReadout } from '../components/StatusOverlays.js';
@@ -20,7 +20,6 @@ export function TableView({ campaignId }: { campaignId: string }) {
   const status = useSession((s) => s.status);
   const hasState = useSession((s) => s.state !== null);
   const role = useSession((s) => s.role);
-  const panelOpen = useUi((s) => s.panelOpen);
   const contentDialogHex = useUi((s) => s.contentDialogHex);
   const locationDialogContentId = useUi((s) => s.locationDialogContentId);
 
@@ -123,7 +122,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         {role === 'dm' && <Toolbar />}
         {role === 'dm' && <SelectionBar />}
         {role === 'dm' && <PinActions />}
-        {panelOpen && <SidePanel campaignId={campaignId} />}
+        <PanelShell campaignId={campaignId} />
         {!hasState && (
           <div className="absolute inset-0 flex items-center justify-center bg-ink-950/70 pointer-events-none">
             <p className="text-ink-400 animate-pulse">
