@@ -2,7 +2,7 @@ import React from 'react';
 import {
   SUPER_SCALE,
   TRAVEL_PACES,
-  formatDay,
+  formatCalendarDate,
   formatTimeOfDay,
   isNight,
   minutesPerHex,
@@ -99,7 +99,7 @@ function TimeControl() {
       >
         <span>{night ? '🌙' : '☀️'}</span>
         <span className="whitespace-nowrap">
-          {formatDay(time.minutes)} · {formatTimeOfDay(time.minutes)}
+          {formatCalendarDate(time.minutes, settings?.calendar)} · {formatTimeOfDay(time.minutes)}
         </span>
       </button>
 
@@ -215,9 +215,47 @@ function TimeControl() {
               </Button>
             </form>
           </div>
+
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+              Weather
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="flex-1 text-[11px] text-ink-200 truncate">
+                {time.weather ? `${time.weather.icon} ${time.weather.text}` : 'Not yet rolled'}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="!px-1 border border-ink-600"
+                onClick={() => send({ kind: 'weather.roll' })}
+                title="Roll a fresh sky from the campaign weather table (it rerolls on its own each new day)"
+              >
+                Reroll
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Today's weather, next to the clock. Everyone sees it — the sky is not a DM
+ * secret — and the DM rerolls it from the clock popover.
+ */
+function WeatherReadout() {
+  const weather = useSession((s) => s.state?.campaign.time.weather);
+  if (!weather) return null;
+  return (
+    <span
+      className="hidden md:flex items-center gap-1 rounded-md border border-ink-600 px-2 py-1 text-[11px] text-ink-200 max-w-40"
+      title={`Weather: ${weather.text}`}
+    >
+      <span>{weather.icon}</span>
+      <span className="truncate">{weather.text}</span>
+    </span>
   );
 }
 
@@ -333,6 +371,7 @@ export function TopBar({
 
       {map && <ScaleControl baseMiles={map.milesPerHex} />}
       <TimeControl />
+      <WeatherReadout />
       <DayNightToggle />
 
       <div className="flex-1" />

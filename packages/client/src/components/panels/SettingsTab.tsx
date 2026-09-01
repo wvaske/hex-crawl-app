@@ -1,8 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import {
+  CALENDAR_PRESETS,
+  calendarDayOptions,
+  formatCalendarDate,
+  type CalendarConfig,
+} from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { fetchInviteKeys, type InviteKeys } from '../../api.js';
-import { Button, Field, Input, Section, TextArea } from '../../ui/kit.js';
+import { Button, Field, Input, Section, Select, TextArea } from '../../ui/kit.js';
 
 export function SettingsTab({ campaignId }: { campaignId: string }) {
   const state = useSession((s) => s.state);
@@ -46,6 +52,8 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
           </Field>
         </div>
       </Section>
+
+      <CalendarSettings />
 
       <ShareLinks campaignId={campaignId} />
 
@@ -102,6 +110,83 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
         </ul>
       </Section>
     </div>
+  );
+}
+
+/**
+ * Calendar naming for the campaign clock (issue #79). Deliberately minimal:
+ * pick a preset (or none, which keeps the plain "Day N"), the year the
+ * campaign opens in, and which day of that year day 1 is. Everything else
+ * about the calendar — month names, lengths, festivals — comes from the preset
+ * and is stored on the campaign, so a hand-edited calendar keeps working.
+ */
+function CalendarSettings() {
+  const calendar = useSession((s) => s.state?.campaign.settings.calendar ?? null);
+  const preset = calendar ? CALENDAR_PRESETS.find((p) => p.name === calendar.name) : undefined;
+  const dayOptions = calendar ? calendarDayOptions(calendar) : [];
+
+  const patch = (next: CalendarConfig | null) =>
+    send({ kind: 'campaign.update', settings: { calendar: next } });
+
+  return (
+    <Section title="Calendar">
+      <div className="space-y-2.5">
+        <Field label="Calendar">
+          <Select
+            value={calendar?.name ?? ''}
+            onChange={(e) => {
+              const chosen = CALENDAR_PRESETS.find((p) => p.name === e.target.value);
+              patch(chosen ? { ...chosen } : null);
+            }}
+          >
+            <option value="">None — plain "Day 1, Day 2, …"</option>
+            {CALENDAR_PRESETS.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        {calendar && (
+          <>
+            <Field label="Start year">
+              <Input
+                type="number"
+                defaultValue={calendar.startYear}
+                key={`${calendar.name}-${calendar.startYear}`}
+                onBlur={(e) => {
+                  const year = Math.trunc(Number(e.target.value));
+                  if (Number.isFinite(year) && year !== calendar.startYear) {
+                    patch({ ...calendar, startYear: year });
+                  }
+                }}
+              />
+            </Field>
+            <Field label="The campaign starts on">
+              <Select
+                value={String(calendar.startDayOfYear)}
+                onChange={(e) =>
+                  patch({ ...calendar, startDayOfYear: Number(e.target.value) })
+                }
+              >
+                {dayOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <p className="text-xs text-ink-400">
+              Day 1 of the campaign clock is{' '}
+              <span className="text-ink-200">{formatCalendarDate(0, calendar)}</span>.{' '}
+              {preset?.name === 'Harptos' &&
+                'Harptos runs twelve 30-day months plus five festival days; leap-year Shieldmeet is not modelled.'}
+            </p>
+          </>
+        )}
+      </div>
+    </Section>
   );
 }
 
