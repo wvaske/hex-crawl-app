@@ -262,6 +262,9 @@ describe('region footprints: knowledge', () => {
       mapId,
       hex: { q: 6, r: 0 },
     } as never);
+    // The DM's call gates the reveal now (issue #107).
+    expect(runtime.pendingReveals.size).toBe(1);
+    dm({ kind: 'search.resolve', pendingIds: [...runtime.pendingReveals.keys()], approve: true } as never);
     expect(runtime.discoveries.size).toBe(1);
     const discovery = [...runtime.discoveries.values()][0]!;
     expect(discovery.clueId).toBe(content.clues[0]!.id);

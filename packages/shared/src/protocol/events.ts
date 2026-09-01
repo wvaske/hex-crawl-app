@@ -113,6 +113,18 @@ export const ServerEventSchema = z.discriminatedUnion('kind', [
     forward: z.string().nullable(),
     backward: z.string().nullable(),
   }),
+  /**
+   * DM-only nudge (issue #107): a player's hex search turned up clues that
+   * are waiting on the DM's share/withhold call in Inspect.
+   */
+  ev('search.pending', {
+    characterName: z.string(),
+    skill: z.string(),
+    total: z.number().int(),
+    q: z.number().int(),
+    r: z.number().int(),
+    count: z.number().int(),
+  }),
   ev('encounterTable.upserted', { table: EncounterTableSchema }),
   ev('encounterTable.deleted', { tableId: z.string() }),
   ev('log.appended', { entry: LogEntrySchema }),

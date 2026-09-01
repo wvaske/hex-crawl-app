@@ -113,6 +113,13 @@ function handleMessage(msg: ServerMessage): void {
           title: mine ? 'You pick up a trail…' : `${msg.characterName} picks up a trail`,
           text: dirs ? `Signs of passage — ${dirs}.` : 'Signs of passage here.',
         });
+      } else if (msg.kind === 'search.pending') {
+        // DM-only (the server targets it): results are waiting on a ruling.
+        session.pushToast({
+          kind: 'info',
+          title: `🔎 Search — ${msg.characterName}`,
+          text: `${msg.skill} ${msg.total} at ${msg.q},${msg.r} — review in Inspect`,
+        });
       } else if (msg.kind === 'move.requested') {
         session.pushToast({
           kind: 'info',

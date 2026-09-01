@@ -13,8 +13,9 @@
  *   `ensureColumn` migration still imports: missing columns take their SQL
  *   defaults, unknown columns are dropped.
  * - Import remaps every id (campaign, character, map, image layer, token,
- *   marker, content, clue, discovery, trail, trail discovery, encounter table,
- *   log) so an archive can be restored into the instance it came from.
+ *   marker, content, clue, discovery, trail, trail discovery, search attempt,
+ *   pending reveal, encounter table, log) so an archive can be restored into
+ *   the instance it came from.
  * - Secrets are never exported: no dm/player key, no seat auth tokens. Seats
  *   are exported for reference (names/roles) but not restored — the importer
  *   gets a fresh DM seat and fresh invite keys.
@@ -52,6 +53,9 @@ export interface CampaignExport {
   discoveries: Row[];
   trails: Row[];
   trailDiscoveries: Row[];
+  /** Hex-search history and un-adjudicated results (issue #107). */
+  searchAttempts: Row[];
+  pendingReveals: Row[];
   encTables: Row[];
   log: Row[];
   /** image_layer rows, each with the uploaded file inlined as base64. */
@@ -124,6 +128,12 @@ function collectExport(db: DB, campaignId: string): Omit<CampaignExport, 'images
     trails: childRows(db, 'trail', 'map_id', mapIds),
     trailDiscoveries: db
       .prepare('SELECT * FROM trail_discovery WHERE campaign_id = ?')
+      .all(campaignId) as Row[],
+    searchAttempts: db
+      .prepare('SELECT * FROM search_attempt WHERE campaign_id = ?')
+      .all(campaignId) as Row[],
+    pendingReveals: db
+      .prepare('SELECT * FROM pending_reveal WHERE campaign_id = ?')
       .all(campaignId) as Row[],
     encTables: db.prepare('SELECT * FROM enc_table WHERE campaign_id = ?').all(campaignId) as Row[],
     log: db
@@ -221,6 +231,9 @@ export const CampaignImportSchema = z.object({
   discoveries: RowsSchema,
   trails: RowsSchema,
   trailDiscoveries: RowsSchema,
+  // Absent in archives exported before hex-search approval (issue #107).
+  searchAttempts: RowsSchema.default([]),
+  pendingReveals: RowsSchema.default([]),
   encTables: RowsSchema,
   log: RowsSchema,
   images: RowsSchema,
@@ -316,6 +329,8 @@ export function importCampaign(
   const imageMap = remapIds(data.images);
   const discoveryMap = remapIds(data.discoveries);
   const trailDiscMap = remapIds(data.trailDiscoveries);
+  const attemptMap = remapIds(data.searchAttempts, 12);
+  const pendingMap = remapIds(data.pendingReveals, 12);
   const logMap = remapIds(data.log, 12);
 
   const name = (opts.name ?? str(data.campaign.name) ?? 'Restored campaign').slice(0, 120);
@@ -476,6 +491,38 @@ export function importCampaign(
         const charId = charMap.get(str(row.character_id) ?? '');
         return id && trailId && charId
           ? { ...row, id, campaign_id: campaignId, trail_id: trailId, character_id: charId }
+          : null;
+      }),
+    );
+    counts.search_attempt = insertRows(
+      db,
+      'search_attempt',
+      keep(data.searchAttempts, (row) => {
+        const id = attemptMap.get(str(row.id) ?? '');
+        const mapId = mapMap.get(str(row.map_id) ?? '');
+        const charId = charMap.get(str(row.character_id) ?? '');
+        return id && mapId && charId
+          ? { ...row, id, campaign_id: campaignId, map_id: mapId, character_id: charId }
+          : null;
+      }),
+    );
+    counts.pending_reveal = insertRows(
+      db,
+      'pending_reveal',
+      keep(data.pendingReveals, (row) => {
+        const id = pendingMap.get(str(row.id) ?? '');
+        const clueId = clueMap.get(str(row.clue_id) ?? '');
+        const charId = charMap.get(str(row.character_id) ?? '');
+        const attemptId = attemptMap.get(str(row.attempt_id) ?? '');
+        return id && clueId && charId && attemptId
+          ? {
+              ...row,
+              id,
+              campaign_id: campaignId,
+              clue_id: clueId,
+              character_id: charId,
+              attempt_id: attemptId,
+            }
           : null;
       }),
     );

@@ -793,6 +793,49 @@ export const HexVisitSchema = z.object({
 });
 export type HexVisit = z.infer<typeof HexVisitSchema>;
 
+/**
+ * One character's one shot at searching one hex with one skill (issue #107).
+ * The row IS the limit: a player may not roll the same skill on the same hex
+ * twice until the DM clears the attempt. DM-initiated group rolls record
+ * attempts too (so the investigation view shows the history) but ignore the
+ * limit.
+ */
+export const SearchAttemptSchema = z.object({
+  id: z.string(),
+  mapId: z.string(),
+  q: z.number().int(),
+  r: z.number().int(),
+  characterId: z.string(),
+  skill: z.string(),
+  roll: z.number().int(),
+  modifier: z.number().int(),
+  total: z.number().int(),
+  at: z.number(),
+});
+export type SearchAttempt = z.infer<typeof SearchAttemptSchema>;
+
+/**
+ * A clue a player's search roll beat, waiting on the DM's call (issue #107).
+ * Everything the discovery will need is frozen here at roll time — the
+ * bearing and whether the find locates the source are computed against where
+ * the character stood when they rolled, not where they stand when the DM
+ * gets round to it. DM-only: `filterStateForViewer` sends players none.
+ */
+export const PendingRevealSchema = z.object({
+  id: z.string(),
+  clueId: z.string(),
+  characterId: z.string(),
+  /** The search_attempt this came out of (carries the skill and the hex). */
+  attemptId: z.string(),
+  direction: z.string().nullable().default(null),
+  locates: z.boolean().default(false),
+  roll: z.number().int(),
+  modifier: z.number().int(),
+  total: z.number().int(),
+  at: z.number(),
+});
+export type PendingReveal = z.infer<typeof PendingRevealSchema>;
+
 export const MapStateSchema = z.object({
   imageLayers: z.array(ImageLayerSchema),
   hexes: z.array(HexCellSchema),
@@ -808,6 +851,12 @@ export const MapStateSchema = z.object({
   trailSigns: z.array(TrailSignSchema).default([]),
   /** Party visit records; players see them for hexes that aren't fogged out. */
   visits: z.array(HexVisitSchema).default([]),
+  /**
+   * Search rolls made on this map (issue #107). DM: every character's;
+   * players: their own character's only, so the Search UI can grey out the
+   * skills they have already spent on a hex.
+   */
+  searchAttempts: z.array(SearchAttemptSchema).default([]),
 });
 export type MapState = z.infer<typeof MapStateSchema>;
 
@@ -848,6 +897,8 @@ export const CampaignStateSchema = z.object({
   trailDiscoveries: z.array(TrailDiscoverySchema).default([]),
   /** Player only: sensed clues on the viewed map; empty for the DM. */
   senses: z.array(SenseSchema).default([]),
+  /** DM only: search results awaiting the DM's share/withhold call. */
+  pendingReveals: z.array(PendingRevealSchema).default([]),
   /** DM only; empty for players. */
   encounterTables: z.array(EncounterTableSchema),
   log: z.array(LogEntrySchema),

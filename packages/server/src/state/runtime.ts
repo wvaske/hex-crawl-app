@@ -21,6 +21,8 @@ import type {
   MapInfo,
   MapState,
   Marker,
+  PendingReveal,
+  SearchAttempt,
   SeatPublic,
   SeatRole,
   TerrainId,
@@ -73,6 +75,8 @@ export interface MapRuntime {
   trails: Map<string, Trail>;
   /** Party visit accounting per hex, keyed by hexKey. */
   visits: Map<string, HexVisit>;
+  /** Search rolls made on this map (issue #107), keyed by attempt id. */
+  searchAttempts: Map<string, SearchAttempt>;
 }
 
 const LOG_MEMORY_LIMIT = 500;
@@ -118,6 +122,8 @@ export class CampaignRuntime {
   discoveredByClueChar = new Set<string>();
   trailDiscoveries = new Map<string, TrailDiscovery>();
   private trailDiscoveryKeys = new Set<string>();
+  /** Search results awaiting the DM's share/withhold call (issue #107). */
+  pendingReveals = new Map<string, PendingReveal>();
   encounterTables = new Map<string, EncounterTable>();
   log: LogEntry[] = [];
   /** Seat ids currently connected (managed by the hub). */
@@ -260,6 +266,22 @@ export class CampaignRuntime {
       this.trailDiscoveries.set(disc.id, disc);
       this.trailDiscoveryKeys.add(`${disc.trailId}|${disc.cellIndex}|${disc.characterId}`);
     }
+    for (const pr of d
+      .prepare('SELECT * FROM pending_reveal WHERE campaign_id = ?')
+      .all(this.id) as Array<Record<string, unknown>>) {
+      this.pendingReveals.set(pr.id as string, {
+        id: pr.id as string,
+        clueId: pr.clue_id as string,
+        characterId: pr.character_id as string,
+        attemptId: pr.attempt_id as string,
+        direction: (pr.direction as string | null) ?? null,
+        locates: Boolean(pr.locates),
+        roll: pr.roll as number,
+        modifier: pr.modifier as number,
+        total: pr.total as number,
+        at: pr.at as number,
+      });
+    }
     this.log = (
       d
         .prepare('SELECT * FROM log WHERE campaign_id = ? ORDER BY at DESC, id DESC LIMIT ?')
@@ -290,7 +312,13 @@ export class CampaignRuntime {
       pendingMoves: new Map(),
       trails: new Map(),
       visits: new Map(),
+      searchAttempts: new Map(),
     };
+    for (const a of d.prepare('SELECT * FROM search_attempt WHERE map_id = ?').all(mapId) as Array<
+      Record<string, unknown>
+    >) {
+      rt.searchAttempts.set(a.id as string, searchAttemptFromRow(mapId, a));
+    }
     for (const l of d
       .prepare('SELECT * FROM image_layer WHERE map_id = ? ORDER BY z')
       .all(mapId) as Array<Record<string, unknown>>) {
@@ -431,6 +459,7 @@ export class CampaignRuntime {
       trails: [...rt.trails.values()],
       trailSigns: [],
       visits: [...rt.visits.values()],
+      searchAttempts: [...rt.searchAttempts.values()],
     };
   }
 
@@ -457,6 +486,7 @@ export class CampaignRuntime {
       discoveries: [...this.discoveries.values()],
       trailDiscoveries: [...this.trailDiscoveries.values()],
       senses: [],
+      pendingReveals: [...this.pendingReveals.values()],
       encounterTables: [...this.encounterTables.values()],
       log: this.log,
     };
@@ -724,6 +754,7 @@ export class CampaignRuntime {
       pendingMoves: new Map(),
       trails: new Map(),
       visits: new Map(),
+      searchAttempts: new Map(),
     });
     this.db
       .prepare(
@@ -854,6 +885,14 @@ export class CampaignRuntime {
   }
 
   deleteMap(mapId: string): void {
+    // Pendings hang off attempts, which hang off the map: mirror the SQL
+    // cascade in memory before the map runtime (and its attempts) goes.
+    const attempts = this.mapStates.get(mapId)?.searchAttempts;
+    if (attempts) {
+      for (const [id, p] of this.pendingReveals) {
+        if (attempts.has(p.attemptId)) this.pendingReveals.delete(id);
+      }
+    }
     this.maps.delete(mapId);
     this.mapStates.delete(mapId);
     this.db.prepare('DELETE FROM map WHERE id = ?').run(mapId);
@@ -1149,8 +1188,10 @@ export class CampaignRuntime {
     // Deleted clues cascade their discoveries in SQL; mirror in memory.
     if (existing) {
       const keep = new Set(content.clues.map((c) => c.id));
+      const dropped = new Set<string>();
       for (const old of existing.clues) {
         if (!keep.has(old.id)) {
+          dropped.add(old.id);
           for (const [id, disc] of this.discoveries) {
             if (disc.clueId === old.id) {
               this.discoveries.delete(id);
@@ -1159,6 +1200,7 @@ export class CampaignRuntime {
           }
         }
       }
+      this.dropPendingRevealsForClues(dropped);
     }
   }
 
@@ -1174,6 +1216,7 @@ export class CampaignRuntime {
             this.discoveredByClueChar.delete(`${disc.clueId}|${disc.characterId}`);
           }
         }
+        this.dropPendingRevealsForClues(new Set(c.clues.map((cl) => cl.id)));
         return c;
       }
     }
@@ -1195,6 +1238,10 @@ export class CampaignRuntime {
 
   addDiscovery(discovery: Discovery): boolean {
     if (this.hasDiscovery(discovery.clueId, discovery.characterId)) return false;
+    // Knowing it settles the question: an instant reveal (DM roll, reveal
+    // pill, share) consumes anything queued for the DM's call on that clue.
+    const queued = this.findPendingReveal(discovery.clueId, discovery.characterId);
+    if (queued) this.deletePendingReveal(queued.id);
     this.discoveries.set(discovery.id, discovery);
     this.discoveredByClueChar.add(`${discovery.clueId}|${discovery.characterId}`);
     this.db
@@ -1212,6 +1259,146 @@ export class CampaignRuntime {
         discovery.locates ? 1 : 0,
       );
     return true;
+  }
+
+  // -- hex searches (issue #107) ---------------------------------------------
+
+  /** The attempt this character has already spent on (hex, skill), if any. */
+  findSearchAttempt(
+    mapId: string,
+    q: number,
+    r: number,
+    characterId: string,
+    skill: string,
+  ): SearchAttempt | null {
+    const rt = this.mapStates.get(mapId);
+    if (!rt) return null;
+    for (const a of rt.searchAttempts.values()) {
+      if (a.q === q && a.r === r && a.characterId === characterId && a.skill === skill) return a;
+    }
+    return null;
+  }
+
+  getSearchAttempt(attemptId: string): SearchAttempt | null {
+    for (const rt of this.mapStates.values()) {
+      const a = rt.searchAttempts.get(attemptId);
+      if (a) return a;
+    }
+    return null;
+  }
+
+  /**
+   * Write down a search roll. The (map, hex, character, skill) tuple is
+   * unique, so a DM group re-roll updates the existing attempt in place
+   * rather than inserting a second one — keeping the id stable is what lets
+   * pending reveals keep pointing at it.
+   */
+  recordSearchAttempt(attempt: SearchAttempt): SearchAttempt {
+    const rt = this.requireMap(attempt.mapId);
+    const existing = this.findSearchAttempt(
+      attempt.mapId,
+      attempt.q,
+      attempt.r,
+      attempt.characterId,
+      attempt.skill,
+    );
+    if (existing) {
+      const next: SearchAttempt = {
+        ...existing,
+        roll: attempt.roll,
+        modifier: attempt.modifier,
+        total: attempt.total,
+        at: attempt.at,
+      };
+      rt.searchAttempts.set(next.id, next);
+      this.db
+        .prepare('UPDATE search_attempt SET roll = ?, modifier = ?, total = ?, at = ? WHERE id = ?')
+        .run(next.roll, next.modifier, next.total, next.at, next.id);
+      return next;
+    }
+    rt.searchAttempts.set(attempt.id, attempt);
+    this.db
+      .prepare(
+        'INSERT INTO search_attempt (id, campaign_id, map_id, q, r, character_id, skill, roll, modifier, total, at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        attempt.id,
+        this.id,
+        attempt.mapId,
+        attempt.q,
+        attempt.r,
+        attempt.characterId,
+        attempt.skill,
+        attempt.roll,
+        attempt.modifier,
+        attempt.total,
+        attempt.at,
+      );
+    return attempt;
+  }
+
+  /**
+   * Clear one attempt (the DM letting a character try again). Anything still
+   * pending from that roll goes with it — SQL cascades on `attempt_id`;
+   * memory is mirrored here.
+   */
+  deleteSearchAttempt(attemptId: string): SearchAttempt | null {
+    const attempt = this.getSearchAttempt(attemptId);
+    if (!attempt) return null;
+    this.mapStates.get(attempt.mapId)?.searchAttempts.delete(attemptId);
+    for (const [id, p] of this.pendingReveals) {
+      if (p.attemptId === attemptId) this.pendingReveals.delete(id);
+    }
+    this.db.prepare('DELETE FROM pending_reveal WHERE attempt_id = ?').run(attemptId);
+    this.db.prepare('DELETE FROM search_attempt WHERE id = ?').run(attemptId);
+    return attempt;
+  }
+
+  findPendingReveal(clueId: string, characterId: string): PendingReveal | null {
+    for (const p of this.pendingReveals.values()) {
+      if (p.clueId === clueId && p.characterId === characterId) return p;
+    }
+    return null;
+  }
+
+  /** Queue a clue for the DM's call. False when it is already known or queued. */
+  addPendingReveal(pending: PendingReveal): boolean {
+    if (this.hasDiscovery(pending.clueId, pending.characterId)) return false;
+    if (this.findPendingReveal(pending.clueId, pending.characterId)) return false;
+    this.pendingReveals.set(pending.id, pending);
+    this.db
+      .prepare(
+        'INSERT INTO pending_reveal (id, campaign_id, clue_id, character_id, attempt_id, direction, locates, roll, modifier, total, at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        pending.id,
+        this.id,
+        pending.clueId,
+        pending.characterId,
+        pending.attemptId,
+        pending.direction,
+        pending.locates ? 1 : 0,
+        pending.roll,
+        pending.modifier,
+        pending.total,
+        pending.at,
+      );
+    return true;
+  }
+
+  deletePendingReveal(pendingId: string): PendingReveal | null {
+    const pending = this.pendingReveals.get(pendingId);
+    if (!pending) return null;
+    this.pendingReveals.delete(pendingId);
+    this.db.prepare('DELETE FROM pending_reveal WHERE id = ?').run(pendingId);
+    return pending;
+  }
+
+  /** Drop every pending row for these clues (clue/content deletion). */
+  private dropPendingRevealsForClues(clueIds: Set<string>): void {
+    for (const [id, p] of this.pendingReveals) {
+      if (clueIds.has(p.clueId)) this.deletePendingReveal(id);
+    }
   }
 
   /** Upgrade an at-a-distance discovery: the character reached the source. */
@@ -1354,6 +1541,21 @@ function imageLayerFromRow(mapId: string, row: Record<string, unknown>): ImageLa
     z: row.z as number,
     dmOnly: Boolean(row.dm_only),
     visible: Boolean(row.visible),
+  };
+}
+
+function searchAttemptFromRow(mapId: string, row: Record<string, unknown>): SearchAttempt {
+  return {
+    id: row.id as string,
+    mapId,
+    q: row.q as number,
+    r: row.r as number,
+    characterId: row.character_id as string,
+    skill: row.skill as string,
+    roll: row.roll as number,
+    modifier: row.modifier as number,
+    total: row.total as number,
+    at: row.at as number,
   };
 }
 

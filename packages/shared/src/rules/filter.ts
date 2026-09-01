@@ -61,6 +61,14 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
           // rides along (q/r + clock minutes only). Gated on fog so a hex the
           // DM has re-hidden doesn't come back as a visit record.
           visits: mapState.visits.filter((v) => fogAt(v.q, v.r) !== 'hidden'),
+          // A player may see what THEIR character has already spent on a hex
+          // (issue #107) — that's what greys the used skills out in the
+          // Search UI. Another character's attempts are none of their
+          // business: knowing the ranger rolled 22 here and found nothing is
+          // information the table hasn't earned.
+          searchAttempts: viewer.characterId
+            ? mapState.searchAttempts.filter((a) => a.characterId === viewer.characterId)
+            : [],
         };
       })()
     : null;
@@ -78,6 +86,8 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
       ? full.trailDiscoveries.filter((d) => d.characterId === viewer.characterId)
       : [],
     senses: computeSenses(full, viewer.characterId),
+    // Never: a pending reveal is a clue the DM has not decided to give yet.
+    pendingReveals: [],
     encounterTables: [],
     log: full.log.filter((e) => logEntryVisibleToPlayer(e, viewer)),
   };

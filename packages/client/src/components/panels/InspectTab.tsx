@@ -12,6 +12,7 @@ import {
   type Content,
   type ContentPlayerView,
   type FogState,
+  type SearchAttempt,
 } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
@@ -186,7 +187,11 @@ export function InspectTab() {
 
       <TrailInfo hex={hex} isDm={isDm} />
 
-      {(isDm || myCharacterId) && <SearchHex mapId={map.id} hex={hex} isDm={isDm} />}
+      {isDm && <InvestigationSection hex={hex} />}
+
+      {(isDm || myCharacterId) && (
+        <SearchHex mapId={map.id} hex={hex} isDm={isDm} characterId={myCharacterId} />
+      )}
 
       {!isDm && !myCharacterId && (
         <p className="text-xs text-ink-400 mt-4">
@@ -312,14 +317,36 @@ function TrailInfo({ hex, isDm }: { hex: { q: number; r: number }; isDm: boolean
  * reveals anything the roll beats — including active-only gates that never
  * open passively.
  */
-function SearchHex({ mapId, hex, isDm }: { mapId: string; hex: { q: number; r: number }; isDm: boolean }) {
+function SearchHex({
+  mapId,
+  hex,
+  isDm,
+  characterId,
+}: {
+  mapId: string;
+  hex: { q: number; r: number };
+  isDm: boolean;
+  characterId: string | null;
+}) {
   const [skill, setSkill] = React.useState('perception');
+  const attempts = useSession((s) => s.state?.mapState?.searchAttempts) ?? EMPTY_ATTEMPTS;
+  // A player gets one roll per skill on a hex (issue #107). The snapshot only
+  // carries their own character's attempts, so this is all they can know.
+  const spent = React.useMemo(() => {
+    if (isDm || !characterId) return new Set<string>();
+    return new Set(
+      attempts
+        .filter((a) => a.q === hex.q && a.r === hex.r && a.characterId === characterId)
+        .map((a) => a.skill),
+    );
+  }, [attempts, hex.q, hex.r, characterId, isDm]);
+  const used = spent.has(skill);
   return (
     <Section title="Search this hex">
       <p className="text-xs text-ink-400 mb-2">
         {isDm
           ? 'Rolls for every character with a token on the map; reveals clues the rolls beat.'
-          : 'Roll a check against this hex — you might notice something others missed.'}
+          : 'Roll a check against this hex — one attempt per skill. The DM describes what you turn up.'}
       </p>
       <div className="flex gap-1.5">
         <select
@@ -328,19 +355,198 @@ function SearchHex({ mapId, hex, isDm }: { mapId: string; hex: { q: number; r: n
           onChange={(e) => setSkill(e.target.value)}
         >
           {CORE_SKILLS.map((s) => (
-            <option key={s} value={s}>
+            <option key={s} value={s} disabled={spent.has(s)}>
               {s}
+              {spent.has(s) ? ' — already tried' : ''}
             </option>
           ))}
         </select>
         <Button
           size="sm"
           variant="primary"
+          disabled={used}
+          title={used ? 'One attempt per skill — ask the DM for another chance' : undefined}
           onClick={() => send({ kind: 'check.roll', skill, dc: null, characterIds: [], mapId, hex })}
         >
           🎲 Roll
         </Button>
       </div>
+      {!isDm && spent.size > 0 && (
+        <p className="text-[11px] text-ink-400 mt-1">
+          One attempt per skill. Already tried here: {[...spent].join(', ')}.
+        </p>
+      )}
+    </Section>
+  );
+}
+
+const EMPTY_ATTEMPTS: SearchAttempt[] = [];
+
+function timeAgo(at: number, now: number): string {
+  const secs = Math.max(0, Math.round((now - at) / 1000));
+  if (secs < 60) return 'just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+/**
+ * The DM's investigation view for the inspected hex (issue #107): what the
+ * party has already tried here, what their rolls turned up that still needs a
+ * ruling, and what the players have passed on to each other.
+ */
+function InvestigationSection({ hex }: { hex: { q: number; r: number } }) {
+  const state = useSession((s) => s.state);
+  const now = Date.now();
+  if (!state?.mapState) return null;
+  const characters = state.characters;
+  const nameOf = (id: string) => characters.find((c) => c.id === id)?.name ?? 'Unknown';
+
+  const attempts = state.mapState.searchAttempts
+    .filter((a) => a.q === hex.q && a.r === hex.r)
+    .sort((a, b) => b.at - a.at);
+  const attemptById = new Map(state.mapState.searchAttempts.map((a) => [a.id, a]));
+
+  // Pendings are campaign-wide; this hex's are the ones whose attempt is here.
+  const pendings = state.pendingReveals.filter((p) => {
+    const a = attemptById.get(p.attemptId);
+    return a?.q === hex.q && a?.r === hex.r;
+  });
+
+  // Clue text lives on the content, which the DM always has in full.
+  const clueText = new Map<string, string>();
+  for (const c of state.mapState.contents) {
+    if (!isFullContent(c)) continue;
+    for (const clue of c.clues) clueText.set(clue.id, `${c.title} — ${clue.text}`);
+  }
+
+  // Player-to-player sharing on this hex's content (how.kind === 'shared').
+  const hexClueIds = new Set<string>();
+  for (const c of state.mapState.contents) {
+    if (!isFullContent(c) || !contentCoversHex(c, hex)) continue;
+    for (const clue of c.clues) hexClueIds.add(clue.id);
+  }
+  const shared = state.discoveries.filter(
+    (d) => d.how.kind === 'shared' && hexClueIds.has(d.clueId),
+  );
+
+  if (attempts.length === 0 && pendings.length === 0 && shared.length === 0) return null;
+
+  const byCharacter = new Map<string, typeof pendings>();
+  for (const p of pendings) {
+    const list = byCharacter.get(p.characterId) ?? [];
+    list.push(p);
+    byCharacter.set(p.characterId, list);
+  }
+  const resolve = (pendingIds: string[], approve: boolean) => {
+    if (pendingIds.length) send({ kind: 'search.resolve', pendingIds, approve });
+  };
+
+  return (
+    <Section title="Investigation">
+      {pendings.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-medium text-brass-300">
+              Awaiting your call ({pendings.length})
+            </p>
+            <div className="flex gap-1.5">
+              <button
+                className="text-[11px] text-brass-400 hover:text-brass-300 cursor-pointer"
+                onClick={() => resolve(pendings.map((p) => p.id), true)}
+              >
+                Share all
+              </button>
+              <button
+                className="text-[11px] text-ink-400 hover:text-ember-500 cursor-pointer"
+                onClick={() => resolve(pendings.map((p) => p.id), false)}
+              >
+                Withhold all
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {[...byCharacter.entries()].map(([characterId, list]) => (
+              <div
+                key={characterId}
+                className="bg-ink-850 border border-brass-500/40 rounded-lg p-2"
+              >
+                <p className="text-xs font-medium text-ink-100">{nameOf(characterId)}</p>
+                <ul className="mt-1 space-y-1.5">
+                  {list.map((p) => {
+                    const attempt = attemptById.get(p.attemptId);
+                    return (
+                      <li
+                        key={p.id}
+                        className="text-xs border-t border-ink-700 pt-1.5 first:border-0 first:pt-0"
+                      >
+                        <p className="text-ink-200">{clueText.get(p.clueId) ?? '(clue removed)'}</p>
+                        <p className="text-ink-400 mt-0.5">
+                          {attempt?.skill ?? 'search'} {p.total} (d20 {p.roll}
+                          {p.modifier >= 0 ? '+' : ''}
+                          {p.modifier})
+                          {p.direction ? ` · bearing ${p.direction}` : ''}
+                          {p.locates ? ' · pins the location' : ''}
+                        </p>
+                        <div className="flex gap-1.5 mt-1">
+                          <Button size="sm" variant="primary" onClick={() => resolve([p.id], true)}>
+                            Share
+                          </Button>
+                          <Button size="sm" onClick={() => resolve([p.id], false)}>
+                            Withhold
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {attempts.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs font-medium text-ink-300 mb-1">Attempts here</p>
+          <ul className="space-y-1">
+            {attempts.map((a) => (
+              <li key={a.id} className="flex items-center gap-2 text-xs text-ink-200">
+                <span className="truncate">{nameOf(a.characterId)}</span>
+                <span className="text-ink-400 capitalize">{a.skill}</span>
+                <span className="text-ink-100 font-medium">{a.total}</span>
+                <span className="text-ink-400">{timeAgo(a.at, now)}</span>
+                <button
+                  className="ml-auto text-ink-400 hover:text-ember-500 cursor-pointer"
+                  title={`Let ${nameOf(a.characterId)} try ${a.skill} here again`}
+                  onClick={() => send({ kind: 'search.clearAttempt', attemptId: a.id })}
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {shared.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-ink-300 mb-1">Shared with the party</p>
+          <ul className="space-y-1">
+            {shared.map((d) => (
+              <li key={d.id} className="text-xs text-ink-300">
+                {clueText.get(d.clueId) ?? '(clue removed)'}
+                <span className="text-ink-400">
+                  {' '}
+                  — shared by {d.how.kind === 'shared' ? nameOf(d.how.fromCharacterId) : 'someone'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Section>
   );
 }
