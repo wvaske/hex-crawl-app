@@ -1,0 +1,17 @@
+{
+  "name": "@hexcrawl/mcp",
+  "version": "1.0.0",
+  "description": "Dependency-free stdio MCP server bridging any AI assistant to a HexCrawl VTT campaign's integration API",
+  "type": "module",
+  "private": true,
+  "license": "UNLICENSED",
+  "bin": {
+    "hexcrawl-mcp": "./hexcrawl-mcp.mjs"
+  },
+  "files": [
+    "hexcrawl-mcp.mjs"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
