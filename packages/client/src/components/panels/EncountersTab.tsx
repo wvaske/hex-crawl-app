@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   CORE_SKILLS,
+  ENCOUNTER_PRESETS,
   TERRAINS,
   TERRAIN_IDS,
   diceBounds,
@@ -192,19 +193,41 @@ function TablesPanel() {
   const [editing, setEditing] = useState<EncounterTable | 'new' | null>(null);
   const tables = state?.encounterTables ?? [];
 
+  // Presets whose terrain isn't already covered by an existing table.
+  const missingPresets = ENCOUNTER_PRESETS.filter(
+    (p) => !tables.some((t) => p.terrains.some((tr) => t.terrains.includes(tr))),
+  );
+  const loadPresets = () => {
+    for (const p of missingPresets) {
+      send({ kind: 'encounterTable.upsert', table: { ...p, id: null, enabled: true } });
+    }
+  };
+
   return (
     <Section
       title="Encounter tables"
       actions={
-        <Button size="sm" variant="ghost" onClick={() => setEditing('new')}>
-          + New table
-        </Button>
+        <>
+          {missingPresets.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              title={`Add a classic d12 wandering table for each terrain without one (${missingPresets.length} tables)`}
+              onClick={loadPresets}
+            >
+              + Standard tables
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => setEditing('new')}>
+            + New table
+          </Button>
+        </>
       }
     >
       {tables.length === 0 && (
         <EmptyNote>
           Build tables per terrain (forest, swamp…) and the roller picks the right one from the
-          party's hex.
+          party's hex — or load the standard tables and edit from there.
         </EmptyNote>
       )}
       <div className="space-y-1.5">
