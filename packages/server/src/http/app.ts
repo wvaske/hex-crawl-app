@@ -492,6 +492,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     scaleVisibility: z.number().int().min(0).max(2).optional(),
     enabled: z.boolean().optional(),
     knownLocation: z.boolean().optional(),
+    /** Multi-hex footprint (issue #69): members beside the anchor q/r. */
+    area: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(2000).optional(),
     quest: z.string().max(120).default(''),
     clues: z
       .array(
@@ -539,6 +541,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       mapId: input.mapId,
       q,
       r,
+      area: input.area ?? existing?.area ?? [],
       type: input.type ?? existing?.type ?? 'landmark',
       title: input.title,
       dmNotes: input.dmNotes || existing?.dmNotes || '',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hexDistance, type HexCoord } from './hex/coords.js';
 
 // ---------------------------------------------------------------------------
 // Terrain
@@ -490,11 +491,22 @@ export const ClueSchema = z.object({
 });
 export type Clue = z.infer<typeof ClueSchema>;
 
+/** A hex coordinate pair as stored inside content areas and trail paths. */
+export const HexRefSchema = z.object({ q: z.number().int(), r: z.number().int() });
+
 export const ContentSchema = z.object({
   id: z.string(),
   mapId: z.string(),
+  /** The anchor hex: where the pin/label sits, and always a member of the area. */
   q: z.number().int(),
   r: z.number().int(),
+  /**
+   * Multi-hex footprint (issue #69): the member hexes BESIDE the anchor. A
+   * region is explored-if-any — every distance check, auto gate and search
+   * uses the nearest member hex (see `distanceToContent`). Empty = a plain
+   * single-hex pin, which is what everything was before footprints existed.
+   */
+  area: z.array(HexRefSchema).default([]),
   type: ContentTypeSchema,
   title: z.string().min(1).max(120),
   dmNotes: z.string().max(10000).default(''),
@@ -565,6 +577,12 @@ export const ContentPlayerViewSchema = z.object({
   mapId: z.string(),
   q: z.number().int(),
   r: z.number().int(),
+  /**
+   * The region's footprint. Only present because the view itself only exists
+   * once the character has located (or commonly knows) the place — an
+   * undiscovered region never reaches a player at all.
+   */
+  area: z.array(HexRefSchema).default([]),
   type: ContentTypeSchema,
   title: z.string(),
   glyph: z.string(),
@@ -752,4 +770,61 @@ export type CampaignState = z.infer<typeof CampaignStateSchema>;
 
 export function isFullContent(c: Content | ContentPlayerView): c is Content {
   return 'clues' in c;
+}
+
+// ---------------------------------------------------------------------------
+// Content footprints (issue #69)
+// ---------------------------------------------------------------------------
+
+/** The minimum a footprint helper needs: an anchor hex and optional members. */
+export interface ContentFootprint {
+  q: number;
+  r: number;
+  area?: HexCoord[];
+}
+
+/**
+ * Every hex a content item occupies: the anchor first, then its area members
+ * (de-duplicated, so an area that redundantly lists the anchor is harmless).
+ */
+export function contentCells(content: ContentFootprint): HexCoord[] {
+  const cells: HexCoord[] = [{ q: content.q, r: content.r }];
+  const seen = new Set([`${content.q},${content.r}`]);
+  for (const cell of content.area ?? []) {
+    const key = `${cell.q},${cell.r}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cells.push({ q: cell.q, r: cell.r });
+  }
+  return cells;
+}
+
+/** Does this content occupy the given hex (anchor or any area member)? */
+export function contentCoversHex(content: ContentFootprint, hex: HexCoord): boolean {
+  if (content.q === hex.q && content.r === hex.r) return true;
+  return (content.area ?? []).some((c) => c.q === hex.q && c.r === hex.r);
+}
+
+/** The member hex of `content` closest to `from` (the anchor when there's no area). */
+export function nearestContentCell(content: ContentFootprint, from: HexCoord): HexCoord {
+  let best: HexCoord = { q: content.q, r: content.r };
+  let bestDistance = hexDistance(from, best);
+  for (const cell of content.area ?? []) {
+    const d = hexDistance(from, cell);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = { q: cell.q, r: cell.r };
+    }
+  }
+  return best;
+}
+
+/**
+ * Distance from a character to a content item: the MINIMUM distance to any
+ * hex of its footprint. This is what makes a multi-hex region behave as one
+ * place — standing anywhere inside it counts as being "on" it (distance 0),
+ * so auto gates fire and location discoveries upgrade on entering any member.
+ */
+export function distanceToContent(content: ContentFootprint, from: HexCoord): number {
+  return hexDistance(from, nearestContentCell(content, from));
 }

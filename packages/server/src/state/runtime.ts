@@ -363,6 +363,7 @@ export class CampaignRuntime {
         mapId,
         q: c.q as number,
         r: c.r as number,
+        area: safeJson(c.area as string, []) as Content['area'],
         type: c.type as Content['type'],
         title: c.title as string,
         dmNotes: c.dm_notes as string,
@@ -1120,10 +1121,10 @@ export class CampaignRuntime {
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label, scale_visibility, wiki_page, enabled, quest, known_location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label, scale_visibility=excluded.scale_visibility, wiki_page=excluded.wiki_page, enabled=excluded.enabled, quest=excluded.quest, known_location=excluded.known_location`,
+          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label, scale_visibility, wiki_page, enabled, quest, known_location, area) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label, scale_visibility=excluded.scale_visibility, wiki_page=excluded.wiki_page, enabled=excluded.enabled, quest=excluded.quest, known_location=excluded.known_location, area=excluded.area`,
         )
-        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0, content.scaleVisibility, content.wikiPage, content.enabled ? 1 : 0, content.quest, content.knownLocation ? 1 : 0);
+        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0, content.scaleVisibility, content.wikiPage, content.enabled ? 1 : 0, content.quest, content.knownLocation ? 1 : 0, JSON.stringify(content.area ?? []));
       const keep = new Set(content.clues.map((c) => c.id));
       if (existing) {
         for (const old of existing.clues) {

@@ -134,14 +134,14 @@ function fullState(): CampaignState {
       ],
       contents: [
         {
-          id: 'ct1', mapId: 'm1', q: 1, r: 0, type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '',
+          id: 'ct1', mapId: 'm1', q: 1, r: 0, area: [], type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '',
           clues: [
             { id: 'cl1', contentId: 'ct1', text: 'Dead vegetation', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false, revealsLocation: true },
             { id: 'cl2', contentId: 'ct1', text: 'Acid scars', gate: { kind: 'manual' }, sortOrder: 1, indicatesDirection: false, revealsLocation: true },
           ],
         },
         {
-          id: 'ct2', mapId: 'm1', q: 2, r: 0, type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '',
+          id: 'ct2', mapId: 'm1', q: 2, r: 0, area: [], type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '',
           clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false, revealsLocation: true }],
         },
       ],

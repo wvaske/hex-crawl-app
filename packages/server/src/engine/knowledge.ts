@@ -1,6 +1,11 @@
 import { nanoid } from 'nanoid';
 import type { Character, Discovery } from '@hexcrawl/shared';
-import { compassDirection, gateOpensPassively, hexDistance } from '@hexcrawl/shared';
+import {
+  compassDirection,
+  distanceToContent,
+  gateOpensPassively,
+  nearestContentCell,
+} from '@hexcrawl/shared';
 import type { CampaignRuntime } from '../state/runtime.js';
 
 export interface NewDiscovery {
@@ -42,7 +47,9 @@ export function evaluateKnowledge(
     if (!character) continue;
     for (const content of rt.contents.values()) {
       if (!content.enabled) continue;
-      const distance = hexDistance(pos, { q: content.q, r: content.r });
+      // Explored-if-any: a multi-hex region is as close as its nearest member
+      // hex, so entering anywhere inside a footprint counts as distance 0.
+      const distance = distanceToContent(content, pos);
       for (const clue of content.clues) {
         if (runtime.hasDiscovery(clue.id, characterId)) {
           // Reaching the source upgrades an earlier at-a-distance discovery:
@@ -56,7 +63,7 @@ export function evaluateKnowledge(
         const evaluation = gateOpensPassively(clue.gate, character, distance);
         if (!evaluation.opens) continue;
         const direction = clue.indicatesDirection
-          ? compassDirection(pos, { q: content.q, r: content.r }, orientation)
+          ? compassDirection(pos, nearestContentCell(content, pos), orientation)
           : null;
         const discovery = buildDiscovery(
           clue.id,
