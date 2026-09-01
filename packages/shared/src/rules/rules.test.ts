@@ -6,6 +6,7 @@ import {
   TRAVEL_MODES,
   formatClock,
   formatDuration,
+  formatRelativeGameTime,
   formatTimeOfDay,
   isNight,
   minutesPerHex,
@@ -148,7 +149,11 @@ function fullState(): CampaignState {
       pendingMoves: [],
       trails: [],
       trailSigns: [],
-      visits: [{ q: 0, r: 0, firstArrived: 480, lastArrived: 480, totalMinutes: 30 }],
+      visits: [
+        { q: 0, r: 0, firstArrived: 480, lastArrived: 480, totalMinutes: 30 },
+        // Hex 2,0 has no fog record (hidden) — the visit must not leak it.
+        { q: 2, r: 0, firstArrived: 60, lastArrived: 60, totalMinutes: 0 },
+      ],
     },
     discoveries: [
       { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' }, direction: null, locates: true },
@@ -210,11 +215,21 @@ describe('filterStateForViewer', () => {
     expect((view as { discoveredClues: unknown[] }).discoveredClues).toHaveLength(1);
   });
 
-  it('withholds per-hex visit records from players', () => {
+  it('gives players their own visit history, minus re-hidden hexes (#66)', () => {
     const full = fullState();
-    expect(full.mapState!.visits).toHaveLength(1);
+    expect(full.mapState!.visits).toHaveLength(2);
     const s = filterStateForViewer(full, viewer);
-    expect(s.mapState!.visits).toEqual([]);
+    expect(s.mapState!.visits).toEqual([
+      { q: 0, r: 0, firstArrived: 480, lastArrived: 480, totalMinutes: 30 },
+    ]);
+    // Visit records carry coordinates and clock stamps only — no DM data.
+    expect(Object.keys(s.mapState!.visits[0]!).sort()).toEqual([
+      'firstArrived',
+      'lastArrived',
+      'q',
+      'r',
+      'totalMinutes',
+    ]);
     // The clock itself is public: players see day, time and daylight.
     expect(s.campaign.time).toEqual(full.campaign.time);
   });
@@ -266,6 +281,17 @@ describe('campaign clock', () => {
     expect(formatDuration(8 * 60)).toBe('8 hours');
     expect(formatDuration(1500)).toBe('1 day 1 hour');
     expect(formatDuration(45)).toBe('45 minutes');
+  });
+
+  it('says how long ago something happened in game (#66)', () => {
+    const day = 1440;
+    // Same day (even hours apart) reads as "today".
+    expect(formatRelativeGameTime(8 * 60, 20 * 60)).toBe('today');
+    expect(formatRelativeGameTime(20 * 60, 8 * 60)).toBe('today'); // future: no negatives
+    expect(formatRelativeGameTime(0, day)).toBe('yesterday');
+    expect(formatRelativeGameTime(0, 5 * day)).toBe('5 days ago');
+    expect(formatRelativeGameTime(0, 21 * day)).toBe('3 weeks ago');
+    expect(formatRelativeGameTime(0, 120 * day)).toBe('4 months ago');
   });
 
   it('derives night from configurable sunrise/sunset', () => {

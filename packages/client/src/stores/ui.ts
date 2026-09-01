@@ -26,6 +26,8 @@ interface UiStore {
   selectedTokenId: string | null;
   contentDialogHex: HexCoord | null;
   editingContentId: string | null;
+  /** Content whose full detail dialog (app data + wiki) is open (#66). */
+  locationDialogContentId: string | null;
   panelTab: PanelTab;
   panelOpen: boolean;
   /** Right sidebar width in px (drag the left edge to resize). */
@@ -112,6 +114,7 @@ export const useUi = create<UiStore>((set) => ({
   selectedTokenId: null,
   contentDialogHex: null,
   editingContentId: null,
+  locationDialogContentId: null,
   panelTab: 'inspect',
   panelOpen: true,
   panelWidth: initialPanelWidth(),

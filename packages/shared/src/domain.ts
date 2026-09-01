@@ -693,7 +693,9 @@ export type TrailSign = z.infer<typeof TrailSignSchema>;
 
 /**
  * Per-hex visit accounting for the party, in campaign-clock minutes. Feeds
- * "when were we here?" (#66) and time-spent-in-hex (#59). DM-only for now.
+ * "when were we here?" (#66) and time-spent-in-hex (#59). Player-visible for
+ * non-hidden hexes — it is the party's own travel history and carries no
+ * DM-only data beyond coordinates and clock stamps.
  */
 export const HexVisitSchema = z.object({
   q: z.number().int(),
@@ -720,7 +722,7 @@ export const MapStateSchema = z.object({
   trails: z.array(TrailSchema).default([]),
   /** Players: signs for the trail cells their character has discovered. */
   trailSigns: z.array(TrailSignSchema).default([]),
-  /** DM only: per-hex party visit records (players get last-visited in #66). */
+  /** Party visit records; players see them for hexes that aren't fogged out. */
   visits: z.array(HexVisitSchema).default([]),
 });
 export type MapState = z.infer<typeof MapStateSchema>;

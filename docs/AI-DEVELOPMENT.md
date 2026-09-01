@@ -141,6 +141,14 @@ player-facing data).
 - **Move-handler ordering**: post-move hooks (auto encounters, clock) run
   after `executePartyMove`; the clock credits the departed hex *before*
   advancing, so lingering time lands on the hex and travel time on neither.
+- **Wiki content is proxied, never fetched from the browser** (#66):
+  `http/wiki.ts` derives `api.php` from `campaign.settings.wikiBaseUrl`, calls
+  `action=parse` server-side (no CORS), caches 5 minutes in memory and
+  regex-sanitizes the HTML before the client renders it with
+  `dangerouslySetInnerHTML`. The wiki is semi-trusted, and it is *public* —
+  the app cannot hide a wiki section from a player who opens the page in a
+  browser, so DM secrets belong in `dmNotes` or on unlinked pages. Page layout
+  conventions: `docs/WIKI-TEMPLATE.md`.
 - CI (`.github/workflows/ci.yml`) runs typecheck + test on PRs; pnpm is
   pinned there and in the Dockerfile — keep the versions in sync.
 

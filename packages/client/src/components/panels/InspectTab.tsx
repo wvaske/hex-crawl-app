@@ -433,6 +433,20 @@ function MarkerLabel({
   );
 }
 
+/** Opens the full location dialog (#66) for a content card. */
+function MoreButton({ contentId }: { contentId: string }) {
+  const setUi = useUi((s) => s.set);
+  return (
+    <button
+      className="text-xs text-ink-400 hover:text-ink-100 cursor-pointer"
+      title="Everything about this location: clues, visits, wiki page"
+      onClick={() => setUi('locationDialogContentId', contentId)}
+    >
+      More…
+    </button>
+  );
+}
+
 export function wikiHref(page: string, baseUrl: string): string {
   if (/^https?:\/\//.test(page)) return page;
   return baseUrl + encodeURIComponent(page.replace(/ /g, '_'));
@@ -495,6 +509,7 @@ function DmContentCard({ content }: { content: Content }) {
             wiki ↗
           </a>
         )}
+        <MoreButton contentId={content.id} />
         <button
           className="text-xs text-ink-400 hover:text-brass-300 cursor-pointer"
           title="Move this location: click the destination hex on the map"
@@ -591,6 +606,7 @@ function PlayerContentCard({ content }: { content: ContentPlayerView }) {
             wiki ↗
           </a>
         )}
+        <MoreButton contentId={content.id} />
       </div>
       <ul className="mt-1.5 space-y-1">
         {content.discoveredClues.map((c) => (

@@ -89,6 +89,26 @@ export async function fetchMapThumbs(campaignId: string): Promise<MapThumb[]> {
   return body.maps;
 }
 
+export interface WikiPage {
+  /** Canonical page title as the wiki resolved it (redirects followed). */
+  title: string;
+  /** Server-sanitized HTML (scripts/handlers stripped) — see http/wiki.ts. */
+  html: string;
+}
+
+/**
+ * Fetch a wiki page through the server proxy (#66). Any seated member may
+ * read; errors come back as JSON, so a missing page or an unreachable wiki
+ * surfaces as a thrown Error with a readable message.
+ */
+export async function fetchWikiPage(campaignId: string, title: string): Promise<WikiPage> {
+  return jsonOrThrow<WikiPage>(
+    await fetch(
+      `/api/campaigns/${campaignId}/wiki-page?title=${encodeURIComponent(title)}`,
+    ),
+  );
+}
+
 export async function uploadMapImage(
   campaignId: string,
   mapId: string,
