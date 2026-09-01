@@ -9,6 +9,10 @@ describe('encounter presets', () => {
     expect([...seen].sort()).toEqual([...TERRAIN_IDS].sort());
   });
 
+  it('includes exactly one terrain-agnostic fallback table', () => {
+    expect(ENCOUNTER_PRESETS.filter((p) => p.terrains.length === 0)).toHaveLength(1);
+  });
+
   it('validates against the table schema', () => {
     for (const p of ENCOUNTER_PRESETS) {
       expect(() =>
