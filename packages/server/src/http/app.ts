@@ -364,14 +364,17 @@ export function createApp(store: Store, hub: Hub): Hono {
     /** Or explicit hex coordinates. */
     q: z.number().int().optional(),
     r: z.number().int().optional(),
-    type: ContentTypeSchema.default('landmark'),
+    // Optional (no zod defaults): an omitted field must MERGE with the
+    // existing content on update rather than reset to a default — defaults
+    // here made `?? existing` dead code (issue #72 audit finding).
+    type: ContentTypeSchema.optional(),
     glyph: z.string().max(8).default(''),
     dmNotes: z.string().max(10000).default(''),
     wikiPage: z.string().max(300).default(''),
-    showLabel: z.boolean().default(false),
-    scaleVisibility: z.number().int().min(0).max(2).default(1),
-    enabled: z.boolean().default(true),
-    knownLocation: z.boolean().default(false),
+    showLabel: z.boolean().optional(),
+    scaleVisibility: z.number().int().min(0).max(2).optional(),
+    enabled: z.boolean().optional(),
+    knownLocation: z.boolean().optional(),
     quest: z.string().max(120).default(''),
     clues: z
       .array(
@@ -419,12 +422,12 @@ export function createApp(store: Store, hub: Hub): Hono {
       mapId: input.mapId,
       q,
       r,
-      type: input.type,
+      type: input.type ?? existing?.type ?? 'landmark',
       title: input.title,
       dmNotes: input.dmNotes || existing?.dmNotes || '',
       glyph: input.glyph || existing?.glyph || '',
-      showLabel: input.showLabel,
-      scaleVisibility: input.scaleVisibility,
+      showLabel: input.showLabel ?? existing?.showLabel ?? false,
+      scaleVisibility: input.scaleVisibility ?? existing?.scaleVisibility ?? 1,
       wikiPage: input.wikiPage || existing?.wikiPage || '',
       enabled: input.enabled ?? existing?.enabled ?? true,
       knownLocation: input.knownLocation ?? existing?.knownLocation ?? false,
