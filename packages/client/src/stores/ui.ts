@@ -45,6 +45,15 @@ interface UiStore {
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
   /** Trail highlight: the full path (DM) or discovered cells (player) of a clicked trail. */
   trailHighlight: { trailId: string; cells: HexCoord[] } | null;
+  /** Region footprint highlight: the hexes of a clicked multi-hex content (issue #69). */
+  areaHighlight: { contentId: string; cells: HexCoord[] } | null;
+  /**
+   * DM "paint area" mode (armed from the content dialog): while set, a map
+   * click toggles the hex in `cells` instead of running the active tool. The
+   * dialog owns the draft until it's saved, so this holds live cells, not an
+   * id — a brand-new content item has no id yet.
+   */
+  areaPaint: { cells: HexCoord[] } | null;
   /** DM trail tool: cells of the trail being drawn, in click order. */
   trailDraft: HexCoord[];
   /** DM trail tool: id of the trail whose nodes are being edited (null = new). */
@@ -114,6 +123,8 @@ export const useUi = create<UiStore>((set) => ({
   movingTokenId: null,
   senseHighlight: null,
   trailHighlight: null,
+  areaHighlight: null,
+  areaPaint: null,
   trailDraft: [],
   editingTrailId: null,
   contentSelection: null,

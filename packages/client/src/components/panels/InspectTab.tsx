@@ -4,6 +4,8 @@ import {
   CORE_SKILLS,
   TERRAINS,
   compassDirection,
+  contentCells,
+  contentCoversHex,
   isFullContent,
   describeGate,
   hexKey,
@@ -41,7 +43,9 @@ export function InspectTab() {
   const fog: FogState = ms.fog.find((f) => hexKey(f.q, f.r) === key)?.state ?? 'hidden';
   const tokens = ms.tokens.filter((t) => t.q === hex.q && t.r === hex.r);
   const markers = ms.markers.filter((m) => m.q === hex.q && m.r === hex.r);
-  const contents = ms.contents.filter((c) => c.q === hex.q && c.r === hex.r);
+  // A multi-hex region belongs to every hex of its footprint, not just the
+  // anchor — inspecting any of its hexes shows it (issue #69).
+  const contents = ms.contents.filter((c) => contentCoversHex(c, hex));
   const isDm = role === 'dm';
   const myCharacterId = state.seats.find((s) => s.id === seatId)?.characterId ?? null;
   // Players have no toolbar; a claimed character is the bar for annotating.
@@ -434,6 +438,39 @@ export function wikiHref(page: string, baseUrl: string): string {
   return baseUrl + encodeURIComponent(page.replace(/ /g, '_'));
 }
 
+/**
+ * The title of a content card. For a multi-hex region it's a button that
+ * toggles the footprint highlight on the map; single-hex content has nothing
+ * to show, so it stays plain text.
+ */
+function ContentTitle({ content }: { content: Content | ContentPlayerView }) {
+  const active = useUi((u) => u.areaHighlight?.contentId === content.id);
+  const setUi = useUi((s) => s.set);
+  if (content.area.length === 0) {
+    return <span className="font-medium text-sm text-ink-100 truncate flex-1">{content.title}</span>;
+  }
+  const cells = contentCells(content);
+  return (
+    <button
+      className={cx(
+        'font-medium text-sm truncate flex-1 text-left cursor-pointer',
+        active ? 'text-brass-300' : 'text-ink-100 hover:text-brass-300',
+      )}
+      title={
+        active
+          ? 'Hide this region on the map'
+          : `Show all ${cells.length} hexes of this region on the map`
+      }
+      onClick={() =>
+        setUi('areaHighlight', active ? null : { contentId: content.id, cells })
+      }
+    >
+      {content.title}
+      <span className="ml-1.5 text-[10px] text-ink-400 font-normal">{cells.length} hexes</span>
+    </button>
+  );
+}
+
 function DmContentCard({ content }: { content: Content }) {
   const state = useSession((s) => s.state);
   const setUi = useUi((s) => s.set);
@@ -446,7 +483,7 @@ function DmContentCard({ content }: { content: Content }) {
     <div className="bg-ink-850 border border-ink-700 rounded-lg p-2.5">
       <div className="flex items-center gap-2">
         <span>{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
-        <span className="font-medium text-sm text-ink-100 truncate flex-1">{content.title}</span>
+        <ContentTitle content={content} />
         {content.wikiPage && (
           <a
             className="text-xs text-arcane-500 hover:text-ink-100 cursor-pointer"
@@ -542,7 +579,7 @@ function PlayerContentCard({ content }: { content: ContentPlayerView }) {
     <div className="bg-ink-850 border border-ink-700 rounded-lg p-2.5">
       <div className="flex items-center gap-2">
         <span>{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
-        <span className="font-medium text-sm text-ink-100 flex-1">{content.title}</span>
+        <ContentTitle content={content} />
         {content.wikiPage && (
           <a
             className="text-xs text-arcane-500 hover:text-ink-100"

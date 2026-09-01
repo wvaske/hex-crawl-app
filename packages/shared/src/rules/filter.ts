@@ -10,8 +10,13 @@ import type {
   Token,
   TrailSign,
 } from '../domain.js';
-import { isFullContent } from '../domain.js';
-import { hexDistance, hexKey, hexRange } from '../hex/coords.js';
+import {
+  contentCells,
+  distanceToContent,
+  isFullContent,
+  nearestContentCell,
+} from '../domain.js';
+import { hexKey, hexRange } from '../hex/coords.js';
 import { bearingAngle, compassDirection, withDirection } from '../hex/direction.js';
 import type { HexOrientation } from '../hex/layout.js';
 
@@ -177,6 +182,9 @@ export function contentPlayerView(
     mapId: content.mapId,
     q: content.q,
     r: content.r,
+    // Located (or commonly known) means the whole footprint is known: a
+    // region you've walked into is a region you can point at on the map.
+    area: content.area,
     type: content.type,
     title: content.title,
     glyph: content.glyph,
@@ -227,24 +235,35 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
         const d = mine.get(clue.id);
         return d ? discoveryLocates(d) : false;
       });
+    const cells = contentCells(content);
     for (const clue of content.clues) {
       const d = mine.get(clue.id);
       if (!d) continue;
-      const src = { q: content.q, r: content.r };
       const radius = clue.gate.kind === 'skill' ? clue.gate.maxDistance : 0;
       const here = myToken ? { q: myToken.q, r: myToken.r } : null;
-      const inRange = here ? hexDistance(here, src) <= radius : false;
+      // A multi-hex region is sensed from — and points toward — its nearest
+      // member hex, so a footprint reads as one place from any side.
+      const src = here ? nearestContentCell(content, here) : { q: content.q, r: content.r };
+      const inRange = here ? distanceToContent(content, here) <= radius : false;
       const liveDirection =
         inRange && here && clue.indicatesDirection
           ? compassDirection(here, src, orientation)
           : null;
+      // Triangulation ground: the union of each member hex's sensing range.
+      const observable = new Map<string, { q: number; r: number }>();
+      for (const cell of cells) {
+        for (const c of hexRange(cell, radius)) {
+          const key = hexKey(c.q, c.r);
+          if (visited.has(key)) observable.set(key, c);
+        }
+      }
       senses.push({
         clueId: clue.id,
         text: clue.text,
         direction: liveDirection ?? d.direction,
         inRange,
         at: d.at,
-        observableFrom: hexRange(src, radius).filter((c) => visited.has(hexKey(c.q, c.r))),
+        observableFrom: [...observable.values()],
         located,
         contentTitle: located ? content.title : null,
       });

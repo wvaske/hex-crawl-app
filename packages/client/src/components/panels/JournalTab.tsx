@@ -1,5 +1,10 @@
 import React from 'react';
-import { CONTENT_TYPE_GLYPHS, isFullContent, type ContentPlayerView } from '@hexcrawl/shared';
+import {
+  CONTENT_TYPE_GLYPHS,
+  contentCells,
+  isFullContent,
+  type ContentPlayerView,
+} from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { EmptyNote, Section, cx } from '../../ui/kit.js';
@@ -39,27 +44,7 @@ export function JournalTab() {
         )}
         <div className="space-y-2">
           {contents.map((c) => (
-            <button
-              key={c.id}
-              className="w-full text-left bg-ink-850 border border-ink-700 rounded-lg p-2.5 cursor-pointer hover:border-ink-600"
-              onClick={() => selectHex({ q: c.q, r: c.r })}
-              title="Show on map"
-            >
-              <div className="flex items-center gap-2">
-                <span>{c.glyph || CONTENT_TYPE_GLYPHS[c.type]}</span>
-                <span className="text-sm font-medium text-ink-100 truncate flex-1">{c.title}</span>
-                <span className="text-xs text-ink-400">
-                  {c.q},{c.r}
-                </span>
-              </div>
-              <ul className="mt-1.5 space-y-1">
-                {c.discoveredClues.map((clue) => (
-                  <li key={clue.clueId} className="text-xs text-ink-200">
-                    {clue.text}
-                  </li>
-                ))}
-              </ul>
-            </button>
+            <DiscoveryRow key={c.id} content={c} />
           ))}
         </div>
       </Section>
@@ -118,6 +103,50 @@ export function JournalTab() {
         </div>
       </Section>
     </div>
+  );
+}
+
+/**
+ * One discovered place. Clicking selects its hex; for a multi-hex region it
+ * also toggles the footprint highlight, so "where is the Forest of Wyrms?"
+ * is one click from the journal (issue #69).
+ */
+function DiscoveryRow({ content }: { content: ContentPlayerView }) {
+  const selectHex = useUi((s) => s.selectHex);
+  const setUi = useUi((s) => s.set);
+  const active = useUi((u) => u.areaHighlight?.contentId === content.id);
+  const isRegion = content.area.length > 0;
+  const cells = contentCells(content);
+  return (
+    <button
+      className={cx(
+        'w-full text-left border rounded-lg p-2.5 cursor-pointer',
+        active ? 'border-brass-500 bg-brass-500/10' : 'border-ink-700 bg-ink-850 hover:border-ink-600',
+      )}
+      onClick={() => {
+        selectHex({ q: content.q, r: content.r });
+        if (isRegion) {
+          setUi('areaHighlight', active ? null : { contentId: content.id, cells });
+        }
+      }}
+      title={isRegion ? `Show its ${cells.length} hexes on the map` : 'Show on map'}
+    >
+      <div className="flex items-center gap-2">
+        <span>{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
+        <span className="text-sm font-medium text-ink-100 truncate flex-1">{content.title}</span>
+        <span className="text-xs text-ink-400">
+          {isRegion ? `${cells.length} hexes` : `${content.q},${content.r}`}
+        </span>
+      </div>
+      <ul className="mt-1.5 space-y-1">
+        {content.discoveredClues.map((clue) => (
+          <li key={clue.clueId} className="text-xs text-ink-200">
+            {clue.text}
+          </li>
+        ))}
+      </ul>
+      {active && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+    </button>
   );
 }
 

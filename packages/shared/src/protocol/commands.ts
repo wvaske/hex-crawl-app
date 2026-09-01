@@ -368,6 +368,12 @@ export const ContentUpsertCommand = z.object({
     mapId: z.string(),
     q: z.number().int(),
     r: z.number().int(),
+    /**
+     * Multi-hex footprint. Optional (not defaulted) so existing senders that
+     * don't know about areas — the pin popup's quick toggles — keep the
+     * footprint they never touched; the server merges omitted areas.
+     */
+    area: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(2000).optional(),
     type: ContentTypeSchema,
     title: z.string().min(1).max(120),
     dmNotes: z.string().max(10000).default(''),

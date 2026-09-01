@@ -44,6 +44,14 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.set('altTeleport', true);
       }
       if (e.key === 'Escape') {
+        // Painting an area is a mode inside the open content dialog: the
+        // first Escape leaves the mode and hands the dialog back, rather
+        // than throwing away the edit in progress.
+        if (ui.areaPaint) {
+          ui.set('areaPaint', null);
+          return;
+        }
+        ui.set('areaHighlight', null);
         ui.set('contentDialogHex', null);
         ui.set('editingContentId', null);
         ui.selectHex(null);
