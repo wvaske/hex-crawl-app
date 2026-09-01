@@ -71,7 +71,7 @@ const DRAG_THRESHOLD_TOUCH = 12;
 const NOTE_DEFAULT_TINT = 0x8fb4ff;
 
 type PinContainer = Container & {
-  __pin?: { worldSize: number; minScreen: number; maxScreen?: number };
+  __pin?: { worldSize: number; minScreen: number; maxScreen?: number; baseAlpha?: number };
 };
 
 interface TokenView {
@@ -764,12 +764,18 @@ export class CanvasEngine {
       if (!meta) continue;
       let effectiveWorld = Math.max(meta.worldSize, meta.minScreen / zoom);
       // Region labels also cap in SCREEN pixels: zooming into a region should
-      // shrink its printed-map name out of the way, not fill the viewport.
+      // shrink its printed-map name out of the way, not fill the viewport —
+      // and once the viewer is well inside the region, fade it back like an
+      // atlas label so it stops competing with the hexes underneath.
       if (meta.maxScreen !== undefined) {
-        effectiveWorld = Math.min(
-          effectiveWorld,
-          Math.max(meta.maxScreen, meta.minScreen) / zoom,
-        );
+        const capWorld = Math.max(meta.maxScreen, meta.minScreen) / zoom;
+        effectiveWorld = Math.min(effectiveWorld, capWorld);
+        if (meta.baseAlpha !== undefined) {
+          // overshoot 1x → unchanged; 4x past the cap → faded to 25%.
+          const overshoot = meta.worldSize / capWorld;
+          const t = Math.min(1, Math.max(0, (overshoot - 1) / 3));
+          child.alpha = meta.baseAlpha * (1 - 0.75 * t);
+        }
       }
       child.scale.set(effectiveWorld / PIN_BASE_FONT);
     }
@@ -1208,7 +1214,6 @@ export class CanvasEngine {
           content.area.length > 0
             ? Math.min(base * 1.8, Math.max(base, this.footprintWidth(contentCells(content)) * 0.35))
             : base;
-        (pin as PinContainer).__pin = { worldSize, minScreen: 15, maxScreen: 42 };
         pin.position.set(center.x, center.y);
         if (discoveredClues) {
           const known =
@@ -1216,6 +1221,14 @@ export class CanvasEngine {
           pin.alpha *= known ? 1 : 0.25;
         }
         if ('enabled' in content && content.enabled === false) this.markDisabled(pin);
+        // baseAlpha captured after the dimming above: updatePinScales fades
+        // the label further as the viewer zooms inside the region.
+        (pin as PinContainer).__pin = {
+          worldSize,
+          minScreen: 15,
+          maxScreen: 26,
+          baseAlpha: pin.alpha,
+        };
         this.pinsC.addChild(pin);
         continue;
       }
