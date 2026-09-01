@@ -7,6 +7,7 @@ import {
   TravelPaceSchema,
   EncounterTableSchema,
   FogStateSchema,
+  INHERITABLE_MAP_FIELDS,
   MarkerSchema,
   TerrainIdSchema,
   TokenKindSchema,
@@ -41,6 +42,19 @@ const EncounterCheckPatchSchema = z
   })
   .partial();
 
+/** Campaign-wide map defaults; propagated to maps inheriting each field. */
+const MapDefaultsPatchSchema = z
+  .object({
+    sightRadius: z.number().int().min(0).max(10),
+    fogMode: z.enum(['manual', 'auto']),
+    fogDecay: z.boolean(),
+    moveMode: z.enum(['step', 'free']),
+    moveApproval: z.boolean(),
+    milesPerHex: z.number().min(0).max(1000),
+    encounterCheck: EncounterCheckPatchSchema,
+  })
+  .partial();
+
 const CampaignSettingsPatchSchema = z
   .object({
     description: z.string().max(2000),
@@ -49,6 +63,7 @@ const CampaignSettingsPatchSchema = z
     customTravelModes: z.array(CustomTravelModeSchema),
     sunriseHour: z.number().min(0).max(23),
     sunsetHour: z.number().min(0).max(24),
+    mapDefaults: MapDefaultsPatchSchema,
   })
   .partial();
 
@@ -109,6 +124,18 @@ export const MapUpdateCommand = z.object({
       sortOrder: z.number().int(),
     })
     .partial(),
+});
+
+/**
+ * Link a map setting to the campaign default (`inherit: true` copies the
+ * current default in immediately) or cut it loose as map-specific.
+ */
+export const MapSetInheritCommand = z.object({
+  ...base,
+  kind: z.literal('map.setInherit'),
+  mapId: z.string(),
+  field: z.enum(INHERITABLE_MAP_FIELDS),
+  inherit: z.boolean(),
 });
 
 export const MapDeleteCommand = z.object({
@@ -519,6 +546,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   CampaignUpdateCommand,
   MapCreateCommand,
   MapUpdateCommand,
+  MapSetInheritCommand,
   MapDeleteCommand,
   MapSetActiveCommand,
   ImageLayerUpdateCommand,

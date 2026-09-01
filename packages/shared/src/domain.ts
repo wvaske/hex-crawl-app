@@ -91,6 +91,42 @@ export const CustomTravelModeSchema = z.object({
 });
 export type CustomTravelMode = z.infer<typeof CustomTravelModeSchema>;
 
+/**
+ * Map settings that can be shared campaign-wide. A map lists the ones it
+ * follows in `MapInfo.inheritedFields`; the server propagates a changed
+ * default into every map inheriting that field (see the map manager, #60).
+ * Defaults here mirror the values `map.create` used before inheritance
+ * existed, so a brand-new campaign behaves exactly as it always did.
+ */
+const MapEncounterDefaultsSchema = z.object({
+  die: z.string().default('1d20'),
+  threshold: z.number().int().default(18),
+  autoEvery: z.number().int().min(0).max(99).default(0),
+});
+
+export const MapDefaultsSchema = z.object({
+  sightRadius: z.number().int().min(0).max(10).default(1),
+  fogMode: z.enum(['manual', 'auto']).default('auto'),
+  fogDecay: z.boolean().default(false),
+  moveMode: z.enum(['step', 'free']).default('free'),
+  moveApproval: z.boolean().default(false),
+  milesPerHex: z.number().min(0).max(1000).default(6),
+  encounterCheck: MapEncounterDefaultsSchema.default(() => MapEncounterDefaultsSchema.parse({})),
+});
+export type MapDefaults = z.infer<typeof MapDefaultsSchema>;
+
+/** The map fields that can follow the campaign defaults. */
+export const INHERITABLE_MAP_FIELDS = [
+  'sightRadius',
+  'fogMode',
+  'fogDecay',
+  'moveMode',
+  'moveApproval',
+  'milesPerHex',
+  'encounterCheck',
+] as const;
+export type InheritableMapField = (typeof INHERITABLE_MAP_FIELDS)[number];
+
 export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
   description: z.string().max(2000).default(''),
@@ -109,6 +145,8 @@ export const CampaignSettingsSchema = z.object({
    * log stay live throughout.
    */
   pausePlayerMapSync: z.boolean().default(false),
+  /** Campaign-wide map settings; maps opt in per field via inheritedFields. */
+  mapDefaults: MapDefaultsSchema.default(() => MapDefaultsSchema.parse({})),
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 
@@ -224,6 +262,13 @@ export const MapInfoSchema = z.object({
   milesPerHex: z.number().min(0).max(1000).default(6),
   encounterCheck: EncounterCheckConfigSchema,
   sortOrder: z.number().int().default(0),
+  /**
+   * Names of settings this map takes from `campaign.settings.mapDefaults`
+   * (see INHERITABLE_MAP_FIELDS). The value below is always concrete — the
+   * server writes the default through on change — so readers never resolve
+   * inheritance themselves. Editing a field here drops it from this list.
+   */
+  inheritedFields: z.array(z.string()).default([]),
 });
 export type MapInfo = z.infer<typeof MapInfoSchema>;
 

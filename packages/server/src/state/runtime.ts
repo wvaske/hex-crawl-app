@@ -15,7 +15,9 @@ import type {
   HexCell,
   HexVisit,
   ImageLayer,
+  InheritableMapField,
   LogEntry,
+  MapDefaults,
   MapInfo,
   MapState,
   Marker,
@@ -30,6 +32,7 @@ import {
   EncounterCheckConfigSchema,
   GateSchema,
   GridStyleSchema,
+  INHERITABLE_MAP_FIELDS,
   SkillsSchema,
   hexKey,
   parseHexKey,
@@ -44,6 +47,13 @@ export interface SeatRecord {
   token: string;
   characterId: string | null;
 }
+
+/** Nested patch shape for campaign settings (mapDefaults merges field-wise). */
+export type CampaignSettingsPatch = Partial<Omit<CampaignSettings, 'mapDefaults'>> & {
+  mapDefaults?: Partial<Omit<MapDefaults, 'encounterCheck'>> & {
+    encounterCheck?: Partial<MapDefaults['encounterCheck']>;
+  };
+};
 
 export interface MapRuntime {
   hexes: Map<string, TerrainId>;
@@ -187,6 +197,9 @@ export class CampaignRuntime {
         milesPerHex: m.miles_per_hex as number,
         encounterCheck: EncounterCheckConfigSchema.parse(safeJson(m.encounter_check as string)),
         sortOrder: m.sort_order as number,
+        inheritedFields: (safeJson(m.inherited_fields as string, []) as unknown[]).filter(
+          (f): f is string => typeof f === 'string',
+        ),
       };
       this.maps.set(info.id, info);
       this.mapStates.set(info.id, this.loadMapRuntime(info.id));
@@ -482,9 +495,25 @@ export class CampaignRuntime {
 
   // -- campaign / seats / characters ----------------------------------------
 
-  updateCampaign(patch: { name?: string; settings?: Partial<CampaignSettings> }): void {
+  updateCampaign(patch: { name?: string; settings?: CampaignSettingsPatch }): void {
     if (patch.name !== undefined) this.campaign.name = patch.name;
-    if (patch.settings) this.campaign.settings = { ...this.campaign.settings, ...patch.settings };
+    if (patch.settings) {
+      const { mapDefaults, ...rest } = patch.settings;
+      const next: CampaignSettings = { ...this.campaign.settings, ...rest };
+      if (mapDefaults) {
+        // mapDefaults is a nested patch: merge field-wise (and its own
+        // encounterCheck sub-object) so a one-field patch isn't a reset.
+        next.mapDefaults = {
+          ...this.campaign.settings.mapDefaults,
+          ...mapDefaults,
+          encounterCheck: {
+            ...this.campaign.settings.mapDefaults.encounterCheck,
+            ...(mapDefaults.encounterCheck ?? {}),
+          },
+        };
+      }
+      this.campaign.settings = next;
+    }
     this.db
       .prepare('UPDATE campaign SET name = ?, settings = ? WHERE id = ?')
       .run(this.campaign.name, JSON.stringify(this.campaign.settings), this.id);
@@ -655,8 +684,9 @@ export class CampaignRuntime {
     this.db
       .prepare(
         `INSERT INTO map (id, campaign_id, name, orientation, hex_size, origin_x, origin_y, grid_style,
-          sight_radius, fog_mode, fog_decay, move_mode, miles_per_hex, encounter_check, sort_order, move_approval)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          sight_radius, fog_mode, fog_decay, move_mode, miles_per_hex, encounter_check, sort_order, move_approval,
+          inherited_fields)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         info.id,
@@ -675,6 +705,7 @@ export class CampaignRuntime {
         JSON.stringify(info.encounterCheck),
         info.sortOrder,
         info.moveApproval ? 1 : 0,
+        JSON.stringify(info.inheritedFields),
       );
   }
 
@@ -692,7 +723,8 @@ export class CampaignRuntime {
     this.db
       .prepare(
         `UPDATE map SET name=?, orientation=?, hex_size=?, origin_x=?, origin_y=?, grid_style=?,
-          sight_radius=?, fog_mode=?, fog_decay=?, move_mode=?, miles_per_hex=?, encounter_check=?, sort_order=?, move_approval=?
+          sight_radius=?, fog_mode=?, fog_decay=?, move_mode=?, miles_per_hex=?, encounter_check=?, sort_order=?, move_approval=?,
+          inherited_fields=?
          WHERE id=?`,
       )
       .run(
@@ -710,9 +742,71 @@ export class CampaignRuntime {
         JSON.stringify(updated.encounterCheck),
         updated.sortOrder,
         updated.moveApproval ? 1 : 0,
+        JSON.stringify(updated.inheritedFields),
         mapId,
       );
     return updated;
+  }
+
+  // -- campaign map defaults (inheritance, issue #60) -------------------------
+
+  /**
+   * Push the campaign defaults for `fields` into every map that inherits
+   * them. Propagation-on-write: maps always hold concrete values, so nothing
+   * downstream has to resolve inheritance. Returns the ids of maps changed.
+   */
+  propagateMapDefaults(fields: readonly InheritableMapField[] = INHERITABLE_MAP_FIELDS): string[] {
+    const defaults = this.campaign.settings.mapDefaults;
+    const touched: string[] = [];
+    for (const map of [...this.maps.values()]) {
+      const patch: Partial<MapInfo> = {};
+      for (const field of fields) {
+        if (!map.inheritedFields.includes(field)) continue;
+        if (field === 'encounterCheck') {
+          patch.encounterCheck = { ...map.encounterCheck, ...defaults.encounterCheck };
+        } else {
+          Object.assign(patch, { [field]: defaults[field] });
+        }
+      }
+      if (Object.keys(patch).length > 0) {
+        this.updateMap(map.id, patch);
+        touched.push(map.id);
+      }
+    }
+    return touched;
+  }
+
+  /**
+   * Link one map setting to the campaign default (copying the default in
+   * right away) or cut it loose as map-specific.
+   */
+  setMapInherit(mapId: string, field: InheritableMapField, inherit: boolean): MapInfo {
+    const map = this.maps.get(mapId);
+    if (!map) throw new Error('Map not found');
+    const inheritedFields = map.inheritedFields.filter((f) => f !== field);
+    if (!inherit) return this.updateMap(mapId, { inheritedFields });
+    const defaults = this.campaign.settings.mapDefaults;
+    const patch: Partial<MapInfo> = { inheritedFields: [...inheritedFields, field] };
+    if (field === 'encounterCheck') {
+      patch.encounterCheck = { ...map.encounterCheck, ...defaults.encounterCheck };
+    } else {
+      Object.assign(patch, { [field]: defaults[field] });
+    }
+    return this.updateMap(mapId, patch);
+  }
+
+  /** A map's settings as the campaign defaults would have them. */
+  mapDefaultsForNewMap(): Pick<MapInfo, InheritableMapField> {
+    const d = this.campaign.settings.mapDefaults;
+    return {
+      sightRadius: d.sightRadius,
+      fogMode: d.fogMode,
+      fogDecay: d.fogDecay,
+      moveMode: d.moveMode,
+      moveApproval: d.moveApproval,
+      milesPerHex: d.milesPerHex,
+      encounterCheck: EncounterCheckConfigSchema.parse({ ...d.encounterCheck }),
+    };
   }
 
   deleteMap(mapId: string): void {

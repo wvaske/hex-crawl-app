@@ -1078,3 +1078,109 @@ describe('campaign clock (issue #57)', () => {
     expect(playerView.campaign.time.minutes).toBe(runtime.campaign.time.minutes);
   });
 });
+
+describe('campaign map defaults + per-map inheritance (issue #60)', () => {
+  const mapById = (id: string) => runtime.maps.get(id)!;
+
+  it('new maps follow every campaign default, keeping the pre-inheritance values', () => {
+    const map = mapById(activeMapId());
+    expect(map.inheritedFields).toEqual([
+      'sightRadius',
+      'fogMode',
+      'fogDecay',
+      'moveMode',
+      'moveApproval',
+      'milesPerHex',
+      'encounterCheck',
+    ]);
+    expect(map).toMatchObject({
+      sightRadius: 1,
+      fogMode: 'auto',
+      fogDecay: false,
+      moveMode: 'free',
+      moveApproval: false,
+      milesPerHex: 6,
+    });
+  });
+
+  it('(a) changing a campaign default propagates to every inheriting map', () => {
+    const mapId = activeMapId();
+    dm({ kind: 'map.create', name: 'Dungeon', orientation: 'pointy', hexSize: 32 } as never);
+    const otherId = [...runtime.maps.values()].find((m) => m.name === 'Dungeon')!.id;
+
+    dm({
+      kind: 'campaign.update',
+      settings: { mapDefaults: { sightRadius: 4, encounterCheck: { autoEvery: 3 } } },
+    } as never);
+
+    expect(runtime.campaign.settings.mapDefaults.sightRadius).toBe(4);
+    for (const id of [mapId, otherId]) {
+      expect(mapById(id).sightRadius).toBe(4);
+      expect(mapById(id).encounterCheck.autoEvery).toBe(3);
+      // A one-field patch is not a reset of its siblings.
+      expect(mapById(id).milesPerHex).toBe(6);
+      expect(mapById(id).encounterCheck.threshold).toBe(18);
+    }
+
+    // Defaults and links survive a restart.
+    const db = (store as unknown as { db: unknown }).db;
+    const reloaded = new Store(db as never).getCampaign(runtime.id)!;
+    expect(reloaded.campaign.settings.mapDefaults.sightRadius).toBe(4);
+    expect(reloaded.maps.get(mapId)!.sightRadius).toBe(4);
+    expect(reloaded.maps.get(mapId)!.inheritedFields).toContain('sightRadius');
+  });
+
+  it('(b) editing a field on a map overrides it — the default stops flowing', () => {
+    const mapId = activeMapId();
+    dm({ kind: 'map.update', mapId, patch: { sightRadius: 7 } } as never);
+    expect(mapById(mapId).sightRadius).toBe(7);
+    expect(mapById(mapId).inheritedFields).not.toContain('sightRadius');
+    expect(mapById(mapId).inheritedFields).toContain('milesPerHex');
+
+    dm({
+      kind: 'campaign.update',
+      settings: { mapDefaults: { sightRadius: 2, milesPerHex: 24 } },
+    } as never);
+    expect(mapById(mapId).sightRadius).toBe(7);
+    expect(mapById(mapId).milesPerHex).toBe(24);
+  });
+
+  it('(c) map.setInherit unlinks a field and relinks it to the current default', () => {
+    const mapId = activeMapId();
+    dm({ kind: 'campaign.update', settings: { mapDefaults: { fogMode: 'manual' } } } as never);
+    expect(mapById(mapId).fogMode).toBe('manual');
+
+    // Unlinked: the map keeps its value and ignores later defaults.
+    dm({ kind: 'map.setInherit', mapId, field: 'fogMode', inherit: false } as never);
+    expect(mapById(mapId).inheritedFields).not.toContain('fogMode');
+    dm({ kind: 'campaign.update', settings: { mapDefaults: { fogMode: 'auto' } } } as never);
+    expect(mapById(mapId).fogMode).toBe('manual');
+
+    // Relinked: the current default lands on the map immediately.
+    dm({ kind: 'map.setInherit', mapId, field: 'fogMode', inherit: true } as never);
+    expect(mapById(mapId).fogMode).toBe('auto');
+    expect(mapById(mapId).inheritedFields).toContain('fogMode');
+
+    // encounterCheck relinks its shareable keys, leaving server bookkeeping.
+    dm({ kind: 'map.update', mapId, patch: { encounterCheck: { threshold: 11 } } } as never);
+    expect(mapById(mapId).inheritedFields).not.toContain('encounterCheck');
+    dm({ kind: 'map.setInherit', mapId, field: 'encounterCheck', inherit: true } as never);
+    expect(mapById(mapId).encounterCheck.threshold).toBe(18);
+    expect(mapById(mapId).encounterCheck.hexesSinceCheck).toBe(0);
+  });
+
+  it('players cannot touch map defaults or inheritance', () => {
+    const player = runtime.createSeat('player', 'Mallory');
+    const mapId = activeMapId();
+    expect(() =>
+      asSeat(player, {
+        kind: 'campaign.update',
+        settings: { mapDefaults: { sightRadius: 9 } },
+      } as never),
+    ).toThrow(/DM/);
+    expect(() =>
+      asSeat(player, { kind: 'map.setInherit', mapId, field: 'fogMode', inherit: false } as never),
+    ).toThrow(/DM/);
+    expect(mapById(mapId).sightRadius).toBe(1);
+  });
+});

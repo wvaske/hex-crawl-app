@@ -1,5 +1,9 @@
 import { nanoid } from 'nanoid';
-import { EncounterCheckConfigSchema, GridStyleSchema } from '@hexcrawl/shared';
+import {
+  EncounterCheckConfigSchema,
+  GridStyleSchema,
+  INHERITABLE_MAP_FIELDS,
+} from '@hexcrawl/shared';
 import type { DB } from '../db/index.js';
 import { CampaignRuntime, type SeatRecord } from './runtime.js';
 
@@ -57,6 +61,7 @@ export class Store {
       milesPerHex: 6,
       encounterCheck: EncounterCheckConfigSchema.parse({}),
       sortOrder: 0,
+      inheritedFields: [...INHERITABLE_MAP_FIELDS],
     });
     runtime.setActiveMap(mapId);
     return { runtime, dmSeat };

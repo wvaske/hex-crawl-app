@@ -51,6 +51,21 @@ export async function joinCampaign(
   return jsonOrThrow(res);
 }
 
+export interface MapThumb {
+  mapId: string;
+  /** Path of the first visible image layer, or null. */
+  image: string | null;
+  hexCount: number;
+}
+
+/** DM only: per-map summaries for the map manager (maps you aren't viewing). */
+export async function fetchMapThumbs(campaignId: string): Promise<MapThumb[]> {
+  const body = await jsonOrThrow<{ maps: MapThumb[] }>(
+    await fetch(`/api/campaigns/${campaignId}/map-thumbs`),
+  );
+  return body.maps;
+}
+
 export async function uploadMapImage(
   campaignId: string,
   mapId: string,
