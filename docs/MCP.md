@@ -125,6 +125,62 @@ Running it with no arguments and incomplete env prints the missing-variable
 error and exits `1` immediately, without trying to read stdin — that's the
 expected failure mode when a client is misconfigured.
 
+## Bootstrap a campaign from a sourcebook map
+
+The fastest way to get a real campaign started. Many published sourcebooks —
+on D&D Beyond and other sites — ship each map twice: a **player version**
+with no labels, and a **DM version** with every settlement, ruin, and region
+named. That pair is exactly what this app wants: the player version becomes
+what your players crawl across, and the labeled version is both your DM
+reference layer and something a vision-capable AI assistant can read to
+populate the whole campaign in one pass.
+
+**One-time setup, in the app:**
+
+1. Create a campaign and open *Build → Maps*. Upload the **player** map,
+   then the **labeled** map as a second image layer and mark it **DM only**
+   — players see clean art, you see the names.
+2. Align the **hex grid** over the art (grid origin + hex size), and leave
+   the image layers themselves at their default position and scale. This
+   matters: `upsert_location`'s `x`/`y` are raw image pixels, which only
+   line up with the world while the image sits at `(0, 0)` scale `1`. Align
+   the grid to the image, never the image to the grid.
+3. Register the MCP server against this campaign
+   ([above](#registering-the-server)) and hand the assistant
+   [`docs/skills/hexcrawl-campaign-assistant.md`](skills/hexcrawl-campaign-assistant.md).
+
+**The extraction pass.** Give the assistant the labeled map image file and a
+prompt along the lines of:
+
+> Here is the labeled DM version of the map I uploaded. Extract every named
+> place — cities, towns, villages, ruins, forts, dungeons, named regions —
+> with its pixel position on this image. Classify each one, then create them
+> all in my campaign with `upsert_location` (pixel `x`/`y`; pick sensible
+> `type`, `scaleVisibility`, `showLabel`, and `knownLocation` — major cities
+> are common knowledge, hidden sites are not). When you're done, run
+> `generate_settlement_clues` so every settlement can be found by its smoke.
+
+The assistant calls `list_maps` for the map id and grid geometry, upserts
+each place with pixel coordinates (the server converts them to hexes), and
+one `generate_settlement_clues` call at the end gives every settlement its
+smoke/din/smell discovery clues. Upserts match by title case-insensitively,
+so re-running the pass refines placements instead of duplicating pins.
+
+**What to expect, honestly:**
+
+- **Placement is good, not perfect.** A vision model estimating label
+  positions on a 4000-pixel map is usually within a few hexes. Accuracy
+  improves a lot if the assistant works from zoomed crops of the image
+  rather than the whole map at once. Budget a cleanup pass afterwards —
+  every pin has a *📍 Move* button, so nudging the misses takes minutes,
+  and re-running the extraction updates in place.
+- **Region footprints stay in-app.** The assistant can create a named
+  region's anchor pin ("Fields of the Dead"), but painting its multi-hex
+  area is a job for the Region tool's auto-detect (terrain or color match),
+  which needs your eyes on the proposal overlay.
+- **Respect the source.** Sourcebook maps are licensed for your table's
+  use — upload them to your own private instance, don't redistribute them.
+
 ## Tool reference
 
 Call `tools/list` for the authoritative, always-current schemas (each

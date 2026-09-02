@@ -346,6 +346,18 @@ maintain campaign content, also hand it
 — it covers the knowledge model, spoiler hygiene, and upsert semantics an
 assistant needs to avoid leaking DM-only information to players.
 
+**Bootstrap a whole campaign from a sourcebook map.** Many published
+sourcebooks — on D&D Beyond and elsewhere — include each map twice: an
+unlabeled *player* version and a labeled *DM* version. Upload the pair
+(player map visible, labeled map as a DM-only layer), align the grid, then
+hand the labeled image to a vision-capable assistant wired up over MCP: it
+reads every named settlement, ruin, and region off the art and creates them
+all — positions, types, visibility — in one pass, then generates sensory
+clues for every settlement. Your players see clean art and discover the
+names; you start with a populated map instead of an empty grid. Recipe and
+caveats: [Bootstrap a campaign from a sourcebook
+map](docs/MCP.md#bootstrap-a-campaign-from-a-sourcebook-map).
+
 ## License
 
 HexCrawl VTT is free software under the
