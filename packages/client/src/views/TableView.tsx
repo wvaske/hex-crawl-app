@@ -13,6 +13,7 @@ import { PendingMoves } from '../components/PendingMoves.js';
 import { SelectionBar } from '../components/SelectionBar.js';
 import { PinActions } from '../components/PinActions.js';
 import { LocationDialog } from '../components/LocationDialog.js';
+import { EncounterDialog } from '../components/EncounterDialog.js';
 import { MapManagerDialog } from '../components/MapManagerDialog.js';
 import { RegionManagerDialog } from '../components/RegionManagerDialog.js';
 
@@ -24,6 +25,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
   const role = useSession((s) => s.role);
   const contentDialogHex = useUi((s) => s.contentDialogHex);
   const locationDialogContentId = useUi((s) => s.locationDialogContentId);
+  const encounterDialogEntry = useUi((s) => s.encounterDialogEntry);
   const mapManagerOpen = useUi((s) => s.mapManagerOpen);
   const regionManagerOpen = useUi((s) => s.regionManagerOpen);
 
@@ -165,6 +167,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
       </div>
       {contentDialogHex && <ContentDialog />}
       {locationDialogContentId && <LocationDialog campaignId={campaignId} />}
+      {encounterDialogEntry && role === 'dm' && <EncounterDialog />}
       {regionManagerOpen && role === 'dm' && <RegionManagerDialog />}
       {mapManagerOpen && role === 'dm' && (
         <MapManagerDialog

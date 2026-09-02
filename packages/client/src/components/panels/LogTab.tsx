@@ -9,6 +9,7 @@ import {
   type SessionBoundary,
 } from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
+import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Input, cx } from '../../ui/kit.js';
 
@@ -89,10 +90,20 @@ export function LogTab() {
           {filtered.length === 0 && <EmptyNote>Nothing logged yet.</EmptyNote>}
           {filtered.map((entry) => {
             const meta = KIND_META[entry.kind] ?? { icon: '·', label: entry.kind };
+            // A triggered encounter reopens its run-it popup for the DM.
+            const reopens =
+              role === 'dm' && entry.kind === 'encounter' && entry.data?.triggered !== false;
             return (
               <div
                 key={entry.id}
-                className="text-xs bg-ink-850 border border-ink-700 rounded-md px-2.5 py-2"
+                className={cx(
+                  'text-xs bg-ink-850 border border-ink-700 rounded-md px-2.5 py-2',
+                  reopens && 'cursor-pointer hover:border-brass-500/60',
+                )}
+                title={reopens ? 'Open this encounter' : undefined}
+                onClick={
+                  reopens ? () => useUi.getState().set('encounterDialogEntry', entry) : undefined
+                }
               >
                 <div className="flex items-center gap-1.5 text-ink-400 mb-0.5">
                   <span>{meta.icon}</span>

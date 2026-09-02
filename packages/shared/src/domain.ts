@@ -882,6 +882,13 @@ export const SenseSchema = z.object({
   located: z.boolean(),
   /** Source title, revealed only once located. */
   contentTitle: z.string().nullable(),
+  /**
+   * Every character that has discovered this clue (the viewer included), so
+   * the party can see at a glance who shares an observation. Deliberately
+   * cross-character: WHO noticed something is table knowledge, the clue text
+   * itself still reaches only characters that discovered it.
+   */
+  sensedBy: z.array(z.string()).default([]),
 });
 export type Sense = z.infer<typeof SenseSchema>;
 
