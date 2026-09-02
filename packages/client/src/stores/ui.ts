@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FogState, HexCoord, TerrainId } from '@hexcrawl/shared';
+import type { FogState, HexCoord, LogEntry, TerrainId } from '@hexcrawl/shared';
 
 export type Tool =
   | 'select'
@@ -63,6 +63,8 @@ interface UiStore {
   movingTokenId: string | null;
   /** Sense triangulation: visited hexes a clicked clue is observable from. */
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
+  /** DM: the encounter log entry shown in the run-this-encounter popup. */
+  encounterDialogEntry: LogEntry | null;
   /** Trail highlight: the full path (DM) or discovered cells (player) of a clicked trail. */
   trailHighlight: { trailId: string; cells: HexCoord[] } | null;
   /**
@@ -166,6 +168,7 @@ export const useUi = create<UiStore>((set) => ({
   movingContentId: null,
   movingTokenId: null,
   senseHighlight: null,
+  encounterDialogEntry: null,
   trailHighlight: null,
   areaHighlight: null,
   areaProposal: null,

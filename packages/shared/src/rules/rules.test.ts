@@ -231,6 +231,21 @@ describe('filterStateForViewer', () => {
     expect((view as { discoveredClues: unknown[] }).discoveredClues).toHaveLength(1);
   });
 
+  it('lists every character sharing a sensed clue, without leaking other clues', () => {
+    const full = fullState();
+    // char2 has also discovered cl1; their cl3 discovery stays invisible.
+    full.discoveries.push({
+      id: 'd3', clueId: 'cl1', characterId: 'char2', at: 1002, how: { kind: 'auto' }, direction: null, locates: true,
+    });
+    const s = filterStateForViewer(full, viewer);
+    const sense = s.senses.find((x) => x.clueId === 'cl1')!;
+    expect(sense.sensedBy.sort()).toEqual(['char1', 'char2']);
+    // The viewer never discovered cl3, so char2's sense of it doesn't exist here.
+    expect(s.senses.some((x) => x.clueId === 'cl3')).toBe(false);
+    // Discovery rows themselves stay the viewer's own.
+    expect(s.discoveries.map((d) => d.id)).toEqual(['d1']);
+  });
+
   it('gives players their own visit history, minus re-hidden hexes (#66)', () => {
     const full = fullState();
     expect(full.mapState!.visits).toHaveLength(2);

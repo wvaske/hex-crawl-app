@@ -44,6 +44,7 @@ export function SensesTab() {
 }
 
 function SenseRow({ sense }: { sense: Sense }) {
+  const characters = useSession((s) => s.state?.characters ?? []);
   const highlighted = useUi((u) => u.senseHighlight?.clueId === sense.clueId);
   const toggle = () => {
     const ui = useUi.getState();
@@ -99,6 +100,36 @@ function SenseRow({ sense }: { sense: Sense }) {
           🤝 Share with party
         </span>
       </span>
+      {/* Who shares this observation — the DM's per-clue view, read-only:
+          solid pill = has it, dashed dim pill = doesn't (yet). */}
+      {characters.length > 1 && (
+        <span className="flex items-center gap-1 flex-wrap mt-1.5">
+          {characters
+            .filter((ch) => sense.sensedBy.includes(ch.id))
+            .map((ch) => (
+              <span
+                key={ch.id}
+                className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-ink-950"
+                style={{ background: ch.color }}
+                title={`${ch.name} has sensed this`}
+              >
+                {ch.name} ✓
+              </span>
+            ))}
+          {characters
+            .filter((ch) => !sense.sensedBy.includes(ch.id))
+            .map((ch) => (
+              <span
+                key={ch.id}
+                className="px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-dashed text-ink-500 opacity-60"
+                style={{ borderColor: ch.color }}
+                title={`${ch.name} hasn't sensed this`}
+              >
+                {ch.name}
+              </span>
+            ))}
+        </span>
+      )}
     </button>
   );
 }

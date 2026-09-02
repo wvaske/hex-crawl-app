@@ -1,6 +1,7 @@
 import type { ClientCommand, CommandInput, ServerMessage } from '@hexcrawl/shared';
 import { ServerMessageSchema, withDirection } from '@hexcrawl/shared';
 import { useSession } from './stores/session.js';
+import { useUi } from './stores/ui.js';
 
 let socket: WebSocket | null = null;
 let campaignId: string | null = null;
@@ -95,11 +96,17 @@ function handleMessage(msg: ServerMessage): void {
         session.pushToast({ kind: 'info', title: 'Skill check', text: msg.entry.text });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'encounter') {
         const triggered = msg.entry.data?.triggered !== false;
-        session.pushToast({
-          kind: triggered ? 'discovery' : 'info',
-          title: triggered ? '⚔️ Encounter!' : 'No encounter',
-          text: msg.entry.text,
-        });
+        // The DM runs a triggered encounter from a dialog instead of a toast:
+        // full rolls, the result, and a narrate box (auto checks included).
+        if (triggered && session.role === 'dm') {
+          useUi.getState().set('encounterDialogEntry', msg.entry);
+        } else {
+          session.pushToast({
+            kind: triggered ? 'discovery' : 'info',
+            title: triggered ? '⚔️ Encounter!' : 'No encounter',
+            text: msg.entry.text,
+          });
+        }
       } else if (msg.kind === 'trail.found') {
         const mine = msg.characterId === currentCharacterId();
         const dirs = [

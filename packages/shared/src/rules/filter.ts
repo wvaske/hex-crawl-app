@@ -225,6 +225,14 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
     full.discoveries.filter((d) => d.characterId === characterId).map((d) => [d.clueId, d]),
   );
   if (mine.size === 0) return [];
+  // Who else has each clue — only consulted for clues the viewer discovered.
+  const sensedBy = new Map<string, string[]>();
+  for (const d of full.discoveries) {
+    if (!mine.has(d.clueId)) continue;
+    const list = sensedBy.get(d.clueId) ?? [];
+    if (!list.includes(d.characterId)) list.push(d.characterId);
+    sensedBy.set(d.clueId, list);
+  }
 
   const orientation: HexOrientation =
     full.maps.find((m) => m.id === full.campaign.activeMapId)?.orientation ?? 'flat';
@@ -278,6 +286,7 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
         observableFrom: [...observable.values()],
         located,
         contentTitle: located ? content.title : null,
+        sensedBy: sensedBy.get(clue.id) ?? [],
       });
     }
   }
