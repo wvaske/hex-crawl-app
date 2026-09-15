@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { CORE_SKILLS, passiveScore, type Character, type Token } from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
-import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
+import { Button, EmptyNote, Field, Input, Section, cx, Lbl } from '../../ui/kit.js';
 import { SendTokenButton } from '../SendTokenButton.js';
 import { TravelToButton } from '../TravelToDialog.js';
 import { RollOptionsBar } from '../RollOptions.js';
@@ -93,7 +93,7 @@ export function CharactersTab() {
                       setSheetCharacterId(ch.id);
                     }}
                   >
-                    📜
+                    📜<Lbl>Sheet</Lbl>
                   </Button>
                 </div>
                 {open && (
@@ -191,7 +191,7 @@ function PartyToggle({ token, name }: { token: Token; name: string }) {
         });
       }}
     >
-      {inParty ? '👥' : '👤'}
+      {inParty ? '👥' : '👤'}<Lbl>{inParty ? 'Party' : 'Solo'}</Lbl>
     </button>
   );
 }
@@ -234,7 +234,7 @@ export function RollSkillButton({
         });
       }}
     >
-      🎲
+      🎲<Lbl>Roll</Lbl>
     </Button>
   );
 }
@@ -429,7 +429,7 @@ export function CharacterEditor({
                       });
                     }}
                   >
-                    ★
+                    ★<Lbl>prof</Lbl>
                   </button>
                 )}
                 <span className="capitalize truncate">{skill}</span>
@@ -480,7 +480,7 @@ export function CharacterEditor({
                 }
               }}
             >
-              +
+              +<Lbl>Add skill</Lbl>
             </Button>
           </div>
         )}

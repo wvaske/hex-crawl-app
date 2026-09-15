@@ -1,7 +1,20 @@
 import React from 'react';
+import { useVerbose } from '../stores/ui.js';
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ');
+}
+
+/**
+ * The word beside a glyph on a button. Rendered in verbose mode (the
+ * default) and dropped in compact mode, so a button reads "🎲 Roll" for most
+ * people and "🎲" for those who asked for glyphs only. Every icon-only
+ * button in the app carries one of these.
+ */
+export function Lbl({ children }: { children: React.ReactNode }) {
+  const verbose = useVerbose();
+  if (!verbose) return null;
+  return <span className="ml-1 whitespace-nowrap">{children}</span>;
 }
 
 export function Button({
@@ -170,7 +183,7 @@ export function Dialog({
         <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b border-ink-700 shrink-0">
           <h2 className="font-semibold text-ink-100 min-w-0 truncate">{title}</h2>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
-            ✕
+            ✕<Lbl>Close</Lbl>
           </Button>
         </div>
         <div className="p-3 sm:p-4 overflow-y-auto overscroll-contain">{children}</div>

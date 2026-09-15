@@ -3,7 +3,7 @@ import type { ImageLayer, MapInfo } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { uploadMapImage } from '../../api.js';
-import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
+import { Button, EmptyNote, Field, Input, Section, cx, Lbl } from '../../ui/kit.js';
 import { useUi } from '../../stores/ui.js';
 
 export function MapsTab({ campaignId }: { campaignId: string }) {
@@ -59,7 +59,7 @@ export function MapsTab({ campaignId }: { campaignId: string }) {
                     }
                   }}
                 >
-                  ✕
+                  ✕<Lbl>Delete</Lbl>
                 </button>
               )}
             </li>
@@ -73,7 +73,7 @@ export function MapsTab({ campaignId }: { campaignId: string }) {
             onKeyDown={(e) => e.key === 'Enter' && createMap()}
           />
           <Button size="sm" onClick={createMap}>
-            +
+            +<Lbl>Add map</Lbl>
           </Button>
         </div>
       </Section>
@@ -293,13 +293,13 @@ function ImageLayerCard({ layer }: { layer: ImageLayer }) {
           title={layer.dmOnly ? 'DM-only — click to share' : 'Players see this — click to hide'}
           onClick={() => patch({ dmOnly: !layer.dmOnly })}
         >
-          {layer.dmOnly ? '🚫' : '👁️'}
+          {layer.dmOnly ? '🚫' : '👁️'}<Lbl>{layer.dmOnly ? 'DM only' : 'Shown'}</Lbl>
         </button>
         <button
           className="text-xs text-ink-400 hover:text-ember-500 cursor-pointer"
           onClick={() => send({ kind: 'imageLayer.delete', layerId: layer.id })}
         >
-          ✕
+          ✕<Lbl>Delete</Lbl>
         </button>
       </div>
       <div className="grid grid-cols-3 gap-1.5">

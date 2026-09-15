@@ -12,7 +12,7 @@ import {
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
-import { Button, Dialog, EmptyNote, cx } from '../ui/kit.js';
+import { Button, Dialog, EmptyNote, cx, Lbl } from '../ui/kit.js';
 
 /**
  * "Travel to…" (issue #130): pick a known settlement on the current map and
@@ -138,7 +138,7 @@ export function TravelToButton({ tokenId, name }: { tokenId: string; name: strin
         setUi('travelToTokenId', tokenId);
       }}
     >
-      🧭
+      🧭<Lbl>Travel</Lbl>
     </button>
   );
 }

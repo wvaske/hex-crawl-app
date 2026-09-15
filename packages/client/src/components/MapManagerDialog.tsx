@@ -3,7 +3,7 @@ import type { InheritableMapField, MapInfo } from '@hexcrawl/shared';
 import { fetchMapThumbs, type MapThumb } from '../api.js';
 import { useSession } from '../stores/session.js';
 import { send } from '../ws.js';
-import { Button, EmptyNote, Input, Select, cx } from '../ui/kit.js';
+import { Button, EmptyNote, Input, Select, cx, Lbl } from '../ui/kit.js';
 
 /**
  * DM map manager (issue #60): every map in one place, with thumbnails, and
@@ -86,7 +86,7 @@ export function MapManagerDialog({
               🔗 Campaign defaults
             </Button>
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
-              ✕
+              ✕<Lbl>Close</Lbl>
             </Button>
           </div>
         </div>
@@ -169,7 +169,7 @@ function MapCard({
             onMove(-1);
           }}
         >
-          ▲
+          ▲<Lbl>Up</Lbl>
         </button>
         <button
           className="text-ink-400 hover:text-ink-100 text-xs cursor-pointer disabled:opacity-25"
@@ -180,7 +180,7 @@ function MapCard({
             onMove(1);
           }}
         >
-          ▼
+          ▼<Lbl>Down</Lbl>
         </button>
       </div>
     </div>
@@ -247,7 +247,7 @@ function Row({
       {field && (
         <button
           className={cx(
-            'text-xs w-7 shrink-0 cursor-pointer',
+            'text-xs min-w-7 shrink-0 cursor-pointer whitespace-nowrap',
             inherited ? 'text-brass-300' : 'text-ink-500 hover:text-ink-200',
           )}
           title={
@@ -257,7 +257,7 @@ function Row({
           }
           onClick={() => send({ kind: 'map.setInherit', mapId: map.id, field, inherit: !inherited })}
         >
-          {inherited ? '🔗' : '✎'}
+          {inherited ? '🔗' : '✎'}<Lbl>{inherited ? 'Linked' : 'Custom'}</Lbl>
         </button>
       )}
       {!field && <span className="w-7 shrink-0" />}

@@ -14,7 +14,7 @@ import {
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi, type Tool } from '../stores/ui.js';
 import { send } from '../ws.js';
-import { cx } from '../ui/kit.js';
+import { cx, Lbl } from '../ui/kit.js';
 import { STICKER_CATEGORIES, stickerUrl } from '../stickers.js';
 
 const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
@@ -79,7 +79,7 @@ export function Toolbar() {
                     ui.paintTerrain === null ? 'border-white ring-1 ring-white' : 'border-ink-600',
                   )}
                 >
-                  ⌫
+                  ⌫<Lbl>Erase</Lbl>
                 </button>
               </div>
               {ui.paintTerrain && (
@@ -558,14 +558,14 @@ function TrailOptions() {
                 title="Edit this trail: nodes load into the draft; adjust, then Save changes"
                 onClick={() => startEdit(t.id)}
               >
-                ✎
+                ✎<Lbl>Edit</Lbl>
               </button>
               <button
                 className="text-ink-400 hover:text-ember-500 cursor-pointer"
                 title="Delete trail"
                 onClick={() => send({ kind: 'trail.delete', trailId: t.id })}
               >
-                ✕
+                ✕<Lbl>Delete</Lbl>
               </button>
             </div>
           ))}

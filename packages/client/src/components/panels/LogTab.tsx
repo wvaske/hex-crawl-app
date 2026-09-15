@@ -11,7 +11,7 @@ import {
 import { useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
-import { Button, EmptyNote, Input, cx } from '../../ui/kit.js';
+import { Button, EmptyNote, Input, cx, Lbl } from '../../ui/kit.js';
 
 const KIND_META: Record<string, { icon: string; label: string }> = {
   discovery: { icon: '👁️', label: 'Discovery' },
@@ -307,7 +307,7 @@ function NarrateBox() {
           maxLength={4000}
         />
         <Button size="sm" variant="primary" onClick={submit} disabled={!text.trim()}>
-          ➤
+          ➤<Lbl>Send</Lbl>
         </Button>
       </div>
       {playerSeats.length > 0 && (

@@ -62,6 +62,11 @@ interface UiStore {
    * with it; the map canvas is untouched. Per browser, in localStorage.
    */
   uiScale: number;
+  /**
+   * Button wording: `verbose` (default) puts a word on every button so no
+   * control is icon-only; `compact` shows the glyphs alone. Per browser.
+   */
+  uiDensity: 'verbose' | 'compact';
   measureStart: HexCoord | null;
   /** Held spacebar: pan with left-drag regardless of the active tool. */
   spacePan: boolean;
@@ -160,6 +165,27 @@ function initialUiScale(): number {
   return 100;
 }
 
+const UI_DENSITY_KEY = 'hexcrawl.uiDensity';
+
+function initialUiDensity(): 'verbose' | 'compact' {
+  try {
+    return localStorage.getItem(UI_DENSITY_KEY) === 'compact' ? 'compact' : 'verbose';
+  } catch {
+    return 'verbose';
+  }
+}
+
+export function persistUiDensity(density: 'verbose' | 'compact'): void {
+  try {
+    localStorage.setItem(UI_DENSITY_KEY, density);
+  } catch {
+    // Best-effort convenience only.
+  }
+}
+
+/** True when buttons should carry words (the default). */
+export const useVerbose = (): boolean => useUi((s) => s.uiDensity === 'verbose');
+
 /** Apply a text-size preset to the document and remember it for next time. */
 export function applyUiScale(scale: number): void {
   document.documentElement.style.fontSize = scale === 100 ? '' : `${scale}%`;
@@ -209,6 +235,7 @@ export const useUi = create<UiStore>((set) => ({
   openPanel: 'information',
   panelWidth: initialPanelWidth(),
   uiScale: initialUiScale(),
+  uiDensity: initialUiDensity(),
   measureStart: null,
   spacePan: false,
   scaleLock: 'auto',

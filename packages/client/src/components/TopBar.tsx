@@ -15,9 +15,9 @@ import {
 } from '@hexcrawl/shared';
 import type { TravelPace } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
-import { UI_SCALES, useUi } from '../stores/ui.js';
+import { UI_SCALES, persistUiDensity, useUi, useVerbose } from '../stores/ui.js';
 import { send } from '../ws.js';
-import { Button, Input, Select, cx } from '../ui/kit.js';
+import { Button, Input, Select, cx, Lbl } from '../ui/kit.js';
 import { useIsMobile } from '../ui/responsive.js';
 
 /**
@@ -44,7 +44,7 @@ function Overflow({ children, extra }: { children: React.ReactNode; extra?: Reac
   return (
     <div className="relative" ref={ref}>
       <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} aria-label="More controls">
-        ⋯
+        ⋯<Lbl>Menu</Lbl>
       </Button>
       {open && (
         <div
@@ -395,7 +395,7 @@ function UndoMenu() {
             : 'Nothing to undo'
         }
       >
-        ↶
+        ↶<Lbl>Undo</Lbl>
       </Button>
       <Button
         variant="ghost"
@@ -406,7 +406,7 @@ function UndoMenu() {
         title="Undo history"
         aria-label="Undo history"
       >
-        ▾
+        ▾<Lbl>History</Lbl>
       </Button>
       {open && history.length > 0 && (
         <div className="absolute right-0 top-full mt-1 w-72 rounded-md border border-ink-700 bg-ink-900 p-1.5 shadow-lg z-40">
@@ -446,7 +446,8 @@ const EMPTY_HISTORY: never[] = [];
  */
 function MenuRow({ label, children }: { label: string; children: React.ReactNode }) {
   const mobile = useIsMobile();
-  if (!mobile) return <>{children}</>;
+  const verbose = useVerbose();
+  if (!mobile || verbose) return <>{children}</>;
   return (
     <div className="flex items-center gap-2">
       {children}
@@ -478,7 +479,7 @@ function WeatherReadout() {
  * piece of UI chrome — panels, dialogs, this bar. The map is unaffected.
  * Both roles; remembered per browser.
  */
-function TextSizeControl() {
+export function TextSizeControl() {
   const scale = useUi((s) => s.uiScale);
   const setUi = useUi((s) => s.set);
   const idx = Math.max(0, UI_SCALES.indexOf(scale as (typeof UI_SCALES)[number]));
@@ -512,6 +513,34 @@ function TextSizeControl() {
   );
 }
 
+/**
+ * Verbose / compact buttons: verbose (the default) puts a word on every
+ * button; compact keeps the glyphs alone for a denser bar. Per browser.
+ */
+export function DensityControl() {
+  const density = useUi((s) => s.uiDensity);
+  const setUi = useUi((s) => s.set);
+  const next = density === 'verbose' ? 'compact' : 'verbose';
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="border border-ink-600"
+      onClick={() => {
+        setUi('uiDensity', next);
+        persistUiDensity(next);
+      }}
+      title={
+        density === 'verbose'
+          ? 'Buttons show a word next to their glyph — click for compact glyph-only buttons'
+          : 'Buttons are glyph-only — click for verbose buttons with words'
+      }
+    >
+      {density === 'verbose' ? '🔤 Verbose' : '🔡 Compact'}
+    </Button>
+  );
+}
+
 /** Toggle the map's day/night tint overlay — cosmetic, both roles. */
 function DayNightToggle() {
   const enabled = useUi((s) => s.dayNightTint);
@@ -528,7 +557,7 @@ function DayNightToggle() {
           : 'Day/night map tint is off — click to tint the map for the current time of day'
       }
     >
-      🌗
+      🌗<Lbl>Tint</Lbl>
     </Button>
   );
 }
@@ -548,7 +577,7 @@ function DimToggle() {
           : "See what the players see: dim undiscovered locations and hidden markers"
       }
     >
-      {dim ? '◐' : '○'}
+      {dim ? '◐' : '○'}<Lbl>Dim</Lbl>
     </Button>
   );
 }
@@ -568,7 +597,7 @@ function PauseSyncToggle() {
           : 'Players see map edits live — click to pause updates while you prep'
       }
     >
-      {paused ? '▶' : '⏸'}
+      {paused ? '▶' : '⏸'}<Lbl>{paused ? 'Resume' : 'Prep'}</Lbl>
     </Button>
   );
 }
@@ -619,7 +648,7 @@ export function TopBar({
           onClick={() => useUi.getState().set('mapManagerOpen', true)}
           title="Manage maps — thumbnails, per-map settings, campaign defaults"
         >
-          🗺️
+          🗺️<Lbl>Maps</Lbl>
         </Button>
       )}
     </span>
@@ -695,6 +724,9 @@ export function TopBar({
         <MenuRow label="Text size">
           <TextSizeControl />
         </MenuRow>
+        <MenuRow label="Buttons">
+          <DensityControl />
+        </MenuRow>
         <MenuRow label="Day/night tint">
           <DayNightToggle />
         </MenuRow>
@@ -715,7 +747,7 @@ export function TopBar({
         )}
         <MenuRow label="Re-center map">
           <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
-            ⌖
+            ⌖<Lbl>Center</Lbl>
           </Button>
         </MenuRow>
       </Overflow>

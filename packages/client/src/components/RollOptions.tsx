@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { EXTRA_DICE, type Advantage } from '@hexcrawl/shared';
 import { useSession } from '../stores/session.js';
 import { EXTRA_LABELS, useRollOptions } from '../stores/roll.js';
-import { cx } from '../ui/kit.js';
+import { cx, Lbl } from '../ui/kit.js';
 
 /**
  * The dice tray (issue #129): everything that rides on the next 🎲 press.
@@ -145,12 +145,12 @@ export function RollOptionsBar({ group = false }: { group?: boolean }) {
                 title={x.sign === 1 ? 'Bonus — click to make it a penalty' : 'Penalty — click to make it a bonus'}
                 onClick={() => flipExtra(i)}
               >
-                {x.sign === 1 ? '+' : '−'}
+                {x.sign === 1 ? '+' : '−'}<Lbl>{x.sign === 1 ? 'bonus' : 'penalty'}</Lbl>
               </button>
               {x.sides === 0 ? x.amount : `${x.amount}d${x.sides}`}
               {x.label && <span className="text-ink-300">{x.label}</span>}
               <button className="cursor-pointer text-ink-400 hover:text-ember-500" title="Remove" onClick={() => removeExtra(i)}>
-                ✕
+                ✕<Lbl>Remove</Lbl>
               </button>
             </span>
           ))}

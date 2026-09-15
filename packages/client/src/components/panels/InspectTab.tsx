@@ -29,7 +29,7 @@ import { useRollOptions } from '../../stores/roll.js';
 import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
-import { Button, EmptyNote, Section, cx } from '../../ui/kit.js';
+import { Button, EmptyNote, Section, cx, Lbl } from '../../ui/kit.js';
 import { stickerName, stickerUrl } from '../../stickers.js';
 
 export function InspectTab() {
@@ -169,7 +169,7 @@ export function InspectTab() {
                         send({ kind: 'marker.update', markerId: m.id, patch: { dmOnly: !m.dmOnly } })
                       }
                     >
-                      {m.dmOnly ? '🚫' : '👁️'}
+                      {m.dmOnly ? '🚫' : '👁️'}<Lbl>{m.dmOnly ? 'DM only' : 'Shown'}</Lbl>
                     </button>
                   )}
                   {(isDm || mine) && (
@@ -178,7 +178,7 @@ export function InspectTab() {
                       title={mine && !isDm ? 'Delete your note' : 'Delete marker'}
                       onClick={() => send({ kind: 'marker.delete', markerId: m.id })}
                     >
-                      ✕
+                      ✕<Lbl>Delete</Lbl>
                     </button>
                   )}
                 </li>
@@ -579,7 +579,7 @@ function InvestigationSection({ hex }: { hex: { q: number; r: number } }) {
                   title={`Let ${nameOf(a.characterId)} try ${a.skill} here again`}
                   onClick={() => send({ kind: 'search.clearAttempt', attemptId: a.id })}
                 >
-                  ✕
+                  ✕<Lbl>Clear</Lbl>
                 </button>
               </li>
             ))}
@@ -641,13 +641,13 @@ function AddPartyNote({ mapId, hex }: { mapId: string; hex: { q: number; r: numb
               title={g.title}
               onClick={() => setGlyph(g.glyph)}
               className={cx(
-                'w-7 h-7 rounded border text-sm cursor-pointer',
+                'min-w-7 h-7 px-1 rounded border text-sm cursor-pointer whitespace-nowrap',
                 glyph === g.glyph
                   ? 'border-brass-500 bg-brass-500/15'
                   : 'border-ink-700 hover:bg-ink-700',
               )}
             >
-              {g.glyph}
+              {g.glyph}<Lbl>{g.title}</Lbl>
             </button>
           ))}
         </div>
