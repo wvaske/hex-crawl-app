@@ -321,9 +321,19 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   }) as Handler,
 
   'token.update': ((cmd: Extract<ClientCommand, { kind: 'token.update' }>, ctx: Ctx) => {
-    requireDm(ctx);
     const token = ctx.runtime.findToken(cmd.tokenId);
     if (!token) throw new Error('Token not found');
+    if (ctx.seat.role !== 'dm') {
+      // Splitting the party (issue #124): a player may take their own
+      // character out of the travel group, or rejoin it. Nothing else about a
+      // token is theirs to edit.
+      const keys = Object.keys(cmd.patch);
+      const ownToken =
+        token.kind === 'pc' && !!token.characterId && token.characterId === ctx.seat.characterId;
+      if (!ownToken || keys.some((k) => k !== 'partyId')) {
+        throw new Error('You can only change whether your own character travels with the party');
+      }
+    }
     ctx.runtime.updateToken(token.mapId, cmd.tokenId, cmd.patch);
   }) as Handler,
 
