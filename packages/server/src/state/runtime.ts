@@ -199,6 +199,9 @@ export class CampaignRuntime {
         glyph: c.glyph as string,
         speed: c.speed as number,
         skills: SkillsSchema.parse(safeJson(c.skills as string)),
+        proficiencies: (safeJson(c.proficiencies as string, []) as unknown[]).filter(
+          (x): x is string => typeof x === 'string',
+        ),
         ddbId: (c.ddb_id as string | null) ?? null,
         extra: CharacterExtraSchema.parse(safeJson(c.extra as string)),
       });
@@ -735,12 +738,15 @@ export class CampaignRuntime {
     this.db.prepare('UPDATE seat SET character_id = ? WHERE id = ?').run(characterId, seatId);
   }
 
-  upsertCharacter(character: Character): void {
+  upsertCharacter(input: Character): void {
+    // Callers that predate proficiencies (integration paths, tests that skip
+    // zod) get the default filled in so memory matches what reloads.
+    const character: Character = { ...input, proficiencies: input.proficiencies ?? [] };
     this.characters.set(character.id, character);
     this.db
       .prepare(
-        `INSERT INTO character (id, campaign_id, name, color, glyph, speed, skills, ddb_id, extra) VALUES (?,?,?,?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, glyph=excluded.glyph, speed=excluded.speed, skills=excluded.skills, ddb_id=excluded.ddb_id, extra=excluded.extra`,
+        `INSERT INTO character (id, campaign_id, name, color, glyph, speed, skills, ddb_id, extra, proficiencies) VALUES (?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, glyph=excluded.glyph, speed=excluded.speed, skills=excluded.skills, ddb_id=excluded.ddb_id, extra=excluded.extra, proficiencies=excluded.proficiencies`,
       )
       .run(
         character.id,
@@ -752,6 +758,7 @@ export class CampaignRuntime {
         JSON.stringify(character.skills),
         character.ddbId,
         JSON.stringify(character.extra),
+        JSON.stringify(character.proficiencies ?? []),
       );
   }
 
@@ -1376,17 +1383,18 @@ export class CampaignRuntime {
         modifier: attempt.modifier,
         total: attempt.total,
         at: attempt.at,
+        detail: attempt.detail ?? null,
       };
       rt.searchAttempts.set(next.id, next);
       this.db
-        .prepare('UPDATE search_attempt SET roll = ?, modifier = ?, total = ?, at = ? WHERE id = ?')
-        .run(next.roll, next.modifier, next.total, next.at, next.id);
+        .prepare('UPDATE search_attempt SET roll = ?, modifier = ?, total = ?, at = ?, detail = ? WHERE id = ?')
+        .run(next.roll, next.modifier, next.total, next.at, next.detail ? JSON.stringify(next.detail) : null, next.id);
       return next;
     }
     rt.searchAttempts.set(attempt.id, attempt);
     this.db
       .prepare(
-        'INSERT INTO search_attempt (id, campaign_id, map_id, q, r, character_id, skill, roll, modifier, total, at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO search_attempt (id, campaign_id, map_id, q, r, character_id, skill, roll, modifier, total, at, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         attempt.id,
@@ -1400,6 +1408,7 @@ export class CampaignRuntime {
         attempt.modifier,
         attempt.total,
         attempt.at,
+        attempt.detail ? JSON.stringify(attempt.detail) : null,
       );
     return attempt;
   }
@@ -1661,6 +1670,7 @@ function searchAttemptFromRow(mapId: string, row: Record<string, unknown>): Sear
     modifier: row.modifier as number,
     total: row.total as number,
     at: row.at as number,
+    detail: row.detail ? (safeJson(row.detail as string, null) as SearchAttempt['detail']) : null,
   };
 }
 

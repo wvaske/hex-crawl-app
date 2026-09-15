@@ -73,6 +73,44 @@ export function passiveScore(skills: Skills, skill: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// Dice rolls (issue #129)
+// ---------------------------------------------------------------------------
+
+/** Die sizes a roll can add on top of the d20; 0 stands for a flat modifier. */
+export const EXTRA_DICE = [4, 6, 8, 10, 12, 20] as const;
+
+/**
+ * One extra term on a check: `+1d4 Guidance`, `-1d6 Bane`, `+2 Bless`. Dice
+ * have `sides`; a flat bonus has `sides: 0` and `amount` is the value. `sign`
+ * lets a DM apply a penalty die from whatever the encounter is doing.
+ */
+export const RollExtraSchema = z.object({
+  sides: z.number().int().min(0).max(100),
+  amount: z.number().int().min(1).max(20),
+  sign: z.union([z.literal(1), z.literal(-1)]).default(1),
+  label: z.string().max(40).default(''),
+});
+export type RollExtra = z.infer<typeof RollExtraSchema>;
+
+export const AdvantageSchema = z.enum(['none', 'advantage', 'disadvantage']);
+export type Advantage = z.infer<typeof AdvantageSchema>;
+
+/** The full arithmetic of one character's check, kept with the result. */
+export const RollDetailSchema = z.object({
+  /** Every d20 rolled (two under advantage/disadvantage). */
+  rolls: z.array(z.number().int()),
+  advantage: AdvantageSchema.default('none'),
+  extras: z.array(
+    RollExtraSchema.extend({
+      rolls: z.array(z.number().int()),
+      /** Signed contribution to the total. */
+      total: z.number().int(),
+    }),
+  ),
+});
+export type RollDetail = z.infer<typeof RollDetailSchema>;
+
+// ---------------------------------------------------------------------------
 // Fog
 // ---------------------------------------------------------------------------
 
@@ -218,6 +256,12 @@ export const CampaignSettingsSchema = z.object({
    * log stay live throughout.
    */
   pausePlayerMapSync: z.boolean().default(false),
+  /**
+   * Who sees players' skill rolls (issue #129): `own` = a player sees only
+   * their own character's rolls (the original rule); `all` = everyone sees
+   * everyone's, D&D Beyond style. A player can still roll "DM only".
+   */
+  rollVisibility: z.enum(['own', 'all']).default('own'),
   /** Campaign-wide map settings; maps opt in per field via inheritedFields. */
   mapDefaults: MapDefaultsSchema.default(() => MapDefaultsSchema.parse({})),
   /**
@@ -313,6 +357,12 @@ export const CharacterSchema = z.object({
   glyph: z.string().max(8),
   speed: z.number().int().min(0).max(120).default(30),
   skills: SkillsSchema,
+  /**
+   * Skills the character is proficient in (issue #129): the DM's "proficient
+   * only" group roll targets these. Synced from D&D Beyond when available,
+   * editable on the sheet.
+   */
+  proficiencies: z.array(z.string()).default([]),
   /** D&D Beyond character id, for one-click skill sync (public sheets only). */
   ddbId: z.string().nullable().default(null),
   /** Player-editable sheet extras: bio, appearance, goals, inventory, notes. */
@@ -841,6 +891,8 @@ export const SearchAttemptSchema = z.object({
   modifier: z.number().int(),
   total: z.number().int(),
   at: z.number(),
+  /** Extra dice and advantage behind `total` (issue #129); null for old rows. */
+  detail: RollDetailSchema.nullable().default(null),
 });
 export type SearchAttempt = z.infer<typeof SearchAttemptSchema>;
 

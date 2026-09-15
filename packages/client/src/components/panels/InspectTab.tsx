@@ -14,6 +14,7 @@ import {
   isFullContent,
   clueObserveSet,
   describeGate,
+  formatCheck,
   hexKey,
   passiveScore,
   type Clue,
@@ -23,6 +24,8 @@ import {
   type SearchAttempt,
 } from '@hexcrawl/shared';
 import { SenseRow } from './SensesTab.js';
+import { RollOptionsBar } from '../RollOptions.js';
+import { useRollOptions } from '../../stores/roll.js';
 import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
@@ -228,6 +231,8 @@ export function InspectTab() {
         <SearchHex mapId={map.id} hex={hex} isDm={isDm} characterId={myCharacterId} />
       )}
 
+      <RollsHereSection mapId={map.id} hex={hex} />
+
       {!isDm && !myCharacterId && (
         <p className="text-xs text-ink-400 mt-4">
           Claim a character in the Party tab to make discoveries and move a token.
@@ -381,8 +386,11 @@ function SearchHex({
       <p className="text-xs text-ink-400 mb-2">
         {isDm
           ? 'Rolls for every character with a token on the map; reveals clues the rolls beat.'
-          : 'Roll a check against this hex — one attempt per skill. The DM describes what you turn up.'}
+          : 'Roll a check against this hex. Your first roll of a skill here is the one that can find something; roll again any time for the table.'}
       </p>
+      <div className="mb-2">
+        <RollOptionsBar group={isDm} />
+      </div>
       <div className="flex gap-1.5">
         <select
           className="flex-1 bg-ink-900 border border-ink-600 rounded px-2 py-1 text-sm text-ink-100 cursor-pointer capitalize"
@@ -390,25 +398,38 @@ function SearchHex({
           onChange={(e) => setSkill(e.target.value)}
         >
           {CORE_SKILLS.map((s) => (
-            <option key={s} value={s} disabled={spent.has(s)}>
+            <option key={s} value={s}>
               {s}
-              {spent.has(s) ? ' — already tried' : ''}
+              {spent.has(s) ? ' — counted' : ''}
             </option>
           ))}
         </select>
         <Button
           size="sm"
           variant="primary"
-          disabled={used}
-          title={used ? 'One attempt per skill — ask the DM for another chance' : undefined}
-          onClick={() => send({ kind: 'check.roll', skill, dc: null, characterIds: [], mapId, hex })}
+          title={used ? 'Already counted here — this roll is dice for the table only' : undefined}
+          onClick={() => {
+            const { extras, advantage, secret, proficientOnly } = useRollOptions.getState().consume();
+            send({
+              kind: 'check.roll',
+              skill,
+              dc: null,
+              characterIds: [],
+              mapId,
+              hex,
+              extras,
+              advantage,
+              secret,
+              proficientOnly: isDm ? proficientOnly : undefined,
+            });
+          }}
         >
-          🎲 Roll
+          🎲 {used ? 'Roll again' : 'Roll'}
         </Button>
       </div>
       {!isDm && spent.size > 0 && (
         <p className="text-[11px] text-ink-400 mt-1">
-          One attempt per skill. Already tried here: {[...spent].join(', ')}.
+          Counted here: {[...spent].join(', ')}. Further rolls of those skills are for the table.
         </p>
       )}
     </Section>
@@ -551,7 +572,7 @@ function InvestigationSection({ hex }: { hex: { q: number; r: number } }) {
               <li key={a.id} className="flex items-center gap-2 text-xs text-ink-200">
                 <span className="truncate">{nameOf(a.characterId)}</span>
                 <span className="text-ink-400 capitalize">{a.skill}</span>
-                <span className="text-ink-100 font-medium">{a.total}</span>
+                <span className="text-ink-100 font-medium" title={formatCheck(a)}>{a.total}</span>
                 <span className="text-ink-400">{timeAgo(a.at, now)}</span>
                 <button
                   className="ml-auto text-ink-400 hover:text-ember-500 cursor-pointer"
@@ -1034,6 +1055,60 @@ function SensedHereSection({ hex }: { hex: { q: number; r: number } }) {
 }
 
 const EMPTY_SENSES: never[] = [];
+
+interface LoggedRoll {
+  characterId: string;
+  name: string;
+  roll: number;
+  modifier: number;
+  total: number;
+  success: boolean | null;
+  detail?: { rolls: number[]; advantage: string; extras: { sides: number; amount: number; sign: number; label: string; rolls: number[]; total: number }[] } | null;
+  counts?: boolean;
+}
+
+/**
+ * Every roll made on this hex (issue #129) — searches and sheet rolls alike,
+ * newest first — from the log the viewer is allowed to see. With the
+ * campaign's roll visibility set to "everyone", a player sees the whole
+ * party's rolls here; otherwise their own (and the DM sees all).
+ */
+function RollsHereSection({ mapId, hex }: { mapId: string; hex: { q: number; r: number } }) {
+  const log = useSession((s) => s.state?.log);
+  const now = Date.now();
+  const rows = (log ?? [])
+    .filter((e) => {
+      if (e.kind !== 'check') return false;
+      const d = e.data as { hex?: { q: number; r: number } | null; mapId?: string | null };
+      return !!d.hex && d.hex.q === hex.q && d.hex.r === hex.r && (d.mapId ?? mapId) === mapId;
+    })
+    .reverse();
+  if (rows.length === 0) return null;
+  return (
+    <Section title="Rolls here">
+      <ul className="space-y-1">
+        {rows.map((e) => {
+          const d = e.data as { skill?: string; dc?: number | null; search?: boolean; results?: LoggedRoll[] };
+          return (d.results ?? []).map((r) => (
+            <li key={`${e.id}-${r.characterId}`} className="flex items-center gap-2 text-xs text-ink-200">
+              <span className="truncate">{r.name}</span>
+              <span className="text-ink-400 capitalize">{d.skill}</span>
+              <span className="text-ink-100 font-medium" title={r.detail ? formatCheck({ ...r, detail: r.detail as never }) : undefined}>
+                {r.total}
+              </span>
+              {r.success !== null && r.success !== undefined && (
+                <span className={r.success ? 'text-moss-500' : 'text-ember-500'}>{r.success ? '✓' : '✗'}</span>
+              )}
+              {d.search && <span className="text-[10px] text-ink-500" title="A search of this hex">🔎</span>}
+              {r.counts === false && <span className="text-[10px] text-ink-500">re-roll</span>}
+              <span className="ml-auto text-ink-400">{timeAgo(e.at, now)}</span>
+            </li>
+          ));
+        })}
+      </ul>
+    </Section>
+  );
+}
 
 function PlayerContentCard({ content }: { content: ContentPlayerView }) {
   const wikiBase = useSession((s) => s.state?.campaign.settings.wikiBaseUrl ?? '');

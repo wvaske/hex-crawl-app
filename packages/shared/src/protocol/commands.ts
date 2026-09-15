@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  AdvantageSchema,
+  RollExtraSchema,
   CalendarConfigSchema,
   CharacterSchema,
   ContentTypeSchema,
@@ -65,6 +67,7 @@ const CampaignSettingsPatchSchema = z
     wikiBaseUrl: z.string().max(300),
     pausePlayerMapSync: z.boolean(),
     stopTravelAtNight: z.boolean(),
+    rollVisibility: z.enum(['own', 'all']),
     customTravelModes: z.array(CustomTravelModeSchema),
     sunriseHour: z.number().min(0).max(23),
     sunsetHour: z.number().min(0).max(24),
@@ -97,6 +100,7 @@ const CharacterPatchSchema = z
     glyph: z.string().max(8),
     speed: z.number().int().min(0).max(120),
     skills: z.record(z.string(), z.number().int().min(-10).max(20)),
+    proficiencies: z.array(z.string().max(40)).max(60),
     ddbId: z.string().nullable(),
     extra: CharacterExtraPatchSchema,
   })
@@ -568,6 +572,15 @@ export const CheckRollCommand = z.object({
    */
   mapId: z.string().nullable().default(null),
   hex: z.object({ q: z.number().int(), r: z.number().int() }).nullable().default(null),
+  // Issue #129 — all optional (a default would make them required in
+  // CommandInput at every existing call site).
+  /** Extra dice / flat bonuses added to every roll of this check. */
+  extras: z.array(RollExtraSchema).max(8).optional(),
+  advantage: AdvantageSchema.optional(),
+  /** DM group roll: only characters proficient in the skill roll. */
+  proficientOnly: z.boolean().optional(),
+  /** Player: keep this roll between you and the DM. */
+  secret: z.boolean().optional(),
 });
 
 /**

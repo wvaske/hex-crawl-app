@@ -89,7 +89,9 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
     // Never: a pending reveal is a clue the DM has not decided to give yet.
     pendingReveals: [],
     encounterTables: [],
-    log: full.log.filter((e) => logEntryVisibleToPlayer(e, viewer)),
+    log: full.log.filter((e) =>
+      logEntryVisibleToPlayer(e, viewer, full.campaign.settings.rollVisibility),
+    ),
     // The undo stack describes DM edits (fog, hidden content) by name.
     undoHistory: [],
   };
@@ -97,13 +99,18 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
 
 /**
  * A player's log shows their own character's actions, not the whole party's:
- * 'all'-visibility roll entries reach only viewers whose character rolled.
- * Other 'all' entries (narration, shares) reach everyone.
+ * 'all'-visibility roll entries reach only viewers whose character rolled —
+ * unless the campaign shows everyone's rolls (`rollVisibility: 'all'`, issue
+ * #129). Other 'all' entries (narration, shares) reach everyone.
  */
-export function logEntryVisibleToPlayer(e: LogEntry, viewer: Viewer): boolean {
+export function logEntryVisibleToPlayer(
+  e: LogEntry,
+  viewer: Viewer,
+  rollVisibility: 'own' | 'all' = 'own',
+): boolean {
   if (e.visibility === viewer.seatId) return true;
   if (e.visibility !== 'all') return false;
-  if (e.kind === 'check') {
+  if (e.kind === 'check' && rollVisibility === 'own') {
     const results = (e.data as { results?: unknown }).results;
     if (Array.isArray(results)) {
       return (

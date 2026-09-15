@@ -320,6 +320,10 @@ export function migrate(d: DB): void {
   // Clue vantage hexes (issue #123): JSON arrays of {q,r}; empty = by distance.
   ensureColumn(d, 'clue', 'observe_from', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(d, 'content', 'observe_from', "TEXT NOT NULL DEFAULT '[]'");
+  // Dice rolls with trimmings (issue #129): skill proficiencies per character
+  // and the arithmetic behind a search roll's total.
+  ensureColumn(d, 'character', 'proficiencies', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(d, 'search_attempt', 'detail', 'TEXT');
 }
 
 /**

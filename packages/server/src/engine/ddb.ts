@@ -32,6 +32,8 @@ export interface DdbSync {
   level: number;
   classes: string;
   skills: Record<string, number>;
+  /** Skills with proficiency or expertise, in the app's skill naming. */
+  proficiencies: string[];
 }
 
 /** Accepts a raw id or any dndbeyond.com character URL; null if unparseable. */
@@ -95,5 +97,6 @@ export async function fetchDdbCharacter(ddbId: string): Promise<DdbSync> {
     level,
     classes: classes.map((c) => `${c.definition.name} ${c.level}`).join('/'),
     skills,
+    proficiencies: [...new Set([...profs, ...expertise])].map((sk) => sk.replace(/-/g, ' ')),
   };
 }
