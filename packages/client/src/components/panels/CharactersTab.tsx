@@ -5,6 +5,8 @@ import { send } from '../../ws.js';
 import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
 import { SendTokenButton } from '../SendTokenButton.js';
 import { TravelToButton } from '../TravelToDialog.js';
+import { RollOptionsBar } from '../RollOptions.js';
+import { useRollOptions } from '../../stores/roll.js';
 import { CharacterDialog } from '../CharacterDialog.js';
 
 const CHARACTER_COLORS = [
@@ -215,10 +217,21 @@ export function RollSkillButton({
       variant="ghost"
       size="sm"
       className={cx('!px-1.5 !py-0.5 shrink-0', className)}
-      title={`Roll ${skill}`}
+      title={`Roll ${skill} (with whatever is in the dice tray)`}
       onClick={(e) => {
         e.stopPropagation();
-        send({ kind: 'check.roll', skill, dc: null, characterIds: [characterId], mapId: null, hex: null });
+        const { extras, advantage, secret } = useRollOptions.getState().consume();
+        send({
+          kind: 'check.roll',
+          skill,
+          dc: null,
+          characterIds: [characterId],
+          mapId: null,
+          hex: null,
+          extras,
+          advantage,
+          secret,
+        });
       }}
     >
       🎲
@@ -244,6 +257,7 @@ function NewCharacterForm({ onDone }: { onDone: () => void }) {
         glyph: '',
         speed: 30,
         skills: {},
+        proficiencies: [],
         ddbId: null,
         extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' },
       },
@@ -384,12 +398,42 @@ export function CharacterEditor({
       {!readOnly && <DdbSync character={character} />}
       <div>
         <p className="text-[11px] uppercase tracking-wider text-ink-400 mb-1.5">
-          Skill modifiers <span className="normal-case">(passive = 10 + mod)</span>
+          Skill modifiers <span className="normal-case">(passive = 10 + mod · ★ proficient)</span>
         </p>
+        {canRoll && (
+          <div className="mb-2">
+            <RollOptionsBar />
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
           {allSkills.map((skill) => (
             <div key={skill} className="flex items-center justify-between gap-1 text-xs text-ink-200">
-              <span className="capitalize truncate">{skill}</span>
+              <span className="flex items-center gap-1 min-w-0">
+                {readOnly ? (
+                  character.proficiencies.includes(skill) && (
+                    <span className="text-brass-400" title="Proficient">★</span>
+                  )
+                ) : (
+                  <button
+                    className={cx(
+                      'cursor-pointer shrink-0',
+                      character.proficiencies.includes(skill) ? 'text-brass-400' : 'text-ink-600 hover:text-ink-300',
+                    )}
+                    title={character.proficiencies.includes(skill) ? 'Proficient — click to clear' : 'Not proficient — click to mark'}
+                    onClick={() => {
+                      const has = character.proficiencies.includes(skill);
+                      patch({
+                        proficiencies: has
+                          ? character.proficiencies.filter((p) => p !== skill)
+                          : [...character.proficiencies, skill],
+                      });
+                    }}
+                  >
+                    ★
+                  </button>
+                )}
+                <span className="capitalize truncate">{skill}</span>
+              </span>
               <span className="flex items-center gap-1 shrink-0">
                 {readOnly ? (
                   <span className="font-mono text-ink-100">

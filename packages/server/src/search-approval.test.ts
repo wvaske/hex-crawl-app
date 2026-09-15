@@ -143,7 +143,7 @@ function search(seat: SeatRecord, mapId: string, hex: { q: number; r: number }, 
 }
 
 describe('one attempt per skill per hex per character', () => {
-  it('rejects a second roll of the same skill on the same hex, before rolling', () => {
+  it('a second roll of the same skill on the same hex is dice only — the first one counts (#129)', () => {
     const { mapId, seat } = party();
     searchable(mapId, { q: 0, r: 0 }, 'Cache');
     search(seat, mapId, { q: 0, r: 0 }, 'survival');
@@ -151,11 +151,13 @@ describe('one attempt per skill per hex per character', () => {
     expect(attempts).toHaveLength(1);
     expect(attempts[0]!.skill).toBe('survival');
 
-    expect(() => search(seat, mapId, { q: 0, r: 0 }, 'survival')).toThrow(
-      /Scout already searched this hex with survival/,
-    );
-    // Rejected before the dice: still exactly one attempt on record.
+    // Rolling again is allowed (the table often just needs dice), but it
+    // records no attempt and evaluates no gate.
+    search(seat, mapId, { q: 0, r: 0 }, 'survival');
     expect(runtime.requireMap(mapId).searchAttempts.size).toBe(1);
+    expect([...runtime.requireMap(mapId).searchAttempts.values()][0]!.id).toBe(attempts[0]!.id);
+    const last = [...runtime.log].reverse().find((e) => e.kind === 'check')!;
+    expect(last.text).toMatch(/re-roll/);
   });
 
   it('scopes the limit to the skill, the hex and the character', () => {

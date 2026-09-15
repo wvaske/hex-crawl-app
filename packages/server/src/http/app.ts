@@ -377,7 +377,12 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     if (!ddbId) return c.json({ error: 'No D&D Beyond character id or URL given' }, 400);
     try {
       const sync = await fetchDdbCharacter(ddbId);
-      runtime.upsertCharacter({ ...character, skills: sync.skills, ddbId });
+      runtime.upsertCharacter({
+        ...character,
+        skills: sync.skills,
+        proficiencies: sync.proficiencies,
+        ddbId,
+      });
       hub.scheduleSync(runtime);
       return c.json({ name: sync.name, classes: sync.classes, level: sync.level, skills: sync.skills });
     } catch (err) {

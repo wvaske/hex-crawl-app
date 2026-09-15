@@ -604,11 +604,11 @@ describe('hex-targeted skill checks', () => {
     expect(disc.how.kind).toBe('roll');
     expect(disc.locates).toBe(false); // searched from one hex away
 
-    // One attempt per skill per hex: the same skill is spent here.
-    expect(() =>
-      asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 1, r: 0 } } as never),
-    ).toThrow(/already searched/);
+    // The first roll of a skill on a hex is the one that counts (#107/#129):
+    // rolling survival here again is dice only — nothing new is queued.
+    asSeat(playerSeat, { kind: 'check.roll', skill: 'survival', dc: null, characterIds: [], mapId, hex: { q: 1, r: 0 } } as never);
     expect(runtime.discoveries.size).toBe(1);
+    expect(runtime.pendingReveals.size).toBe(0);
   });
 });
 

@@ -31,7 +31,8 @@ import {
   minutesPerHex,
   parseHexKey,
   resolveTravelMode,
-  rollD20,
+  rollCheck,
+  formatCheck,
 } from '@hexcrawl/shared';
 import type { FogState, TerrainId } from '@hexcrawl/shared';
 import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
@@ -881,27 +882,48 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 
   // -- checks ----------------------------------------------------------------
   'check.roll': ((cmd: Extract<ClientCommand, { kind: 'check.roll' }>, ctx: Ctx) => {
+    const settings = ctx.runtime.campaign.settings;
+    const dmRoll = ctx.seat.role === 'dm';
     let targets = cmd.characterIds;
-    if (ctx.seat.role !== 'dm') {
+    if (!dmRoll) {
       // Players roll for their own character only.
       if (!ctx.seat.characterId) throw new Error('Claim a character first');
       targets = [ctx.seat.characterId];
     }
+    const mapId = cmd.mapId ?? ctx.runtime.campaign.activeMapId;
+    const rt = mapId ? ctx.runtime.mapStates.get(mapId) : null;
+    const map = mapId ? ctx.runtime.maps.get(mapId) : null;
     if (!targets.length) {
-      const mapId = cmd.mapId ?? ctx.runtime.campaign.activeMapId;
-      const rt = mapId ? ctx.runtime.mapStates.get(mapId) : null;
       targets = rt
         ? [...rt.tokens.values()]
             .filter((t) => t.kind === 'pc' && t.characterId)
             .map((t) => t.characterId!)
         : [];
     }
-    // One attempt per skill per hex per character (issue #107) — checked
-    // BEFORE the dice come out, so a rejected search costs nothing. The DM is
-    // exempt: they re-run group checks, and their rolls reveal instantly
-    // anyway.
-    const dmRoll = ctx.seat.role === 'dm';
-    if (cmd.hex && cmd.mapId && !dmRoll) {
+    // "Proficient only" (issue #129): a DM group roll can skip the
+    // characters who never trained the skill.
+    if (cmd.proficientOnly) {
+      targets = targets.filter((id) =>
+        ctx.runtime.characters.get(id)?.proficiencies.includes(cmd.skill),
+      );
+      if (!targets.length) throw new Error(`Nobody here is proficient in ${cmd.skill}`);
+    }
+    const extras = cmd.extras ?? [];
+    const advantage = cmd.advantage ?? 'none';
+    // Where each character stands, so a sheet roll is still "a roll made
+    // here" in the hex's history (issue #129).
+    const positions = new Map<string, { q: number; r: number }>();
+    if (rt) {
+      for (const t of rt.tokens.values()) {
+        if (t.kind === 'pc' && t.characterId) positions.set(t.characterId, { q: t.q, r: t.r });
+      }
+    }
+    // A character's FIRST roll of a skill on a hex is the one that counts for
+    // clues (issue #107). Rolling again is allowed (issue #129) — the table
+    // often just needs dice — but a re-roll is dice only: no attempt row, no
+    // gate evaluation, and the log says so. The DM's rolls always count.
+    const counting = new Set<string>();
+    if (cmd.hex && cmd.mapId) {
       for (const characterId of targets) {
         const prior = ctx.runtime.findSearchAttempt(
           cmd.mapId,
@@ -910,10 +932,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
           characterId,
           cmd.skill,
         );
-        if (prior) {
-          const name = ctx.runtime.characters.get(characterId)?.name ?? 'That character';
-          throw new Error(`${name} already searched this hex with ${cmd.skill}`);
-        }
+        if (!prior || dmRoll) counting.add(characterId);
       }
     }
     const results = targets
@@ -921,14 +940,17 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         const character = ctx.runtime.characters.get(characterId);
         if (!character) return null;
         const modifier = character.skills[cmd.skill] ?? 0;
-        const { roll, total } = rollD20(modifier, ctx.rng);
+        const r = rollCheck({ modifier, extras, advantage }, ctx.rng);
         return {
           characterId,
           name: character.name,
-          roll,
+          roll: r.roll,
           modifier,
-          total,
-          success: cmd.dc !== null ? total >= cmd.dc : null,
+          total: r.total,
+          detail: r.detail,
+          success: cmd.dc !== null ? r.total >= cmd.dc : null,
+          hex: positions.get(characterId) ?? null,
+          counts: cmd.hex ? counting.has(characterId) : true,
         };
       })
       .filter((r) => r !== null);
@@ -939,182 +961,218 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     // senses missed).
     let found = 0;
     let pending = 0;
-    if (cmd.hex && cmd.mapId) {
-      const rt = ctx.runtime.mapStates.get(cmd.mapId);
-      const map = ctx.runtime.maps.get(cmd.mapId);
-      if (rt && map) {
-        const created: NewDiscovery[] = [];
-        // Every roll is written down, DM- or player-initiated: the DM's
-        // investigation view is a history of who tried what, not just of
-        // what is still outstanding.
-        const attempts = new Map<string, string>();
-        for (const r of results) {
-          attempts.set(
-            r.characterId,
-            ctx.runtime.recordSearchAttempt({
-              id: nanoid(12),
-              mapId: cmd.mapId,
-              q: cmd.hex.q,
-              r: cmd.hex.r,
-              characterId: r.characterId,
-              skill: cmd.skill,
-              roll: r.roll,
-              modifier: r.modifier,
-              total: r.total,
-              at: Date.now(),
-            }).id,
-          );
-        }
-        for (const r of results) {
-          const token = [...rt.tokens.values()].find(
-            (t) => t.kind === 'pc' && t.characterId === r.characterId,
-          );
-          if (!token) continue;
-          const character = ctx.runtime.characters.get(r.characterId)!;
-          for (const content of rt.contents.values()) {
-            if (!content.enabled) continue;
-            // A search on ANY hex of a region's footprint searches the region;
-            // a search on one of a clue's vantage hexes (#123) searches for
-            // what can be seen from there.
-            const covers = contentCoversHex(content, cmd.hex);
-            const distance = distanceToContent(content, { q: token.q, r: token.r });
-            for (const clue of content.clues) {
-              if (clue.gate.kind !== 'skill' || clue.gate.skill !== cmd.skill) continue;
-              const vantage = clueObserveSet(clue, content);
-              if (!covers && !vantage?.some((v) => v.q === cmd.hex!.q && v.r === cmd.hex!.r)) continue;
-              if (!clueInRange(clue, content, { q: token.q, r: token.r })) continue;
-              if (r.total < clue.gate.dc) continue;
-              if (ctx.runtime.hasDiscovery(clue.id, r.characterId)) continue;
-              const direction =
-                clue.indicatesDirection && distance > 0
-                  ? compassDirection({ q: token.q, r: token.r }, cmd.hex, map.orientation)
-                  : null;
-              const locates = distance === 0 && clue.revealsLocation;
-              // A player's success is a proposal, not a reveal (issue #107):
-              // the DM decides whether the character actually finds it. The
-              // bearing and locates flag are frozen here, at roll time, so the
-              // approval describes what they saw from where they stood.
-              if (!dmRoll) {
-                if (
-                  ctx.runtime.addPendingReveal({
-                    id: nanoid(12),
-                    clueId: clue.id,
-                    characterId: r.characterId,
-                    attemptId: attempts.get(r.characterId) ?? '',
-                    direction,
-                    locates,
-                    roll: r.roll,
-                    modifier: r.modifier,
-                    total: r.total,
-                    at: Date.now(),
-                  })
-                ) {
-                  pending++;
-                }
-                continue;
-              }
-              const discovery = {
-                id: nanoid(12),
-                clueId: clue.id,
-                characterId: r.characterId,
-                at: Date.now(),
-                how: {
-                  kind: 'roll' as const,
-                  skill: cmd.skill,
+    if (cmd.hex && cmd.mapId && rt && map) {
+      const created: NewDiscovery[] = [];
+      // Every counting roll is written down, DM- or player-initiated: the
+      // DM's investigation view is a history of who tried what, not just of
+      // what is still outstanding.
+      const attempts = new Map<string, string>();
+      for (const r of results) {
+        if (!r.counts) continue;
+        attempts.set(
+          r.characterId,
+          ctx.runtime.recordSearchAttempt({
+            id: nanoid(12),
+            mapId: cmd.mapId,
+            q: cmd.hex.q,
+            r: cmd.hex.r,
+            characterId: r.characterId,
+            skill: cmd.skill,
+            roll: r.roll,
+            modifier: r.modifier,
+            total: r.total,
+            at: Date.now(),
+            detail: r.detail,
+          }).id,
+        );
+      }
+      for (const r of results) {
+        if (!r.counts) continue;
+        const token = [...rt.tokens.values()].find(
+          (t) => t.kind === 'pc' && t.characterId === r.characterId,
+        );
+        if (!token) continue;
+        const character = ctx.runtime.characters.get(r.characterId)!;
+        for (const content of rt.contents.values()) {
+          if (!content.enabled) continue;
+          // A search on ANY hex of a region's footprint searches the region;
+          // a search on one of a clue's vantage hexes (#123) searches for
+          // what can be seen from there.
+          const covers = contentCoversHex(content, cmd.hex);
+          const distance = distanceToContent(content, { q: token.q, r: token.r });
+          for (const clue of content.clues) {
+            if (clue.gate.kind !== 'skill' || clue.gate.skill !== cmd.skill) continue;
+            const vantage = clueObserveSet(clue, content);
+            if (!covers && !vantage?.some((v) => v.q === cmd.hex!.q && v.r === cmd.hex!.r)) continue;
+            if (!clueInRange(clue, content, { q: token.q, r: token.r })) continue;
+            if (r.total < clue.gate.dc) continue;
+            if (ctx.runtime.hasDiscovery(clue.id, r.characterId)) continue;
+            const direction =
+              clue.indicatesDirection && distance > 0
+                ? compassDirection({ q: token.q, r: token.r }, cmd.hex, map.orientation)
+                : null;
+            const locates = distance === 0 && clue.revealsLocation;
+            // A player's success is a proposal, not a reveal (issue #107):
+            // the DM decides whether the character actually finds it. The
+            // bearing and locates flag are frozen here, at roll time, so the
+            // approval describes what they saw from where they stood.
+            if (!dmRoll) {
+              if (
+                ctx.runtime.addPendingReveal({
+                  id: nanoid(12),
+                  clueId: clue.id,
+                  characterId: r.characterId,
+                  attemptId: attempts.get(r.characterId) ?? '',
+                  direction,
+                  locates,
                   roll: r.roll,
                   modifier: r.modifier,
                   total: r.total,
-                  dc: clue.gate.dc,
-                },
-                direction,
-                locates,
-              };
-              if (ctx.runtime.addDiscovery(discovery)) {
-                created.push({
-                  discovery,
-                  contentId: content.id,
-                  contentTitle: content.title,
-                  clueText: clue.text,
-                  characterName: character.name,
-                });
-              }
-            }
-          }
-        }
-        // Trails: a search can also spot trail cells on the hex (any skill
-        // gate, active included) when the roll beats the gate's DC.
-        const trailFinds: TrailFind[] = [];
-        for (const r of results) {
-          const token = [...rt.tokens.values()].find(
-            (t) => t.kind === 'pc' && t.characterId === r.characterId,
-          );
-          if (!token) continue;
-          const character = ctx.runtime.characters.get(r.characterId)!;
-          for (const trail of rt.trails.values()) {
-            if (trail.gate.kind !== 'skill' || trail.gate.skill !== cmd.skill) continue;
-            for (let i = 0; i < trail.cells.length; i++) {
-              const cell = trail.cells[i]!;
-              if (cell.q !== cmd.hex.q || cell.r !== cmd.hex.r) continue;
-              const distance = hexDistance({ q: token.q, r: token.r }, cell);
-              if (distance > trail.gate.maxDistance) continue;
-              if (r.total < trail.gate.dc) continue;
-              if (
-                ctx.runtime.addTrailDiscovery({
-                  id: nanoid(12),
-                  trailId: trail.id,
-                  cellIndex: i,
-                  characterId: r.characterId,
                   at: Date.now(),
                 })
               ) {
-                trailFinds.push({
-                  trailId: trail.id,
-                  characterId: r.characterId,
-                  characterName: character.name,
-                  q: cell.q,
-                  r: cell.r,
-                  ...trailBearings(trail, i, map.orientation),
-                });
+                pending++;
               }
+              continue;
+            }
+            const discovery = {
+              id: nanoid(12),
+              clueId: clue.id,
+              characterId: r.characterId,
+              at: Date.now(),
+              how: {
+                kind: 'roll' as const,
+                skill: cmd.skill,
+                roll: r.roll,
+                modifier: r.modifier,
+                total: r.total,
+                dc: clue.gate.dc,
+              },
+              direction,
+              locates,
+            };
+            if (ctx.runtime.addDiscovery(discovery)) {
+              created.push({
+                discovery,
+                contentId: content.id,
+                contentTitle: content.title,
+                clueText: clue.text,
+                characterName: character.name,
+              });
             }
           }
         }
-        deliverTrailFinds(ctx, trailFinds);
-        found = created.length + trailFinds.length;
-        deliverDiscoveries(ctx, created);
-        if (pending > 0) {
-          // Nudge the DM: results are sitting in Inspect waiting on them.
-          ctx.hub.sendTo(
-            ctx.runtime,
-            {
-              type: 'event',
-              kind: 'search.pending',
-              characterName: results.map((r) => r.name).join(', '),
-              skill: cmd.skill,
-              total: Math.max(...results.map((r) => r.total)),
-              q: cmd.hex.q,
-              r: cmd.hex.r,
-              count: pending,
-            },
-            { dm: true },
-          );
+      }
+      // Trails: a search can also spot trail cells on the hex (any skill
+      // gate, active included) when the roll beats the gate's DC.
+      const trailFinds: TrailFind[] = [];
+      for (const r of results) {
+        if (!r.counts) continue;
+        const token = [...rt.tokens.values()].find(
+          (t) => t.kind === 'pc' && t.characterId === r.characterId,
+        );
+        if (!token) continue;
+        const character = ctx.runtime.characters.get(r.characterId)!;
+        for (const trail of rt.trails.values()) {
+          if (trail.gate.kind !== 'skill' || trail.gate.skill !== cmd.skill) continue;
+          for (let i = 0; i < trail.cells.length; i++) {
+            const cell = trail.cells[i]!;
+            if (cell.q !== cmd.hex.q || cell.r !== cmd.hex.r) continue;
+            const distance = hexDistance({ q: token.q, r: token.r }, cell);
+            if (distance > trail.gate.maxDistance) continue;
+            if (r.total < trail.gate.dc) continue;
+            if (
+              ctx.runtime.addTrailDiscovery({
+                id: nanoid(12),
+                trailId: trail.id,
+                cellIndex: i,
+                characterId: r.characterId,
+                at: Date.now(),
+              })
+            ) {
+              trailFinds.push({
+                trailId: trail.id,
+                characterId: r.characterId,
+                characterName: character.name,
+                q: cell.q,
+                r: cell.r,
+                ...trailBearings(trail, i, map.orientation),
+              });
+            }
+          }
         }
+      }
+      deliverTrailFinds(ctx, trailFinds);
+      found = created.length + trailFinds.length;
+      deliverDiscoveries(ctx, created);
+      if (pending > 0) {
+        // Nudge the DM: results are sitting in Inspect waiting on them.
+        ctx.hub.sendTo(
+          ctx.runtime,
+          {
+            type: 'event',
+            kind: 'search.pending',
+            characterName: results.map((r) => r.name).join(', '),
+            skill: cmd.skill,
+            total: Math.max(...results.map((r) => r.total)),
+            q: cmd.hex.q,
+            r: cmd.hex.r,
+            count: pending,
+          },
+          { dm: true },
+        );
       }
     }
     const summary = results
       .map(
         (r) =>
-          `${r.name}: ${r.total} (d20 ${r.roll}${r.modifier >= 0 ? '+' : ''}${r.modifier})${
+          `${r.name}: ${r.total} (${formatCheck(r)})${
             r.success === null ? '' : r.success ? ' ✓' : ' ✗'
-          }`,
+          }${cmd.hex && !r.counts ? ' · re-roll' : ''}`,
       )
       .join(' · ');
     const where = cmd.hex ? ` on hex ${cmd.hex.q},${cmd.hex.r}` : '';
-    const headline = `${capitalize(cmd.skill)}${cmd.dc !== null ? ` DC ${cmd.dc}` : ''}${where}: ${summary || 'no targets'}`;
+    const trimmings = [
+      advantage !== 'none' ? advantage : null,
+      ...extras.map((x) => `${x.sign < 0 ? '−' : '+'}${x.sides ? `${x.amount}d${x.sides}` : x.amount}${x.label ? ` ${x.label}` : ''}`),
+    ].filter(Boolean);
+    const headline = `${capitalize(cmd.skill)}${cmd.dc !== null ? ` DC ${cmd.dc}` : ''}${where}${
+      trimmings.length ? ` [${trimmings.join(', ')}]` : ''
+    }: ${summary || 'no targets'}`;
     const rolled = new Set(results.map((r) => r.characterId));
     const ownerSeats = [...ctx.runtime.seats.values()]
       .filter((s) => s.characterId && rolled.has(s.characterId))
       .map((s) => s.id);
+    // Sheet rolls carry the hex the character stood on, so a hex's history
+    // (issue #129) lists them alongside searches.
+    const sameHex =
+      results.length > 0 && results.every((r) => r.hex && results[0]!.hex && r.hex.q === results[0]!.hex.q && r.hex.r === results[0]!.hex.r)
+        ? results[0]!.hex
+        : null;
+    const data = {
+      skill: cmd.skill,
+      dc: cmd.dc,
+      results,
+      hex: cmd.hex ?? sameHex,
+      mapId: mapId ?? null,
+      search: cmd.hex !== null,
+      advantage,
+      extras,
+    };
+    // A player's own visibility: 'all' means "the table, per the campaign's
+    // roll-visibility setting"; a secret roll goes to their seat and the DM.
+    const playerVisibility = cmd.secret ? ctx.seat.id : 'all';
+    const notifyPlayers = (entry: LogEntry) => {
+      if (entry.visibility === 'all' && settings.rollVisibility === 'all') {
+        notifyLog(ctx, entry);
+      } else if (entry.visibility === 'all') {
+        // A character's rolls are theirs alone: notify only the seats owning
+        // a character that rolled (the snapshot filter applies the same rule).
+        ctx.hub.sendTo(ctx.runtime, { type: 'event', kind: 'log.appended', entry }, { dm: true, seatIds: ownerSeats });
+      } else {
+        notifyLog(ctx, entry);
+      }
+    };
 
     // A player's hex search gets TWO entries (issue #107). The outcome string
     // is baked into `text`, and one row cannot say different things to
@@ -1122,32 +1180,27 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     // opened, what is waiting on them) and the player's row says only that
     // the DM will narrate. Counts of found/not-found never reach a player:
     // "nothing new found" is itself information about the hex.
-    if (ctx.seat.role !== 'dm' && cmd.hex) {
+    if (!dmRoll && cmd.hex) {
+      const counted = results.some((r) => r.counts);
       const dmOutcome = [
         found ? `${found} clue(s) uncovered` : null,
         pending ? `${pending} awaiting your approval` : null,
+        !counted ? 'a re-roll — the first roll here is the one that counts' : null,
       ]
         .filter(Boolean)
         .join(', ');
       const dmEntry = ctx.runtime.appendLog('check', `${headline} — ${dmOutcome || 'nothing found'}`, 'dm', {
-        skill: cmd.skill,
-        dc: cmd.dc,
-        results,
-        hex: { q: cmd.hex.q, r: cmd.hex.r },
+        ...data,
         pending,
       });
       ctx.hub.sendTo(ctx.runtime, { type: 'event', kind: 'log.appended', entry: dmEntry }, { dm: true });
       const playerEntry = ctx.runtime.appendLog(
         'check',
-        `${headline} — the DM will describe what you find`,
-        'all',
-        { skill: cmd.skill, dc: cmd.dc, results },
+        `${headline} — ${counted ? 'the DM will describe what you find' : 're-rolled for the table; your first roll here is the one that counts'}`,
+        playerVisibility,
+        data,
       );
-      ctx.hub.sendTo(
-        ctx.runtime,
-        { type: 'event', kind: 'log.appended', entry: playerEntry },
-        { seatIds: ownerSeats },
-      );
+      notifyPlayers(playerEntry);
       return;
     }
 
@@ -1155,20 +1208,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     const entry = ctx.runtime.appendLog(
       'check',
       `${headline}${outcome}`,
-      ctx.seat.role === 'dm' ? 'dm' : 'all',
-      { skill: cmd.skill, dc: cmd.dc, results },
+      dmRoll ? 'dm' : playerVisibility,
+      data,
     );
-    if (entry.visibility === 'all') {
-      // A character's rolls are theirs alone: notify only the seats owning a
-      // character that rolled (the snapshot filter applies the same rule).
-      ctx.hub.sendTo(
-        ctx.runtime,
-        { type: 'event', kind: 'log.appended', entry },
-        { dm: true, seatIds: ownerSeats },
-      );
-    } else {
-      notifyLog(ctx, entry);
-    }
+    notifyPlayers(entry);
   }) as Handler,
 
   /**

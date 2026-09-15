@@ -53,6 +53,7 @@ const scout: Character = {
   glyph: '🏹',
   speed: 30,
   skills: { perception: 4, survival: 2 },
+  proficiencies: ['perception'],
   ddbId: null,
   extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' },
 };
@@ -102,6 +103,7 @@ function fullState(): CampaignState {
         wikiBaseUrl: 'https://wiki.example/wiki/',
         pausePlayerMapSync: false,
         stopTravelAtNight: false,
+        rollVisibility: 'own',
         customTravelModes: [],
         sunriseHour: 6,
         sunsetHour: 20,
@@ -167,8 +169,8 @@ function fullState(): CampaignState {
       ],
       // Issue #107: one attempt from the viewer's character, one from another.
       searchAttempts: [
-        { id: 'sa1', mapId: 'm1', q: 1, r: 0, characterId: 'char1', skill: 'perception', roll: 14, modifier: 4, total: 18, at: 2000 },
-        { id: 'sa2', mapId: 'm1', q: 1, r: 0, characterId: 'char2', skill: 'survival', roll: 9, modifier: 1, total: 10, at: 2001 },
+        { id: 'sa1', mapId: 'm1', q: 1, r: 0, characterId: 'char1', skill: 'perception', roll: 14, modifier: 4, total: 18, at: 2000, detail: null },
+        { id: 'sa2', mapId: 'm1', q: 1, r: 0, characterId: 'char2', skill: 'survival', roll: 9, modifier: 1, total: 10, at: 2001, detail: null },
       ],
     },
     discoveries: [

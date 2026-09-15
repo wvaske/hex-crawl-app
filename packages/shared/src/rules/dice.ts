@@ -1,4 +1,5 @@
 /** Seedable RNG + dice notation. */
+import type { Advantage, RollDetail, RollExtra } from '../domain.js';
 
 export type Rng = () => number;
 
@@ -54,6 +55,64 @@ export function rollDice(notation: string, rng: Rng): DiceRoll {
 export function rollD20(modifier: number, rng: Rng): { roll: number; total: number } {
   const roll = 1 + Math.floor(rng() * 20);
   return { roll, total: roll + modifier };
+}
+
+export interface CheckSpec {
+  modifier: number;
+  extras?: RollExtra[];
+  advantage?: Advantage;
+}
+
+export interface CheckResult {
+  /** The d20 that counted. */
+  roll: number;
+  modifier: number;
+  total: number;
+  detail: RollDetail;
+}
+
+/**
+ * A skill check with the trimmings (issue #129): d20 (twice under advantage
+ * or disadvantage, keeping the high or low), plus the skill modifier, plus
+ * any extra dice or flat bonuses — Guidance, Bardic Inspiration, a penalty
+ * die the DM imposes.
+ */
+export function rollCheck(spec: CheckSpec, rng: Rng): CheckResult {
+  const advantage = spec.advantage ?? 'none';
+  const d20 = () => 1 + Math.floor(rng() * 20);
+  const rolls = advantage === 'none' ? [d20()] : [d20(), d20()];
+  const roll = advantage === 'advantage' ? Math.max(...rolls) : Math.min(...rolls);
+  const extras = (spec.extras ?? []).map((x) => {
+    const sign = x.sign ?? 1;
+    if (x.sides === 0) return { ...x, sign, rolls: [], total: sign * x.amount };
+    const faces: number[] = [];
+    for (let i = 0; i < x.amount; i++) faces.push(1 + Math.floor(rng() * x.sides));
+    return { ...x, sign, rolls: faces, total: sign * faces.reduce((a, b) => a + b, 0) };
+  });
+  const total = roll + spec.modifier + extras.reduce((a, x) => a + x.total, 0);
+  return { roll, modifier: spec.modifier, total, detail: { rolls, advantage, extras } };
+}
+
+/**
+ * "d20 14+3 +1d4[3] Guidance −2 Bane" — the arithmetic behind a total, for
+ * log lines and history rows. Advantage shows both dice with the kept one
+ * first: "d20 17 (adv, dropped 4)".
+ */
+export function formatCheck(r: { roll: number; modifier: number; detail?: RollDetail | null }): string {
+  const d = r.detail;
+  let out = `d20 ${r.roll}`;
+  if (d && d.advantage !== 'none' && d.rolls.length > 1) {
+    const dropped = d.rolls.filter((x) => x !== r.roll);
+    const other = dropped.length ? dropped[0]! : r.roll;
+    out += ` (${d.advantage === 'advantage' ? 'adv' : 'dis'}, dropped ${other})`;
+  }
+  out += `${r.modifier >= 0 ? '+' : ''}${r.modifier}`;
+  for (const x of d?.extras ?? []) {
+    const sign = x.total < 0 || (x.total === 0 && x.sign < 0) ? '−' : '+';
+    const term = x.sides === 0 ? `${x.amount}` : `${x.amount}d${x.sides}[${x.rolls.join(',')}]`;
+    out += ` ${sign}${term}${x.label ? ` ${x.label}` : ''}`;
+  }
+  return out;
 }
 
 /** Min/max possible totals for a notation (for table validation). */

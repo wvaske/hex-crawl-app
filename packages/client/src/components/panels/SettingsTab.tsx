@@ -55,6 +55,26 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
 
       <CalendarSettings />
 
+      <Section title="Dice">
+        <Field label="Who sees players' skill rolls">
+          <Select
+            value={state.campaign.settings.rollVisibility}
+            onChange={(e) =>
+              send({
+                kind: 'campaign.update',
+                settings: { rollVisibility: e.target.value as 'own' | 'all' },
+              })
+            }
+          >
+            <option value="own">Each player sees only their own character's rolls</option>
+            <option value="all">Everyone sees everyone's rolls (like D&D Beyond)</option>
+          </Select>
+        </Field>
+        <p className="text-xs text-ink-400 mt-1.5">
+          A player can still mark a roll "DM only". Your own rolls never reach players.
+        </p>
+      </Section>
+
       <Section title="Travel">
         <Toggle
           checked={state.campaign.settings.stopTravelAtNight}

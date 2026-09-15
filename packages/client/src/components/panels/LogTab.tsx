@@ -15,7 +15,7 @@ import { Button, EmptyNote, Input, cx } from '../../ui/kit.js';
 
 const KIND_META: Record<string, { icon: string; label: string }> = {
   discovery: { icon: '👁️', label: 'Discovery' },
-  check: { icon: '🎯', label: 'Check' },
+  check: { icon: '🎲', label: 'Dice roll' },
   encounter: { icon: '🎲', label: 'Encounter' },
   narration: { icon: '📜', label: 'Narration' },
   share: { icon: '🤝', label: 'Shared' },
@@ -40,6 +40,14 @@ const FILTERS = [
   'session',
 ] as const;
 
+/** Pill text: "check" is the kind, "🎲 Dice rolls" is what the table calls it. */
+const FILTER_LABEL: Partial<Record<(typeof FILTERS)[number], string>> = {
+  check: '🎲 Dice rolls',
+};
+
+/** Players get the filters that mean something in their (already filtered) log. */
+const PLAYER_FILTERS: (typeof FILTERS)[number][] = ['all', 'check', 'discovery', 'travel', 'narration', 'share', 'time'];
+
 export function LogTab() {
   const state = useSession((s) => s.state);
   const role = useSession((s) => s.role);
@@ -56,24 +64,23 @@ export function LogTab() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex gap-1 mb-2 flex-wrap items-center">
-        {role === 'dm' &&
-          FILTERS.map((f) => (
-            <button
-              key={f}
-              onClick={() => {
-                setFilter(f);
-                setMode('log');
-              }}
-              className={cx(
-                'px-2 py-0.5 rounded-full text-[11px] capitalize cursor-pointer border',
-                mode === 'log' && filter === f
-                  ? 'border-brass-500 bg-brass-500/15 text-brass-300'
-                  : 'border-ink-700 text-ink-300 hover:bg-ink-700',
-              )}
-            >
-              {f}
-            </button>
-          ))}
+        {(role === 'dm' ? FILTERS : PLAYER_FILTERS).map((f) => (
+          <button
+            key={f}
+            onClick={() => {
+              setFilter(f);
+              setMode('log');
+            }}
+            className={cx(
+              'px-2 py-0.5 rounded-full text-[11px] capitalize cursor-pointer border',
+              mode === 'log' && filter === f
+                ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+                : 'border-ink-700 text-ink-300 hover:bg-ink-700',
+            )}
+          >
+            {FILTER_LABEL[f] ?? f}
+          </button>
+        ))}
         <button
           onClick={() => setMode(mode === 'recaps' ? 'log' : 'recaps')}
           className={cx(
