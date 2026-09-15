@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CORE_SKILLS, passiveScore, type Character } from '@hexcrawl/shared';
+import { CORE_SKILLS, passiveScore, type Character, type Token } from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
@@ -67,11 +67,18 @@ export function CharactersTab() {
                       <span className="block text-xs text-ink-400 truncate">
                         {claimedBy ? `Played by ${claimedBy.name}` : 'Unclaimed'} · Passive Perception{' '}
                         {passiveScore(ch.skills, 'perception')}
+                        {token && !token.partyId && (
+                          <span className="text-brass-400"> · travelling alone</span>
+                        )}
+                        {!token && state.mapState && (
+                          <span className="text-ink-500"> · no token on this map</span>
+                        )}
                       </span>
                     </span>
                     <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
                   </button>
                   {canEdit && <RollSkillButton characterId={ch.id} skill="perception" />}
+                  {canCommand && <PartyToggle token={token} name={ch.name} />}
                   {canCommand && <SendTokenButton tokenId={token.id} name={ch.name} />}
                   {canCommand && <TravelToButton tokenId={token.id} name={ch.name} />}
                   <Button
@@ -151,6 +158,39 @@ export function CharactersTab() {
           );
         })()}
     </div>
+  );
+}
+
+/**
+ * Split the party (issue #124): take a character's token out of the travel
+ * group — they stay in the campaign, they just stop moving with everyone
+ * else — or put it back. The DM can toggle anyone; a player only their own.
+ */
+function PartyToggle({ token, name }: { token: Token; name: string }) {
+  const inParty = !!token.partyId;
+  return (
+    <button
+      className={cx(
+        'shrink-0 px-2 py-1 mr-1 rounded text-sm cursor-pointer transition-colors',
+        inParty ? 'text-brass-300 hover:text-ember-500' : 'text-ink-500 hover:text-brass-300',
+      )}
+      title={
+        inParty
+          ? `${name} travels with the party — click to split them off (they stay in the campaign)`
+          : `${name} travels alone — click to rejoin the party`
+      }
+      aria-label={inParty ? `${name}: in the party` : `${name}: travelling alone`}
+      onClick={(e) => {
+        e.stopPropagation();
+        send({
+          kind: 'token.update',
+          tokenId: token.id,
+          patch: { partyId: inParty ? null : 'party' },
+        });
+      }}
+    >
+      {inParty ? '👥' : '👤'}
+    </button>
   );
 }
 

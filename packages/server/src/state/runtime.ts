@@ -752,6 +752,12 @@ export class CampaignRuntime {
       );
   }
 
+  /**
+   * Remove a character and everything that only made sense with them: the
+   * seat claim, their PC tokens (an orphan token would keep travelling with
+   * the party, issue #124), and their discoveries, trail finds, search
+   * attempts and pending reveals — none of which carry a foreign key.
+   */
   deleteCharacter(characterId: string): void {
     this.characters.delete(characterId);
     this.db.prepare('DELETE FROM character WHERE id = ?').run(characterId);
@@ -760,9 +766,38 @@ export class CampaignRuntime {
     }
     for (const [mapId, rt] of this.mapStates) {
       for (const token of [...rt.tokens.values()]) {
-        if (token.characterId === characterId) this.updateToken(mapId, token.id, { characterId: null });
+        if (token.characterId !== characterId) continue;
+        rt.pendingMoves.delete(token.id);
+        this.deleteToken(mapId, token.id);
+      }
+      for (const [id, attempt] of [...rt.searchAttempts]) {
+        if (attempt.characterId === characterId) {
+          rt.searchAttempts.delete(id);
+          for (const [pid, p] of [...this.pendingReveals]) {
+            if (p.attemptId === id) this.pendingReveals.delete(pid);
+          }
+        }
       }
     }
+    for (const [id, disc] of [...this.discoveries]) {
+      if (disc.characterId === characterId) {
+        this.discoveries.delete(id);
+        this.discoveredByClueChar.delete(`${disc.clueId}|${disc.characterId}`);
+      }
+    }
+    for (const [id, td] of [...this.trailDiscoveries]) {
+      if (td.characterId === characterId) {
+        this.trailDiscoveries.delete(id);
+        this.trailDiscoveryKeys.delete(`${td.trailId}|${td.cellIndex}|${td.characterId}`);
+      }
+    }
+    for (const [id, p] of [...this.pendingReveals]) {
+      if (p.characterId === characterId) this.pendingReveals.delete(id);
+    }
+    this.db.prepare('DELETE FROM pending_reveal WHERE character_id = ?').run(characterId);
+    this.db.prepare('DELETE FROM search_attempt WHERE character_id = ?').run(characterId);
+    this.db.prepare('DELETE FROM discovery WHERE character_id = ?').run(characterId);
+    this.db.prepare('DELETE FROM trail_discovery WHERE character_id = ?').run(characterId);
   }
 
   // -- maps ------------------------------------------------------------------
