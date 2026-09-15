@@ -101,6 +101,8 @@ function fullState(): CampaignState {
       settings: {
         description: '',
         wikiBaseUrl: 'https://wiki.example/wiki/',
+        ddbCampaignUrl: '',
+        vttUrl: '',
         pausePlayerMapSync: false,
         stopTravelAtNight: false,
         rollVisibility: 'own',

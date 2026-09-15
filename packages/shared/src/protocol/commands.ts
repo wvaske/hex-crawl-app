@@ -65,6 +65,8 @@ const CampaignSettingsPatchSchema = z
   .object({
     description: z.string().max(2000),
     wikiBaseUrl: z.string().max(300),
+    ddbCampaignUrl: z.string().max(300),
+    vttUrl: z.string().max(300),
     pausePlayerMapSync: z.boolean(),
     stopTravelAtNight: z.boolean(),
     rollVisibility: z.enum(['own', 'all']),

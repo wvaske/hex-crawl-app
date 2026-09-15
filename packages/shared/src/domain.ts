@@ -243,6 +243,10 @@ export const CampaignSettingsSchema = z.object({
   description: z.string().max(2000).default(''),
   /** Base URL for wiki links on content (page titles are appended). */
   wikiBaseUrl: z.string().max(300).default(''),
+  /** Link to the campaign on D&D Beyond, shown to the party (Party tab). */
+  ddbCampaignUrl: z.string().max(300).default(''),
+  /** Link to the table's VTT (Maps, Foundry, …), shown to the party. */
+  vttUrl: z.string().max(300).default(''),
   /** Extra travel modes for the campaign clock. */
   customTravelModes: z.array(CustomTravelModeSchema).default([]),
   /** Hour of day (0-23) the sun rises; drives day/night derivation. */

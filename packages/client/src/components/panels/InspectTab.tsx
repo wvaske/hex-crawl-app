@@ -189,6 +189,16 @@ export function InspectTab() {
         </Section>
       )}
 
+      <TrailInfo hex={hex} isDm={isDm} />
+
+      {(isDm || myCharacterId) && (
+        <SearchHex mapId={map.id} hex={hex} isDm={isDm} characterId={myCharacterId} />
+      )}
+
+      <RollsHereSection mapId={map.id} hex={hex} />
+
+      {isDm && <InvestigationSection hex={hex} />}
+
       <Section
         title="Content"
         actions={
@@ -222,16 +232,6 @@ export function InspectTab() {
 
       {isDm && <PerceivableSection hex={hex} />}
       {!isDm && <SensedHereSection hex={hex} />}
-
-      <TrailInfo hex={hex} isDm={isDm} />
-
-      {isDm && <InvestigationSection hex={hex} />}
-
-      {(isDm || myCharacterId) && (
-        <SearchHex mapId={map.id} hex={hex} isDm={isDm} characterId={myCharacterId} />
-      )}
-
-      <RollsHereSection mapId={map.id} hex={hex} />
 
       {!isDm && !myCharacterId && (
         <p className="text-xs text-ink-400 mt-4">
