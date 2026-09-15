@@ -4,6 +4,7 @@ import type {
   Clue,
   Content,
   HexCoord,
+  RollDetail,
   InheritableMapField,
   LogEntry,
   MapInfo,
@@ -43,6 +44,8 @@ import { evaluateTrails, trailBearings, type TrailFind } from '../engine/trails.
 import { generateSettlementClues } from '../engine/settlements.js';
 import { rollEncounter } from '../engine/encounters.js';
 import { rerollWeatherForNewDay, setWeather, weatherLogText } from '../engine/weather.js';
+import { startConnector, stopConnector } from '../engine/ddbGameLog.js';
+import { DDB_GAMELOG } from '../config.js';
 
 export interface Ctx {
   runtime: CampaignRuntime;
@@ -205,7 +208,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
    * DM only: rotate an invite secret. Nothing player-visible changes, so the
    * Settings tab re-reads /api/campaigns/:id/keys after sending this.
    */
-  'campaign.rotateKey': ((cmd: Extract<ClientCommand, { kind: 'campaign.rotateKey' }>, ctx: Ctx) => {
+  'campaign.rotateKey': ((
+    cmd: Extract<ClientCommand, { kind: 'campaign.rotateKey' }>,
+    ctx: Ctx,
+  ) => {
     requireDm(ctx);
     ctx.runtime.rotateSecret(cmd.which);
   }) as Handler,
@@ -354,7 +360,13 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       throw new Error('This map uses DM-approved movement — your move was sent as a request');
     }
     const teleport = cmd.teleport && ctx.seat.role === 'dm';
-    const travel = travelPath(ctx, map, { q: token.q, r: token.r }, { q: cmd.q, r: cmd.r }, teleport);
+    const travel = travelPath(
+      ctx,
+      map,
+      { q: token.q, r: token.r },
+      { q: cmd.q, r: cmd.r },
+      teleport,
+    );
     if (ctx.seat.role !== 'dm' && map.moveMode === 'step' && !travel.routed) {
       // One hex into the unknown; any distance across known ground (#130).
       const dist = hexDistance({ q: token.q, r: token.r }, { q: cmd.q, r: cmd.r });
@@ -397,7 +409,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     });
     ctx.hub.sendTo(
       ctx.runtime,
-      { type: 'event', kind: 'move.requested', tokenId: token.id, label: token.label || 'token', q: cmd.q, r: cmd.r },
+      {
+        type: 'event',
+        kind: 'move.requested',
+        tokenId: token.id,
+        label: token.label || 'token',
+        q: cmd.q,
+        r: cmd.r,
+      },
       { dm: true },
     );
   }) as Handler,
@@ -427,7 +446,13 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     }
     ctx.hub.sendTo(
       ctx.runtime,
-      { type: 'event', kind: 'move.resolved', tokenId: token.id, label: pending.label, approved: cmd.approve },
+      {
+        type: 'event',
+        kind: 'move.resolved',
+        tokenId: token.id,
+        label: pending.label,
+        approved: cmd.approve,
+      },
       { all: true },
     );
   }) as Handler,
@@ -507,7 +532,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     ctx.runtime.deleteCharacter(cmd.characterId);
   }) as Handler,
 
-  'seat.claimCharacter': ((cmd: Extract<ClientCommand, { kind: 'seat.claimCharacter' }>, ctx: Ctx) => {
+  'seat.claimCharacter': ((
+    cmd: Extract<ClientCommand, { kind: 'seat.claimCharacter' }>,
+    ctx: Ctx,
+  ) => {
     ctx.runtime.claimCharacter(ctx.seat.id, cmd.characterId);
   }) as Handler,
 
@@ -515,7 +543,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     ctx.runtime.renameSeat(ctx.seat.id, cmd.name);
   }) as Handler,
 
-  'seat.releaseCharacter': ((cmd: Extract<ClientCommand, { kind: 'seat.releaseCharacter' }>, ctx: Ctx) => {
+  'seat.releaseCharacter': ((
+    cmd: Extract<ClientCommand, { kind: 'seat.releaseCharacter' }>,
+    ctx: Ctx,
+  ) => {
     requireDm(ctx);
     ctx.runtime.claimCharacter(cmd.seatId, null);
   }) as Handler,
@@ -567,7 +598,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, content.mapId));
   }) as Handler,
 
-  'content.setEnabled': ((cmd: Extract<ClientCommand, { kind: 'content.setEnabled' }>, ctx: Ctx) => {
+  'content.setEnabled': ((
+    cmd: Extract<ClientCommand, { kind: 'content.setEnabled' }>,
+    ctx: Ctx,
+  ) => {
     requireDm(ctx);
     const prior: { content: Content; enabled: boolean }[] = [];
     const touchedMaps = new Set<string>();
@@ -575,7 +609,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       let found: Content | null = null;
       for (const rt of ctx.runtime.mapStates.values()) {
         const c = rt.contents.get(id);
-        if (c) { found = c; break; }
+        if (c) {
+          found = c;
+          break;
+        }
       }
       if (!found || found.enabled === cmd.enabled) continue;
       prior.push({ content: found, enabled: found.enabled });
@@ -608,7 +645,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     for (const id of cmd.contentIds) {
       for (const rt of ctx.runtime.mapStates.values()) {
         const c = rt.contents.get(id);
-        if (c) { ctx.runtime.upsertContent({ ...c, quest: cmd.quest }); break; }
+        if (c) {
+          ctx.runtime.upsertContent({ ...c, quest: cmd.quest });
+          break;
+        }
       }
     }
   }) as Handler,
@@ -618,7 +658,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     let found: Content | null = null;
     for (const rt of ctx.runtime.mapStates.values()) {
       const c = rt.contents.get(cmd.contentId);
-      if (c) { found = c; break; }
+      if (c) {
+        found = c;
+        break;
+      }
     }
     if (!found) throw new Error('Content not found');
     const prev = { ...found };
@@ -644,7 +687,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     let found: Content | null = null;
     for (const rt of ctx.runtime.mapStates.values()) {
       const c = rt.contents.get(cmd.contentId);
-      if (c) { found = c; break; }
+      if (c) {
+        found = c;
+        break;
+      }
     }
     if (!found) throw new Error('Content not found');
     const anchorKey = hexKey(found.q, found.r);
@@ -658,10 +704,13 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     for (const cell of cmd.remove ?? []) cells.delete(hexKey(cell.q, cell.r));
     const area = [...cells.values()];
     const priorArea = found.area;
-    if (area.length === priorArea.length && area.every((c, i) => {
-      const p = priorArea[i];
-      return p && p.q === c.q && p.r === c.r;
-    })) {
+    if (
+      area.length === priorArea.length &&
+      area.every((c, i) => {
+        const p = priorArea[i];
+        return p && p.q === c.q && p.r === c.r;
+      })
+    ) {
       return; // stroke changed nothing (repainting hexes already in the area)
     }
     const mapId = found.mapId;
@@ -722,7 +771,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     let found: Content | null = null;
     for (const rt of ctx.runtime.mapStates.values()) {
       const c = rt.contents.get(cmd.contentId);
-      if (c) { found = c; break; }
+      if (c) {
+        found = c;
+        break;
+      }
     }
     if (!found) throw new Error('Content not found');
     const skip = cmd.skipOtherRegions ?? true;
@@ -814,9 +866,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     const content = ctx.runtime.findContentByClue(cmd.clueId);
     if (!content) throw new Error('Clue not found');
     const clue = content.clues.find((c) => c.id === cmd.clueId)!;
-    const targets = cmd.characterIds.length
-      ? cmd.characterIds
-      : [...ctx.runtime.characters.keys()];
+    const targets = cmd.characterIds.length ? cmd.characterIds : [...ctx.runtime.characters.keys()];
     const created: NewDiscovery[] = [];
     for (const characterId of targets) {
       const character = ctx.runtime.characters.get(characterId);
@@ -879,7 +929,12 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       'share',
       `${sharer?.name ?? 'Someone'} shared with the party: ${clue.text}`,
       'all',
-      { clueId: cmd.clueId, contentId: content.id, fromCharacterId: characterId, newlyShared: shared },
+      {
+        clueId: cmd.clueId,
+        contentId: content.id,
+        fromCharacterId: characterId,
+        newlyShared: shared,
+      },
     );
     notifyLog(ctx, entry);
   }) as Handler,
@@ -959,173 +1014,17 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       })
       .filter((r) => r !== null);
     // Hex-targeted search: the roll is compared against the clue gates of
-    // content on that hex. A matching-skill clue opens when the character is
-    // within the gate's range and the roll beats the clue's own DC (active
-    // and passive gates alike — a deliberate search can find what passive
-    // senses missed).
+    // content on that hex (see applySearchRoll).
     let found = 0;
     let pending = 0;
     if (cmd.hex && cmd.mapId && rt && map) {
-      const created: NewDiscovery[] = [];
-      // Every counting roll is written down, DM- or player-initiated: the
-      // DM's investigation view is a history of who tried what, not just of
-      // what is still outstanding.
-      const attempts = new Map<string, string>();
-      for (const r of results) {
-        if (!r.counts) continue;
-        attempts.set(
-          r.characterId,
-          ctx.runtime.recordSearchAttempt({
-            id: nanoid(12),
-            mapId: cmd.mapId,
-            q: cmd.hex.q,
-            r: cmd.hex.r,
-            characterId: r.characterId,
-            skill: cmd.skill,
-            roll: r.roll,
-            modifier: r.modifier,
-            total: r.total,
-            at: Date.now(),
-            detail: r.detail,
-          }).id,
-        );
-      }
-      for (const r of results) {
-        if (!r.counts) continue;
-        const token = [...rt.tokens.values()].find(
-          (t) => t.kind === 'pc' && t.characterId === r.characterId,
-        );
-        if (!token) continue;
-        const character = ctx.runtime.characters.get(r.characterId)!;
-        for (const content of rt.contents.values()) {
-          if (!content.enabled) continue;
-          // A search on ANY hex of a region's footprint searches the region;
-          // a search on one of a clue's vantage hexes (#123) searches for
-          // what can be seen from there.
-          const covers = contentCoversHex(content, cmd.hex);
-          const distance = distanceToContent(content, { q: token.q, r: token.r });
-          for (const clue of content.clues) {
-            if (clue.gate.kind !== 'skill' || clue.gate.skill !== cmd.skill) continue;
-            const vantage = clueObserveSet(clue, content);
-            if (!covers && !vantage?.some((v) => v.q === cmd.hex!.q && v.r === cmd.hex!.r)) continue;
-            if (!clueInRange(clue, content, { q: token.q, r: token.r })) continue;
-            if (r.total < clue.gate.dc) continue;
-            if (ctx.runtime.hasDiscovery(clue.id, r.characterId)) continue;
-            const direction =
-              clue.indicatesDirection && distance > 0
-                ? compassDirection({ q: token.q, r: token.r }, cmd.hex, map.orientation)
-                : null;
-            const locates = distance === 0 && clue.revealsLocation;
-            // A player's success is a proposal, not a reveal (issue #107):
-            // the DM decides whether the character actually finds it. The
-            // bearing and locates flag are frozen here, at roll time, so the
-            // approval describes what they saw from where they stood.
-            if (!dmRoll) {
-              if (
-                ctx.runtime.addPendingReveal({
-                  id: nanoid(12),
-                  clueId: clue.id,
-                  characterId: r.characterId,
-                  attemptId: attempts.get(r.characterId) ?? '',
-                  direction,
-                  locates,
-                  roll: r.roll,
-                  modifier: r.modifier,
-                  total: r.total,
-                  at: Date.now(),
-                })
-              ) {
-                pending++;
-              }
-              continue;
-            }
-            const discovery = {
-              id: nanoid(12),
-              clueId: clue.id,
-              characterId: r.characterId,
-              at: Date.now(),
-              how: {
-                kind: 'roll' as const,
-                skill: cmd.skill,
-                roll: r.roll,
-                modifier: r.modifier,
-                total: r.total,
-                dc: clue.gate.dc,
-              },
-              direction,
-              locates,
-            };
-            if (ctx.runtime.addDiscovery(discovery)) {
-              created.push({
-                discovery,
-                contentId: content.id,
-                contentTitle: content.title,
-                clueText: clue.text,
-                characterName: character.name,
-              });
-            }
-          }
-        }
-      }
-      // Trails: a search can also spot trail cells on the hex (any skill
-      // gate, active included) when the roll beats the gate's DC.
-      const trailFinds: TrailFind[] = [];
-      for (const r of results) {
-        if (!r.counts) continue;
-        const token = [...rt.tokens.values()].find(
-          (t) => t.kind === 'pc' && t.characterId === r.characterId,
-        );
-        if (!token) continue;
-        const character = ctx.runtime.characters.get(r.characterId)!;
-        for (const trail of rt.trails.values()) {
-          if (trail.gate.kind !== 'skill' || trail.gate.skill !== cmd.skill) continue;
-          for (let i = 0; i < trail.cells.length; i++) {
-            const cell = trail.cells[i]!;
-            if (cell.q !== cmd.hex.q || cell.r !== cmd.hex.r) continue;
-            const distance = hexDistance({ q: token.q, r: token.r }, cell);
-            if (distance > trail.gate.maxDistance) continue;
-            if (r.total < trail.gate.dc) continue;
-            if (
-              ctx.runtime.addTrailDiscovery({
-                id: nanoid(12),
-                trailId: trail.id,
-                cellIndex: i,
-                characterId: r.characterId,
-                at: Date.now(),
-              })
-            ) {
-              trailFinds.push({
-                trailId: trail.id,
-                characterId: r.characterId,
-                characterName: character.name,
-                q: cell.q,
-                r: cell.r,
-                ...trailBearings(trail, i, map.orientation),
-              });
-            }
-          }
-        }
-      }
-      deliverTrailFinds(ctx, trailFinds);
-      found = created.length + trailFinds.length;
-      deliverDiscoveries(ctx, created);
-      if (pending > 0) {
-        // Nudge the DM: results are sitting in Inspect waiting on them.
-        ctx.hub.sendTo(
-          ctx.runtime,
-          {
-            type: 'event',
-            kind: 'search.pending',
-            characterName: results.map((r) => r.name).join(', '),
-            skill: cmd.skill,
-            total: Math.max(...results.map((r) => r.total)),
-            q: cmd.hex.q,
-            r: cmd.hex.r,
-            count: pending,
-          },
-          { dm: true },
-        );
-      }
+      const outcome = applySearchRoll(
+        ctx,
+        { mapId: cmd.mapId, hex: cmd.hex, skill: cmd.skill, dmRoll },
+        results,
+      );
+      found = outcome.found;
+      pending = outcome.pending;
     }
     const summary = results
       .map(
@@ -1138,7 +1037,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     const where = cmd.hex ? ` on hex ${cmd.hex.q},${cmd.hex.r}` : '';
     const trimmings = [
       advantage !== 'none' ? advantage : null,
-      ...extras.map((x) => `${x.sign < 0 ? '−' : '+'}${x.sides ? `${x.amount}d${x.sides}` : x.amount}${x.label ? ` ${x.label}` : ''}`),
+      ...extras.map(
+        (x) =>
+          `${x.sign < 0 ? '−' : '+'}${x.sides ? `${x.amount}d${x.sides}` : x.amount}${x.label ? ` ${x.label}` : ''}`,
+      ),
     ].filter(Boolean);
     const headline = `${capitalize(cmd.skill)}${cmd.dc !== null ? ` DC ${cmd.dc}` : ''}${where}${
       trimmings.length ? ` [${trimmings.join(', ')}]` : ''
@@ -1150,7 +1052,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     // Sheet rolls carry the hex the character stood on, so a hex's history
     // (issue #129) lists them alongside searches.
     const sameHex =
-      results.length > 0 && results.every((r) => r.hex && results[0]!.hex && r.hex.q === results[0]!.hex.q && r.hex.r === results[0]!.hex.r)
+      results.length > 0 &&
+      results.every(
+        (r) =>
+          r.hex &&
+          results[0]!.hex &&
+          r.hex.q === results[0]!.hex.q &&
+          r.hex.r === results[0]!.hex.r,
+      )
         ? results[0]!.hex
         : null;
     const data = {
@@ -1172,7 +1081,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       } else if (entry.visibility === 'all') {
         // A character's rolls are theirs alone: notify only the seats owning
         // a character that rolled (the snapshot filter applies the same rule).
-        ctx.hub.sendTo(ctx.runtime, { type: 'event', kind: 'log.appended', entry }, { dm: true, seatIds: ownerSeats });
+        ctx.hub.sendTo(
+          ctx.runtime,
+          { type: 'event', kind: 'log.appended', entry },
+          { dm: true, seatIds: ownerSeats },
+        );
       } else {
         notifyLog(ctx, entry);
       }
@@ -1193,11 +1106,20 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       ]
         .filter(Boolean)
         .join(', ');
-      const dmEntry = ctx.runtime.appendLog('check', `${headline} — ${dmOutcome || 'nothing found'}`, 'dm', {
-        ...data,
-        pending,
-      });
-      ctx.hub.sendTo(ctx.runtime, { type: 'event', kind: 'log.appended', entry: dmEntry }, { dm: true });
+      const dmEntry = ctx.runtime.appendLog(
+        'check',
+        `${headline} — ${dmOutcome || 'nothing found'}`,
+        'dm',
+        {
+          ...data,
+          pending,
+        },
+      );
+      ctx.hub.sendTo(
+        ctx.runtime,
+        { type: 'event', kind: 'log.appended', entry: dmEntry },
+        { dm: true },
+      );
       const playerEntry = ctx.runtime.appendLog(
         'check',
         `${headline} — ${counted ? 'the DM will describe what you find' : 're-rolled for the table; your first roll here is the one that counts'}`,
@@ -1208,7 +1130,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       return;
     }
 
-    const outcome = cmd.hex ? (found ? ` — ${found} clue(s) uncovered` : ' — nothing new found') : '';
+    const outcome = cmd.hex
+      ? found
+        ? ` — ${found} clue(s) uncovered`
+        : ' — nothing new found'
+      : '';
     const entry = ctx.runtime.appendLog(
       'check',
       `${headline}${outcome}`,
@@ -1278,7 +1204,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     deliverDiscoveries(ctx, created);
     if (withheld > 0) {
       const where = hex ? ` at hex ${hex.q},${hex.r}` : '';
-      notifyLog(ctx, ctx.runtime.appendLog('check', `Withheld ${withheld} result(s)${where}`, 'dm', {}));
+      notifyLog(
+        ctx,
+        ctx.runtime.appendLog('check', `Withheld ${withheld} result(s)${where}`, 'dm', {}),
+      );
     }
   }) as Handler,
 
@@ -1322,7 +1251,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     notifyLog(ctx, entry);
   }) as Handler,
 
-  'encounterTable.upsert': ((cmd: Extract<ClientCommand, { kind: 'encounterTable.upsert' }>, ctx: Ctx) => {
+  'encounterTable.upsert': ((
+    cmd: Extract<ClientCommand, { kind: 'encounterTable.upsert' }>,
+    ctx: Ctx,
+  ) => {
     requireDm(ctx);
     ctx.runtime.upsertEncounterTable({
       ...cmd.table,
@@ -1331,7 +1263,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     });
   }) as Handler,
 
-  'encounterTable.delete': ((cmd: Extract<ClientCommand, { kind: 'encounterTable.delete' }>, ctx: Ctx) => {
+  'encounterTable.delete': ((
+    cmd: Extract<ClientCommand, { kind: 'encounterTable.delete' }>,
+    ctx: Ctx,
+  ) => {
     requireDm(ctx);
     ctx.runtime.deleteEncounterTable(cmd.tableId);
   }) as Handler,
@@ -1426,15 +1361,39 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     }
   }) as Handler,
 
+  // -- D&D Beyond game log (issue #146) ---------------------------------------
+  'ddb.connect': ((_cmd: Extract<ClientCommand, { kind: 'ddb.connect' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    if (!DDB_GAMELOG)
+      throw new Error('D&D Beyond import is disabled on this instance (DDB_GAMELOG)');
+    if (!ctx.runtime.getSecret('ddbCobalt')) throw new Error('Paste the D&D Beyond cookie first');
+    if (!ctx.runtime.campaign.settings.ddbGameLog.campaignId) {
+      throw new Error('Pick the D&D Beyond campaign first');
+    }
+    ctx.runtime.updateCampaign({ settings: { ddbGameLog: { enabled: true } } });
+    startConnector(ctx.runtime, ctx.hub);
+  }) as Handler,
+
+  'ddb.disconnect': ((_cmd: Extract<ClientCommand, { kind: 'ddb.disconnect' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    ctx.runtime.updateCampaign({ settings: { ddbGameLog: { enabled: false } } });
+    stopConnector(ctx.runtime, 'stopped by the DM');
+  }) as Handler,
+
   // -- sessions (issue #78) ---------------------------------------------------
   'session.mark': ((cmd: Extract<ClientCommand, { kind: 'session.mark' }>, ctx: Ctx) => {
     requireDm(ctx);
     const atMinutes = ctx.runtime.campaign.time.minutes;
     const label = cmd.action === 'start' ? 'Session started' : 'Session ended';
-    const entry = ctx.runtime.appendLog('session', `${label} — ${campaignClock(ctx, atMinutes)}`, 'all', {
-      action: cmd.action,
-      atMinutes,
-    });
+    const entry = ctx.runtime.appendLog(
+      'session',
+      `${label} — ${campaignClock(ctx, atMinutes)}`,
+      'all',
+      {
+        action: cmd.action,
+        atMinutes,
+      },
+    );
     notifyLog(ctx, entry);
   }) as Handler,
 };
@@ -1498,11 +1457,7 @@ function afterPartyMoved(ctx: Ctx, mapId: string, token: Token): FogDelta {
 
 function deliverTrailFinds(ctx: Ctx, finds: TrailFind[]): void {
   for (const f of finds) {
-    ctx.hub.sendTo(
-      ctx.runtime,
-      { type: 'event', kind: 'trail.found', ...f },
-      { all: true },
-    );
+    ctx.hub.sendTo(ctx.runtime, { type: 'event', kind: 'trail.found', ...f }, { all: true });
   }
 }
 
@@ -1558,6 +1513,227 @@ function partyMembers(ctx: Ctx, token: Token): Token[] {
   return [...rt.tokens.values()].filter((t) => t.partyId === token.partyId);
 }
 
+/** One character's roll as the log and the search evaluation see it (issue #129). */
+export interface RollResult {
+  characterId: string;
+  name: string;
+  roll: number;
+  modifier: number;
+  total: number;
+  detail: RollDetail;
+  success: boolean | null;
+  hex: { q: number; r: number } | null;
+  /** False for a re-roll: logged, but no attempt and no gate evaluation. */
+  counts: boolean;
+}
+
+/**
+ * Hex-targeted search: compare finished rolls against the clue gates of
+ * content on (or observable from) that hex. A matching-skill clue opens when
+ * the character is within the gate's reach and the roll beats the clue's own
+ * DC — active and passive gates alike, a deliberate search can find what
+ * passive senses missed. Trails on the hex are checked the same way. Shared
+ * by `check.roll` and the D&D Beyond game-log import (issue #146).
+ */
+export function applySearchRoll(
+  ctx: Ctx,
+  search: { mapId: string; hex: { q: number; r: number }; skill: string; dmRoll: boolean },
+  results: RollResult[],
+): { found: number; pending: number } {
+  const rt = ctx.runtime.mapStates.get(search.mapId);
+  const map = ctx.runtime.maps.get(search.mapId);
+  if (!rt || !map) return { found: 0, pending: 0 };
+  const dmRoll = search.dmRoll;
+
+  const created: NewDiscovery[] = [];
+  let found = 0;
+  let pending = 0;
+  // Every counting roll is written down, DM- or player-initiated: the
+  // DM's investigation view is a history of who tried what, not just of
+  // what is still outstanding.
+  const attempts = new Map<string, string>();
+  for (const r of results) {
+    if (!r.counts) continue;
+    attempts.set(
+      r.characterId,
+      ctx.runtime.recordSearchAttempt({
+        id: nanoid(12),
+        mapId: search.mapId,
+        q: search.hex.q,
+        r: search.hex.r,
+        characterId: r.characterId,
+        skill: search.skill,
+        roll: r.roll,
+        modifier: r.modifier,
+        total: r.total,
+        at: Date.now(),
+        detail: r.detail,
+      }).id,
+    );
+  }
+  for (const r of results) {
+    if (!r.counts) continue;
+    const token = [...rt.tokens.values()].find(
+      (t) => t.kind === 'pc' && t.characterId === r.characterId,
+    );
+    if (!token) continue;
+    const character = ctx.runtime.characters.get(r.characterId)!;
+    for (const content of rt.contents.values()) {
+      if (!content.enabled) continue;
+      // A search on ANY hex of a region's footprint searches the region;
+      // a search on one of a clue's vantage hexes (#123) searches for
+      // what can be seen from there.
+      const covers = contentCoversHex(content, search.hex);
+      const distance = distanceToContent(content, { q: token.q, r: token.r });
+      for (const clue of content.clues) {
+        if (clue.gate.kind !== 'skill' || clue.gate.skill !== search.skill) continue;
+        const vantage = clueObserveSet(clue, content);
+        if (!covers && !vantage?.some((v) => v.q === search.hex.q && v.r === search.hex.r))
+          continue;
+        if (!clueInRange(clue, content, { q: token.q, r: token.r })) continue;
+        if (r.total < clue.gate.dc) continue;
+        if (ctx.runtime.hasDiscovery(clue.id, r.characterId)) continue;
+        const direction =
+          clue.indicatesDirection && distance > 0
+            ? compassDirection({ q: token.q, r: token.r }, search.hex, map.orientation)
+            : null;
+        const locates = distance === 0 && clue.revealsLocation;
+        // A player's success is a proposal, not a reveal (issue #107):
+        // the DM decides whether the character actually finds it. The
+        // bearing and locates flag are frozen here, at roll time, so the
+        // approval describes what they saw from where they stood.
+        if (!dmRoll) {
+          if (
+            ctx.runtime.addPendingReveal({
+              id: nanoid(12),
+              clueId: clue.id,
+              characterId: r.characterId,
+              attemptId: attempts.get(r.characterId) ?? '',
+              direction,
+              locates,
+              roll: r.roll,
+              modifier: r.modifier,
+              total: r.total,
+              at: Date.now(),
+            })
+          ) {
+            pending++;
+          }
+          continue;
+        }
+        const discovery = {
+          id: nanoid(12),
+          clueId: clue.id,
+          characterId: r.characterId,
+          at: Date.now(),
+          how: {
+            kind: 'roll' as const,
+            skill: search.skill,
+            roll: r.roll,
+            modifier: r.modifier,
+            total: r.total,
+            dc: clue.gate.dc,
+          },
+          direction,
+          locates,
+        };
+        if (ctx.runtime.addDiscovery(discovery)) {
+          created.push({
+            discovery,
+            contentId: content.id,
+            contentTitle: content.title,
+            clueText: clue.text,
+            characterName: character.name,
+          });
+        }
+      }
+    }
+  }
+  // Trails: a search can also spot trail cells on the hex (any skill
+  // gate, active included) when the roll beats the gate's DC.
+  const trailFinds: TrailFind[] = [];
+  for (const r of results) {
+    if (!r.counts) continue;
+    const token = [...rt.tokens.values()].find(
+      (t) => t.kind === 'pc' && t.characterId === r.characterId,
+    );
+    if (!token) continue;
+    const character = ctx.runtime.characters.get(r.characterId)!;
+    for (const trail of rt.trails.values()) {
+      if (trail.gate.kind !== 'skill' || trail.gate.skill !== search.skill) continue;
+      for (let i = 0; i < trail.cells.length; i++) {
+        const cell = trail.cells[i]!;
+        if (cell.q !== search.hex.q || cell.r !== search.hex.r) continue;
+        const distance = hexDistance({ q: token.q, r: token.r }, cell);
+        if (distance > trail.gate.maxDistance) continue;
+        if (r.total < trail.gate.dc) continue;
+        if (
+          ctx.runtime.addTrailDiscovery({
+            id: nanoid(12),
+            trailId: trail.id,
+            cellIndex: i,
+            characterId: r.characterId,
+            at: Date.now(),
+          })
+        ) {
+          trailFinds.push({
+            trailId: trail.id,
+            characterId: r.characterId,
+            characterName: character.name,
+            q: cell.q,
+            r: cell.r,
+            ...trailBearings(trail, i, map.orientation),
+          });
+        }
+      }
+    }
+  }
+  deliverTrailFinds(ctx, trailFinds);
+  found = created.length + trailFinds.length;
+  deliverDiscoveries(ctx, created);
+  if (pending > 0) {
+    // Nudge the DM: results are sitting in Inspect waiting on them.
+    ctx.hub.sendTo(
+      ctx.runtime,
+      {
+        type: 'event',
+        kind: 'search.pending',
+        characterName: results.map((r) => r.name).join(', '),
+        skill: search.skill,
+        total: Math.max(...results.map((r) => r.total)),
+        q: search.hex.q,
+        r: search.hex.r,
+        count: pending,
+      },
+      { dm: true },
+    );
+  }
+
+  return { found, pending };
+}
+
+/**
+ * Deliver a check log entry live, honouring who may see it: DM-only entries
+ * go to the DM; 'all' entries go to everyone when the campaign shows
+ * everyone's rolls, else to the DM plus the seats owning a character that
+ * rolled; a seat-private entry goes to that seat and the DM.
+ */
+export function deliverCheckEntry(ctx: Ctx, entry: LogEntry, characterIds: string[]): void {
+  const rolled = new Set(characterIds);
+  const ownerSeats = [...ctx.runtime.seats.values()]
+    .filter((s) => s.characterId && rolled.has(s.characterId))
+    .map((s) => s.id);
+  if (entry.visibility === 'all' && ctx.runtime.campaign.settings.rollVisibility !== 'all') {
+    ctx.hub.sendTo(
+      ctx.runtime,
+      { type: 'event', kind: 'log.appended', entry },
+      { dm: true, seatIds: ownerSeats },
+    );
+  } else {
+    notifyLog(ctx, entry);
+  }
+}
+
 /** Every hex of a move, start and destination included. */
 export type TravelPath = HexCoord[];
 
@@ -1594,7 +1770,11 @@ export function exploredRoute(
 ): HexCoord[] | null {
   const rt = runtime.mapStates.get(mapId);
   if (!rt) return null;
-  return findRoute(from, to, exploredPassable((h) => rt.fog.get(hexKey(h.q, h.r))));
+  return findRoute(
+    from,
+    to,
+    exploredPassable((h) => rt.fog.get(hexKey(h.q, h.r))),
+  );
 }
 
 export interface TravelOutcome {
@@ -1644,8 +1824,9 @@ function performTravel(
   const trailFindsBefore = new Set(runtime.trailDiscoveries.keys());
   const logBefore = new Set(runtime.log.map((e) => e.id));
   const parked = timeBefore.partyHex;
-  const parkedVisit =
-    parked ? structuredClone(runtime.hexVisit(parked.mapId, parked.q, parked.r)) : null;
+  const parkedVisit = parked
+    ? structuredClone(runtime.hexVisit(parked.mapId, parked.q, parked.r))
+    : null;
 
   // -- 0. nightfall (issue #130) ---------------------------------------------
   // Routed travel is "auto" travel: with the campaign set to halt at night,
@@ -1695,7 +1876,10 @@ function performTravel(
     if (member.kind === 'pc') {
       // Every walked hex — the path AND the hex they end on — joins the
       // explored trail, shifted to where this member actually walked.
-      const own = walked.map((h) => ({ q: h.q + (member.q - token.q), r: h.r + (member.r - token.r) }));
+      const own = walked.map((h) => ({
+        q: h.q + (member.q - token.q),
+        r: h.r + (member.r - token.r),
+      }));
       fogDelta.push(...runtime.setFog(member.mapId, own, 'explored'));
     }
     fogDelta.push(...afterPartyMoved(ctx, member.mapId, moved));
@@ -1760,7 +1944,9 @@ function performTravel(
   const upgraded = [...runtime.discoveries.values()]
     .filter((d) => locatesBefore.get(d.id) === false && d.locates)
     .map((d) => d.id);
-  const newTrailFinds = [...runtime.trailDiscoveries.keys()].filter((id) => !trailFindsBefore.has(id));
+  const newTrailFinds = [...runtime.trailDiscoveries.keys()].filter(
+    (id) => !trailFindsBefore.has(id),
+  );
   const newLog = runtime.log.filter((e) => !logBefore.has(e.id)).map((e) => e.id);
   const mapId = map.id;
   const clockDelta = runtime.campaign.time.minutes - timeBefore.minutes;
@@ -1768,14 +1954,17 @@ function performTravel(
   const details: string[] = [];
   if (clockDelta > 0) details.push(`clock rewound ${formatDuration(clockDelta)}`);
   if (newDiscoveries.length) {
-    details.push(`${newDiscoveries.length} discover${newDiscoveries.length === 1 ? 'y' : 'ies'} revoked`);
+    details.push(
+      `${newDiscoveries.length} discover${newDiscoveries.length === 1 ? 'y' : 'ies'} revoked`,
+    );
   }
   runtime.pushUndo({
     at: Date.now(),
     kind: 'token.move',
     mapId,
     description:
-      `move ${label} back to ${from.q},${from.r}` + (details.length ? ` (${details.join(', ')})` : ''),
+      `move ${label} back to ${from.q},${from.r}` +
+      (details.length ? ` (${details.join(', ')})` : ''),
     run: (rt) => {
       for (const p of prior) {
         if (rt.findToken(p.id)) rt.updateToken(mapId, p.id, { q: p.q, r: p.r });

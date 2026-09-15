@@ -62,9 +62,9 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
           <DensityControl />
         </div>
         <p className="text-xs text-ink-400 mt-1.5">
-          Text size and button wording are remembered per browser, not per campaign. Verbose puts
-          a word on every button; compact shows glyphs only. Players have the same controls in
-          the top bar.
+          Text size and button wording are remembered per browser, not per campaign. Verbose puts a
+          word on every button; compact shows glyphs only. Players have the same controls in the top
+          bar.
         </p>
       </Section>
 
@@ -100,6 +100,8 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
           routing is in the map manager ("Explored routes").
         </p>
       </Section>
+
+      <DdbGameLog campaignId={campaignId} />
 
       <ShareLinks campaignId={campaignId} />
 
@@ -142,7 +144,11 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
                     className="text-xs text-ink-400 hover:text-ember-500 cursor-pointer"
                     title="Remove this seat (the browser behind it will have to re-join)"
                     onClick={() => {
-                      if (confirm(`Remove seat "${seat.name}"? Their browser will need to re-join via the invite link.`)) {
+                      if (
+                        confirm(
+                          `Remove seat "${seat.name}"? Their browser will need to re-join via the invite link.`,
+                        )
+                      ) {
                         send({ kind: 'seat.delete', seatId: seat.id });
                       }
                     }}
@@ -212,9 +218,7 @@ function CalendarSettings() {
             <Field label="The campaign starts on">
               <Select
                 value={String(calendar.startDayOfYear)}
-                onChange={(e) =>
-                  patch({ ...calendar, startDayOfYear: Number(e.target.value) })
-                }
+                onChange={(e) => patch({ ...calendar, startDayOfYear: Number(e.target.value) })}
               >
                 {dayOptions.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -239,7 +243,7 @@ function CalendarSettings() {
 const ROTATE_WARNINGS: Record<'player' | 'dm', string> = {
   player:
     'Regenerate the PLAYER invite link?\n\nEvery copy of the old player link stops working — anyone who has not joined yet will need the new one. Players who already have a seat stay connected.',
-  dm: 'Regenerate the DM link?\n\nThe old DM link stops working, and so does every integration that uses this campaign\'s DM key as its Bearer token (the MCP server, backup cron jobs, wiki sync). You will need to update HEXCRAWL_TOKEN and any saved ?key= URLs.',
+  dm: "Regenerate the DM link?\n\nThe old DM link stops working, and so does every integration that uses this campaign's DM key as its Bearer token (the MCP server, backup cron jobs, wiki sync). You will need to update HEXCRAWL_TOKEN and any saved ?key= URLs.",
 };
 
 function ShareLinks({ campaignId }: { campaignId: string }) {
@@ -334,6 +338,186 @@ function ShareLinks({ campaignId }: { campaignId: string }) {
           </p>
         </div>
       )}
+    </Section>
+  );
+}
+
+/**
+ * D&D Beyond game-log import (issue #146): paste the DM's CobaltSession
+ * cookie once, pick the campaign, connect. Rolls players make on their D&D
+ * Beyond sheets then land in the log (and, optionally, count as searches).
+ * The cookie is write-only: the server keeps it, this UI only says whether
+ * one is stored. The feed is unofficial — the status line and the last raw
+ * events are here so the DM can see it working (or not).
+ */
+function DdbGameLog({ campaignId }: { campaignId: string }) {
+  const settings = useSession((s) => s.state?.campaign.settings.ddbGameLog);
+  const status = useSession((s) => s.state?.ddbGameLog ?? null);
+  const [cookie, setCookie] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [campaigns, setCampaigns] = useState<
+    { id: string; name: string; dmUsername: string }[] | null
+  >(null);
+  const [showRaw, setShowRaw] = useState(false);
+  if (!settings) return null;
+
+  const saveCookie = async () => {
+    if (!cookie.trim() || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/integrations/ddb/secret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookie: cookie.trim() }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        campaigns?: { id: string; name: string; dmUsername: string }[];
+        displayName?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? 'Failed');
+      setCampaigns(data.campaigns ?? []);
+      setCookie('');
+      useSession.getState().pushToast({
+        kind: 'info',
+        title: 'D&D Beyond cookie accepted',
+        text: `Signed in as ${data.displayName || 'the DM'} — ${data.campaigns?.length ?? 0} active campaign(s).`,
+      });
+    } catch (err) {
+      useSession.getState().pushToast({
+        kind: 'error',
+        title: 'D&D Beyond rejected the cookie',
+        text: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forget = async () => {
+    if (!confirm('Remove the stored D&D Beyond cookie and stop the listener?')) return;
+    await fetch(`/api/campaigns/${campaignId}/integrations/ddb/secret`, { method: 'DELETE' });
+    setCampaigns(null);
+  };
+
+  const pick = (id: string) => {
+    const chosen = campaigns?.find((c) => c.id === id);
+    send({
+      kind: 'campaign.update',
+      settings: { ddbGameLog: { campaignId: id, campaignName: chosen?.name ?? '' } },
+    });
+  };
+
+  return (
+    <Section title="D&D Beyond game log">
+      <p className="text-xs text-ink-400 mb-2">
+        Import the rolls players make on their D&D Beyond sheets (web or app) into this log.
+        Unofficial feed: it needs your D&D Beyond session cookie, stored on this server, and it can
+        stop working if D&D Beyond changes. Nothing is ever sent back to D&D Beyond.
+      </p>
+      {status && (
+        <p className="text-xs mb-2">
+          <span className={status.connected ? 'text-moss-500' : 'text-ink-400'}>
+            {status.connected ? '● Listening' : '○ Not connected'}
+          </span>
+          {settings.campaignName && (
+            <span className="text-ink-300"> · {settings.campaignName}</span>
+          )}
+          {status.imported > 0 && (
+            <span className="text-ink-300">
+              {' '}
+              · {status.imported} roll(s) imported since restart
+            </span>
+          )}
+          {status.lastEventAt && (
+            <span className="text-ink-400">
+              {' '}
+              · last event {new Date(status.lastEventAt).toLocaleTimeString()}
+            </span>
+          )}
+          {status.lastError && <span className="text-ember-500"> · {status.lastError}</span>}
+        </p>
+      )}
+      <div className="space-y-2">
+        <Field
+          label={
+            status?.hasSecret
+              ? 'Replace the CobaltSession cookie'
+              : 'CobaltSession cookie (from a logged-in dndbeyond.com tab: DevTools → Application → Cookies)'
+          }
+        >
+          <div className="flex gap-1.5">
+            <Input
+              type="password"
+              value={cookie}
+              onChange={(e) => setCookie(e.target.value)}
+              placeholder={status?.hasSecret ? '•••••• stored' : 'paste the cookie value'}
+              autoComplete="off"
+            />
+            <Button size="sm" onClick={() => void saveCookie()} disabled={!cookie.trim() || busy}>
+              {busy ? '…' : 'Save'}
+            </Button>
+          </div>
+        </Field>
+        {campaigns && campaigns.length > 1 && (
+          <Field label="D&D Beyond campaign">
+            <Select value={settings.campaignId} onChange={(e) => pick(e.target.value)}>
+              <option value="">Pick a campaign…</option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} (DM {c.dmUsername})
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {campaigns && campaigns.length === 0 && (
+          <p className="text-xs text-ember-500">That account has no active campaigns.</p>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {status?.hasSecret && settings.campaignId && !settings.enabled && (
+            <Button size="sm" variant="primary" onClick={() => send({ kind: 'ddb.connect' })}>
+              ▶ Connect
+            </Button>
+          )}
+          {settings.enabled && (
+            <Button size="sm" onClick={() => send({ kind: 'ddb.disconnect' })}>
+              ■ Disconnect
+            </Button>
+          )}
+          {status?.hasSecret && (
+            <Button size="sm" variant="danger" onClick={() => void forget()}>
+              Forget cookie
+            </Button>
+          )}
+        </div>
+        <Toggle
+          checked={settings.countAsSearch}
+          onChange={(v) =>
+            send({ kind: 'campaign.update', settings: { ddbGameLog: { countAsSearch: v } } })
+          }
+          label="A D&D Beyond skill check counts as a search of the character's hex"
+        />
+        <p className="text-xs text-ink-400">
+          Rolls are matched to characters by their linked D&D Beyond sheet, then by name. Whispered
+          rolls stay DM-only; the rest follow the roll-visibility setting above.
+        </p>
+        {status && status.recent.length > 0 && (
+          <div>
+            <button
+              className="text-[0.6875rem] text-ink-400 hover:text-ink-100 cursor-pointer"
+              onClick={() => setShowRaw((v) => !v)}
+            >
+              {showRaw ? 'hide' : 'show'} last {status.recent.length} raw event(s)
+            </button>
+            {showRaw && (
+              <pre className="mt-1 max-h-48 overflow-auto rounded bg-ink-900 border border-ink-700 p-2 text-[0.625rem] text-ink-300 whitespace-pre-wrap break-all">
+                {status.recent.join('\n\n')}
+              </pre>
+            )}
+          </div>
+        )}
+      </div>
     </Section>
   );
 }

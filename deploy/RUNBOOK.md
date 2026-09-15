@@ -412,3 +412,41 @@ docker rm -f hexcrawl-pg
 ```
 
 Without that variable the live tests skip (`src/db/postgres-live.test.ts`).
+
+
+## 12. D&D Beyond game-log import (issue #146)
+
+Optional, off by default. When `DDB_GAMELOG=1` is set on the instance, a DM
+can link a campaign to its D&D Beyond campaign so the rolls players make on
+their D&D Beyond sheets (web or app) show up in HexCrawl's log, the per-hex
+"Rolls here" history, and — if the DM turns it on — count as searches of the
+hex the character stands on.
+
+**How it works.** D&D Beyond streams a campaign's rolls over a websocket that
+its own client uses (`game-log-api-live.dndbeyond.com`). It is not a public
+API: the endpoints are the ones the community tools (Foundry "DDB Gamelog",
+ddb-importer) use and can change or vanish without notice. The listener
+authenticates with a short-lived token minted from the DM's `CobaltSession`
+cookie. Read-only: nothing is ever sent back to D&D Beyond.
+
+**Setting it up (DM).** Setup → "D&D Beyond game log": paste the cookie value
+(from a logged-in dndbeyond.com tab: DevTools → Application → Cookies →
+`CobaltSession`), pick the campaign if the account has several, Connect. The
+status line shows connected/last event/last error, and "show raw events"
+lists the last few messages for verification. "Forget cookie" deletes it and
+stops the listener. Characters are matched by their linked D&D Beyond sheet
+(the id used for skill sync), then by name; whispered rolls stay DM-only.
+
+**Where the cookie lives.** `integration_secret` table, one row per
+campaign, never in a snapshot or an export archive. It is a session
+credential for the DM's D&D Beyond account — treat the database accordingly,
+and rotate it (log out of D&D Beyond) when in doubt. Cookies expire; when
+the status line says the cookie was rejected, paste a fresh one.
+
+**Before trusting it.** Step 0 of the issue is
+`scripts/ddb-gamelog-capture.mjs`: `COBALT='<cookie>' node
+scripts/ddb-gamelog-capture.mjs` lists the account's campaigns;
+`COBALT='<cookie>' node scripts/ddb-gamelog-capture.mjs <campaignId> 30`
+records 30 minutes of raw events to a local `.jsonl` for checking the
+message shape the mapper expects (`parseGameLogEvent` in
+`packages/server/src/engine/ddbGameLog.ts`). Delete the capture file after.

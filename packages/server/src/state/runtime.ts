@@ -8,6 +8,7 @@ import type {
   Character,
   Clue,
   Content,
+  DdbGameLogStatus,
   Discovery,
   Trail,
   TrailDiscovery,
@@ -53,10 +54,11 @@ export interface SeatRecord {
 }
 
 /** Nested patch shape for campaign settings (mapDefaults merges field-wise). */
-export type CampaignSettingsPatch = Partial<Omit<CampaignSettings, 'mapDefaults'>> & {
+export type CampaignSettingsPatch = Partial<Omit<CampaignSettings, 'mapDefaults' | 'ddbGameLog'>> & {
   mapDefaults?: Partial<Omit<MapDefaults, 'encounterCheck'>> & {
     encounterCheck?: Partial<MapDefaults['encounterCheck']>;
   };
+  ddbGameLog?: Partial<CampaignSettings['ddbGameLog']>;
 };
 
 export interface MapRuntime {
@@ -133,6 +135,17 @@ export class CampaignRuntime {
   online = new Set<string>();
   /** DM undo history (in-memory; newest last). */
   undoStack: UndoEntry[] = [];
+  /** D&D Beyond game-log listener state (issue #146); in-memory. */
+  ddbStatus: DdbGameLogStatus = {
+    hasSecret: false,
+    connected: false,
+    since: null,
+    lastEventAt: null,
+    lastError: null,
+    imported: 0,
+    recent: [],
+  };
+  private importedRolls = new Set<string>();
   /**
    * Prep mode (settings.pausePlayerMapSync): per-map snapshot of the editable
    * layers as players last saw them. In-memory; recaptured at boot when the
@@ -171,6 +184,7 @@ export class CampaignRuntime {
     };
     if (!opts.fresh) this.load();
     if (this.campaign.settings.pausePlayerMapSync) this.capturePlayerFreeze();
+    this.ddbStatus.hasSecret = this.getSecret('ddbCobalt') !== null;
   }
 
   // -- loading ---------------------------------------------------------------
@@ -288,6 +302,11 @@ export class CampaignRuntime {
         total: pr.total as number,
         at: pr.at as number,
       });
+    }
+    for (const r of d
+      .prepare('SELECT external_id FROM imported_roll WHERE campaign_id = ?')
+      .all(this.id) as Array<{ external_id: string }>) {
+      this.importedRolls.add(r.external_id);
     }
     this.log = (
       d
@@ -502,7 +521,44 @@ export class CampaignRuntime {
         .reverse()
         .slice(0, UNDO_HISTORY_SHOWN)
         .map((u) => ({ at: u.at, kind: u.kind, description: u.description })),
+      ddbGameLog: { ...this.ddbStatus, recent: [...this.ddbStatus.recent] },
     };
+  }
+
+  // -- integration secrets + imported rolls (issue #146) ---------------------
+
+  /** A server-side secret for this campaign (never in snapshots or exports). */
+  getSecret(kind: string): string | null {
+    const row = this.db
+      .prepare('SELECT value FROM integration_secret WHERE campaign_id = ? AND kind = ?')
+      .get(this.id, kind) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  setSecret(kind: string, value: string | null): void {
+    if (value === null) {
+      this.db.prepare('DELETE FROM integration_secret WHERE campaign_id = ? AND kind = ?').run(this.id, kind);
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO integration_secret (campaign_id, kind, value, updated_at) VALUES (?,?,?,?)
+           ON CONFLICT(campaign_id, kind) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
+        )
+        .run(this.id, kind, value, Date.now());
+    }
+    if (kind === 'ddbCobalt') this.ddbStatus.hasSecret = value !== null;
+  }
+
+  hasImportedRoll(externalId: string): boolean {
+    return this.importedRolls.has(externalId);
+  }
+
+  markImportedRoll(externalId: string): void {
+    if (this.importedRolls.has(externalId)) return;
+    this.importedRolls.add(externalId);
+    this.db
+      .prepare('INSERT INTO imported_roll (campaign_id, external_id, at) VALUES (?,?,?) ON CONFLICT DO NOTHING')
+      .run(this.id, externalId, Date.now());
   }
 
   // -- prep-mode freeze ------------------------------------------------------
@@ -565,8 +621,9 @@ export class CampaignRuntime {
   updateCampaign(patch: { name?: string; settings?: CampaignSettingsPatch }): void {
     if (patch.name !== undefined) this.campaign.name = patch.name;
     if (patch.settings) {
-      const { mapDefaults, ...rest } = patch.settings;
+      const { mapDefaults, ddbGameLog, ...rest } = patch.settings;
       const next: CampaignSettings = { ...this.campaign.settings, ...rest };
+      if (ddbGameLog) next.ddbGameLog = { ...this.campaign.settings.ddbGameLog, ...ddbGameLog };
       if (mapDefaults) {
         // mapDefaults is a nested patch: merge field-wise (and its own
         // encounterCheck sub-object) so a one-field patch isn't a reset.

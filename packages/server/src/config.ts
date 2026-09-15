@@ -118,3 +118,10 @@ export const RATE_LIMIT_CREATE = num('RATE_LIMIT_CREATE', 3);
 export const RATE_LIMIT_IMPORT = num('RATE_LIMIT_IMPORT', 3);
 export const RATE_LIMIT_JOIN = num('RATE_LIMIT_JOIN', 10);
 export const RATE_LIMIT_EXPORT = num('RATE_LIMIT_EXPORT', 10);
+
+/**
+ * D&D Beyond game-log import (issue #146). Off by default: the feed is
+ * unofficial and needs a DM's session cookie stored on the server, so an
+ * instance opts in explicitly with DDB_GAMELOG=1.
+ */
+export const DDB_GAMELOG = /^(1|true|yes)$/i.test(process.env.DDB_GAMELOG ?? '');

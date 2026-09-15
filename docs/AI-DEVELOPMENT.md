@@ -325,6 +325,24 @@ player-facing data).
   their own PC token only. `deleteCharacter` deletes the character's tokens
   and cascades discoveries, trail finds, search attempts and pending reveals.
 
+## D&D Beyond game-log import (issue #146)
+
+- `engine/ddbGameLog.ts`: `mintToken` (cookie → short-lived token + user id),
+  `discoverCampaigns`, `parseGameLogEvent` (pure; tolerant of unknown
+  shapes), `matchCharacter` (by `ddbId`, then name), `importRoll` (writes a
+  `check` entry with `data.source = 'ddb'` through the same shape as a tray
+  roll, dedupes via the `imported_roll` table, optionally runs
+  `applySearchRoll`), and `DdbGameLogConnector` (per-campaign socket with
+  reconnect/re-auth; registry via `startConnector`/`stopConnector`).
+- The cookie is in `integration_secret` (`runtime.getSecret('ddbCobalt')`);
+  never put it on the snapshot or in the export. `CampaignState.ddbGameLog`
+  is the listener's status and is DM-only (`filter.ts` gives players null).
+- Gated by `DDB_GAMELOG` (config.ts); `index.ts` resumes enabled listeners at
+  boot. The feed is unofficial — if the mapper stops matching, capture with
+  `scripts/ddb-gamelog-capture.mjs` and adjust `parseGameLogEvent`.
+- `applySearchRoll` / `deliverCheckEntry` in `ws/handlers.ts` are the shared
+  tail of `check.roll`; any new source of rolls should go through them.
+
 ## Dev & verification
 
 - `pnpm install`, then `pnpm dev` (server :3000, Vite client :5173, both on

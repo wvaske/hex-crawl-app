@@ -124,6 +124,11 @@ export function LogTab() {
                   {role === 'dm' && entry.visibility === 'dm' && (
                     <span className="text-[0.625rem] text-ember-500/80">DM only</span>
                   )}
+                  {entry.data?.source === 'ddb' && (
+                    <span className="text-[0.625rem] text-arcane-500" title="Imported from the D&D Beyond game log">
+                      D&D Beyond
+                    </span>
+                  )}
                   <span className="ml-auto">{formatTime(entry.at)}</span>
                 </div>
                 <p className="text-ink-100 whitespace-pre-wrap">{entry.text}</p>
