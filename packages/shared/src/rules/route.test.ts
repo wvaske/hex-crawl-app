@@ -52,6 +52,34 @@ describe('findRoute', () => {
   it('gives up within the node budget', () => {
     expect(findRoute({ q: 0, r: 0 }, { q: 50, r: 0 }, () => true, { maxNodes: 20 })).toBeNull();
   });
+
+  it('crosses a large open revealed area without touching the whole plane (the Baldur’s Gate → Waterdeep case)', () => {
+    // 200 hexes across fully revealed ground: a breadth-first search expands
+    // ~3·d² ≈ 120k hexes and used to give up at 20k; A* walks the corridor.
+    let touched = 0;
+    const route = findRoute(
+      { q: 0, r: 0 },
+      { q: 120, r: 80 },
+      () => {
+        touched++;
+        return true;
+      },
+      { maxNodes: 20000 },
+    );
+    expect(route).not.toBeNull();
+    expect(route!.length - 1).toBe(200);
+    expect(touched).toBeLessThan(20000);
+  });
+
+  it('still finds the way around a wall it has to go far around', () => {
+    // A wall along q=5 from r=-30..30 with a gap at r=31: the direct heading
+    // is blocked and the search has to sweep sideways, then come back.
+    const passable = (h: { q: number; r: number }) => !(h.q === 5 && h.r >= -30 && h.r <= 30);
+    const route = findRoute({ q: 0, r: 0 }, { q: 10, r: 0 }, passable)!;
+    expect(route).not.toBeNull();
+    for (const h of route) expect(passable(h)).toBe(true);
+    expect(route.length - 1).toBeGreaterThan(10);
+  });
 });
 
 describe('exploredPassable', () => {

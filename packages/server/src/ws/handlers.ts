@@ -414,7 +414,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       const map = ctx.runtime.maps.get(token.mapId);
       if (!map) throw new Error('Map not found');
       const to = { q: pending.toQ, r: pending.toR };
-      const travel = travelPath(ctx, map, { q: token.q, r: token.r }, to, cmd.teleport);
+      // The DM picks how the approved move is walked: along the explored
+      // route (default), as the straight line, or as a teleport.
+      const travel = travelPath(ctx, map, { q: token.q, r: token.r }, to, cmd.teleport, {
+        route: cmd.route ?? true,
+      });
       performTravel(ctx, map, token, travel.path, {
         teleport: cmd.teleport,
         approved: true,
@@ -1571,9 +1575,10 @@ export function travelPath(
   from: HexCoord,
   to: HexCoord,
   teleport: boolean,
+  opts: { route?: boolean } = {},
 ): { path: TravelPath; routed: boolean } {
   if (teleport) return { path: [from, to], routed: false };
-  if (map.routeExplored && hexDistance(from, to) > 1) {
+  if (map.routeExplored && opts.route !== false && hexDistance(from, to) > 1) {
     const route = exploredRoute(ctx.runtime, map.id, from, to);
     if (route) return { path: route, routed: true };
   }
