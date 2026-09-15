@@ -384,7 +384,13 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
         ddbId,
       });
       hub.scheduleSync(runtime);
-      return c.json({ name: sync.name, classes: sync.classes, level: sync.level, skills: sync.skills });
+      return c.json({
+        name: sync.name,
+        classes: sync.classes,
+        level: sync.level,
+        skills: sync.skills,
+        proficiencies: sync.proficiencies,
+      });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Sync failed' }, 502);
     }

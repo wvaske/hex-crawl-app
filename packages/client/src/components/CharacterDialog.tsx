@@ -3,7 +3,7 @@ import type { Character, CharacterExtra } from '@hexcrawl/shared';
 import { useSession } from '../stores/session.js';
 import { send } from '../ws.js';
 import { Button, Dialog, Field, Input, TextArea } from '../ui/kit.js';
-import { CharacterEditor } from './panels/CharactersTab.js';
+import { CharacterEditor, useAutoDdbSync } from './panels/CharactersTab.js';
 
 const EXTRA_FIELDS: Array<{
   key: keyof CharacterExtra;
@@ -40,6 +40,9 @@ export function CharacterDialog({ character, onClose }: { character: Character; 
   const isMine = mySeat?.characterId === character.id;
   const canEdit = isDm || isMine;
   const claimedBy = state?.seats.find((s) => s.characterId === character.id);
+  // A linked sheet refreshes itself from D&D Beyond when opened (once per
+  // page load), so proficiencies and modifiers are what the sheet says now.
+  useAutoDdbSync(character, canEdit);
 
   const patchExtra = (key: keyof CharacterExtra, value: string) => {
     if (value === character.extra[key]) return;
