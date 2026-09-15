@@ -646,10 +646,16 @@ export const WeatherRollCommand = z.object({
   kind: z.literal('weather.roll'),
 });
 
-/** DM: undo the most recent undoable change (fog, terrain, moves, edits). */
+/**
+ * DM: undo the most recent undoable change (fog, terrain, moves, edits).
+ * `count` (issue #127) pops that many entries in order — "rewind to before
+ * that move" from the undo history menu. Optional, not defaulted: a default
+ * would make it required in `CommandInput` at every call site.
+ */
 export const UndoCommand = z.object({
   ...base,
   kind: z.literal('undo'),
+  count: z.number().int().min(1).max(100).optional(),
 });
 
 export const NarrateCommand = z.object({

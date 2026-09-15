@@ -22,6 +22,9 @@ const KIND_META: Record<string, { icon: string; label: string }> = {
   time: { icon: '🕐', label: 'Time' },
   weather: { icon: '🌦️', label: 'Weather' },
   session: { icon: '🎬', label: 'Session' },
+  travel: { icon: '🥾', label: 'Travel' },
+  undo: { icon: '↶', label: 'Undo' },
+  note: { icon: '📝', label: 'Note' },
 };
 
 const FILTERS = [
@@ -29,6 +32,7 @@ const FILTERS = [
   'discovery',
   'check',
   'encounter',
+  'travel',
   'narration',
   'share',
   'time',

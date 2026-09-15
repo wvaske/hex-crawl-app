@@ -178,6 +178,7 @@ function fullState(): CampaignState {
       { id: 'l3', at: 3, kind: 'discovery', text: 'alice private', visibility: 's1', data: {} },
       { id: 'l4', at: 4, kind: 'discovery', text: 'bob private', visibility: 's2', data: {} },
     ],
+    undoHistory: [{ at: 5, kind: 'fog', description: 'fog change (3 hexes)' }],
   };
 }
 
@@ -189,6 +190,11 @@ describe('filterStateForViewer', () => {
     const dm = filterStateForViewer(full, { seatId: 'dm', role: 'dm', characterId: null });
     expect(dm).toEqual({ ...full, senses: [] });
     expect(dm.mapState).toBe(full.mapState);
+  });
+
+  it('keeps the undo history away from players', () => {
+    const s = filterStateForViewer(fullState(), viewer);
+    expect(s.undoHistory).toEqual([]);
   });
 
   it('strips hidden hexes, fog, dm-only layers', () => {

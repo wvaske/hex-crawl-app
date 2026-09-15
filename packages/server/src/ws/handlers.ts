@@ -3,6 +3,7 @@ import type {
   ClientCommand,
   Clue,
   Content,
+  HexCoord,
   InheritableMapField,
   LogEntry,
   MapInfo,
@@ -340,27 +341,9 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     if (ctx.seat.role !== 'dm' && map.moveApproval) {
       throw new Error('This map uses DM-approved movement — your move was sent as a request');
     }
-    const prior = partyMembers(ctx, token).map((m) => ({ id: m.id, q: m.q, r: m.r }));
-    const label = token.label || 'token';
-    const fromQ = token.q;
-    const fromR = token.r;
     const teleport = cmd.teleport && ctx.seat.role === 'dm';
-    const fogDelta = executePartyMove(ctx, token, cmd.q, cmd.r, teleport);
-    autoEncounterChecks(ctx, map, token, { q: fromQ, r: fromR }, { q: cmd.q, r: cmd.r }, teleport);
-    advanceTravelClock(ctx, map, token, { q: fromQ, r: fromR }, { q: cmd.q, r: cmd.r }, teleport);
-    if (ctx.seat.role === 'dm') {
-      ctx.runtime.pushUndo({
-        at: Date.now(),
-        kind: 'token.move',
-        description: `move ${label} back to ${fromQ},${fromR}`,
-        run: (runtime) => {
-          for (const p of prior) {
-            if (runtime.findToken(p.id)) runtime.updateToken(token.mapId, p.id, { q: p.q, r: p.r });
-          }
-          restoreFogDelta(runtime, token.mapId, fogDelta);
-        },
-      });
-    }
+    const path = travelPath(ctx, map, { q: token.q, r: token.r }, { q: cmd.q, r: cmd.r }, teleport);
+    performTravel(ctx, map, token, path, { teleport });
   }) as Handler,
 
   'move.request': ((cmd: Extract<ClientCommand, { kind: 'move.request' }>, ctx: Ctx) => {
@@ -400,25 +383,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     if (!pending) throw new Error('No pending move for that token');
     rt.pendingMoves.delete(cmd.tokenId);
     if (cmd.approve) {
-      const prior = partyMembers(ctx, token).map((m) => ({ id: m.id, q: m.q, r: m.r }));
-      const from = { q: token.q, r: token.r };
-      const fogDelta = executePartyMove(ctx, token, pending.toQ, pending.toR, cmd.teleport);
       const map = ctx.runtime.maps.get(token.mapId);
-      if (map) {
-        autoEncounterChecks(ctx, map, token, from, { q: pending.toQ, r: pending.toR }, cmd.teleport);
-        advanceTravelClock(ctx, map, token, from, { q: pending.toQ, r: pending.toR }, cmd.teleport);
-      }
-      ctx.runtime.pushUndo({
-        at: Date.now(),
-        kind: 'token.move',
-        description: `undo ${pending.label}'s approved move`,
-        run: (runtime) => {
-          for (const p of prior) {
-            if (runtime.findToken(p.id)) runtime.updateToken(token.mapId, p.id, { q: p.q, r: p.r });
-          }
-          restoreFogDelta(runtime, token.mapId, fogDelta);
-        },
-      });
+      if (!map) throw new Error('Map not found');
+      const to = { q: pending.toQ, r: pending.toR };
+      const path = travelPath(ctx, map, { q: token.q, r: token.r }, to, cmd.teleport);
+      performTravel(ctx, map, token, path, { teleport: cmd.teleport, approved: true });
     }
     ctx.hub.sendTo(
       ctx.runtime,
@@ -1339,14 +1308,24 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   }) as Handler,
 
   // -- undo ------------------------------------------------------------------
-  undo: ((_cmd: Extract<ClientCommand, { kind: 'undo' }>, ctx: Ctx) => {
+  undo: ((cmd: Extract<ClientCommand, { kind: 'undo' }>, ctx: Ctx) => {
     requireDm(ctx);
-    const entry = ctx.runtime.undoStack.pop();
-    if (!entry) throw new Error('Nothing to undo');
-    entry.run(ctx.runtime);
-    const summary = `Undid: ${entry.description}`;
-    const log = ctx.runtime.appendLog('undo', summary, 'dm');
-    notifyLog(ctx, log);
+    if (!ctx.runtime.undoStack.length) throw new Error('Nothing to undo');
+    // "Rewind to before that change": pop entries newest-first until the
+    // chosen one has been reverted too (issue #127).
+    const count = Math.min(cmd.count ?? 1, ctx.runtime.undoStack.length);
+    for (let i = 0; i < count; i++) {
+      const entry = ctx.runtime.undoStack.pop()!;
+      entry.run(ctx.runtime);
+      // A reverted move snaps tokens and the clock back for everyone, so the
+      // players get told why; edits to DM-only layers stay DM-only.
+      const log = ctx.runtime.appendLog(
+        'undo',
+        `Undid: ${entry.description}`,
+        entry.kind === 'token.move' ? 'all' : 'dm',
+      );
+      notifyLog(ctx, log);
+    }
   }) as Handler,
 
   // -- narration -------------------------------------------------------------
@@ -1495,57 +1474,219 @@ function partyMembers(ctx: Ctx, token: Token): Token[] {
   return [...rt.tokens.values()].filter((t) => t.partyId === token.partyId);
 }
 
+/** Every hex of a move, start and destination included. */
+export type TravelPath = HexCoord[];
+
 /**
- * Move `token` to (q, r) and shift every other member of its party by the
- * same offset, so the group travels as a unit while keeping formation.
+ * The hexes a move crosses. A straight line for now; issue #130 substitutes a
+ * route through explored hexes when one exists. A teleport has no path — it
+ * lands on the destination and nothing in between is walked.
  */
-function executePartyMove(ctx: Ctx, token: Token, q: number, r: number, teleport = false): FogDelta {
-  const dq = q - token.q;
-  const dr = r - token.r;
-  const delta: FogDelta = [];
-  for (const member of partyMembers(ctx, token)) {
-    delta.push(...executeTokenMove(ctx, member, member.q + dq, member.r + dr, teleport));
-  }
-  return delta;
+function travelPath(
+  _ctx: Ctx,
+  _map: MapInfo,
+  from: HexCoord,
+  to: HexCoord,
+  teleport: boolean,
+): TravelPath {
+  if (teleport) return [from, to];
+  return hexLine(from, to);
 }
 
-/** Execute a token move: traversed path becomes the explored trail, then sight + knowledge. */
-function executeTokenMove(ctx: Ctx, token: Token, q: number, r: number, teleport = false): FogDelta {
-  const from = { q: token.q, r: token.r };
-  const moved = ctx.runtime.updateToken(token.mapId, token.id, { q, r });
-  const delta: FogDelta = [];
-  if (token.kind === 'pc') {
-    // Every walked hex — the traversed path AND the hex they end on — joins
-    // the explored trail. A teleport marks only the destination.
-    const path = teleport ? [{ q, r }] : hexLine(from, { q, r });
-    delta.push(...ctx.runtime.setFog(token.mapId, path, 'explored'));
+export interface TravelOutcome {
+  /** Where the party actually stopped (an encounter can halt it short). */
+  to: HexCoord;
+  hexes: number;
+  minutes: number;
+  stoppedBy: 'encounter' | null;
+}
+
+/**
+ * The whole of a party move (issue #127), in one place so one undo entry can
+ * reverse every part of it:
+ *
+ * 1. Auto encounter checks along the path. A TRIGGERED encounter halts the
+ *    party at that hex — the rest of the path is not walked.
+ * 2. Every party member shifts by the same offset; each walked hex joins the
+ *    explored trail; fog auto-reveals; the knowledge engine and trails run.
+ * 3. The clock advances by hexes × minutesPerHex, the departed hex is credited
+ *    with the time lingered there, and the arrival is stamped.
+ * 4. A `travel` log line records the move for everyone.
+ *
+ * The undo entry restores token positions, the fog delta, the whole clock
+ * blob (partyHex and weather included), the two hex-visit records touched,
+ * the encounter-check counter, and revokes the discoveries, trail finds and
+ * log lines the move produced. Player moves push undo entries too — undoing
+ * stays a DM action, but a player's mis-drag must be recoverable.
+ */
+function performTravel(
+  ctx: Ctx,
+  map: MapInfo,
+  token: Token,
+  path: TravelPath,
+  opts: { teleport: boolean; approved?: boolean },
+): TravelOutcome {
+  const runtime = ctx.runtime;
+  const from = path[0] ?? { q: token.q, r: token.r };
+  const label = token.label || 'token';
+  const isParty = token.kind === 'pc';
+
+  // -- before: everything the undo will need -------------------------------
+  const prior = partyMembers(ctx, token).map((m) => ({ id: m.id, q: m.q, r: m.r }));
+  const timeBefore = structuredClone(runtime.campaign.time);
+  const counterBefore = map.encounterCheck.hexesSinceCheck;
+  const discoveriesBefore = new Set(runtime.discoveries.keys());
+  const locatesBefore = new Map([...runtime.discoveries.values()].map((d) => [d.id, d.locates]));
+  const trailFindsBefore = new Set(runtime.trailDiscoveries.keys());
+  const logBefore = new Set(runtime.log.map((e) => e.id));
+  const parked = timeBefore.partyHex;
+  const parkedVisit =
+    parked ? structuredClone(runtime.hexVisit(parked.mapId, parked.q, parked.r)) : null;
+
+  // -- 1. encounter checks along the way ------------------------------------
+  let steps = opts.teleport ? [] : path.slice(1);
+  let stoppedBy: TravelOutcome['stoppedBy'] = null;
+  if (isParty && steps.length) {
+    const halt = autoEncounterChecks(ctx, map, steps);
+    if (halt !== null) {
+      steps = steps.slice(0, halt + 1);
+      stoppedBy = 'encounter';
+    }
   }
-  delta.push(...afterPartyMoved(ctx, token.mapId, moved));
-  return delta;
+  const to = opts.teleport ? (path[path.length - 1] ?? from) : (steps[steps.length - 1] ?? from);
+  const toVisit = structuredClone(runtime.hexVisit(map.id, to.q, to.r));
+  const walked: TravelPath = opts.teleport ? [to] : [from, ...steps];
+
+  // -- 2. the move itself ----------------------------------------------------
+  const dq = to.q - token.q;
+  const dr = to.r - token.r;
+  const fogDelta: FogDelta = [];
+  for (const member of partyMembers(ctx, token)) {
+    const dest = { q: member.q + dq, r: member.r + dr };
+    const moved = runtime.updateToken(member.mapId, member.id, dest);
+    if (member.kind === 'pc') {
+      // Every walked hex — the path AND the hex they end on — joins the
+      // explored trail, shifted to where this member actually walked.
+      const own = walked.map((h) => ({ q: h.q + (member.q - token.q), r: h.r + (member.r - token.r) }));
+      fogDelta.push(...runtime.setFog(member.mapId, own, 'explored'));
+    }
+    fogDelta.push(...afterPartyMoved(ctx, member.mapId, moved));
+  }
+
+  // -- 3. the clock ----------------------------------------------------------
+  let minutes = 0;
+  if (isParty) {
+    const time = runtime.campaign.time;
+    const mode = resolveTravelMode(time.travelMode, runtime.campaign.settings.customTravelModes);
+    const hexes = opts.teleport ? 0 : steps.length;
+    minutes = hexes * minutesPerHex(map.milesPerHex, mode, time.pace);
+    if (parked) {
+      runtime.addHexTime(parked.mapId, parked.q, parked.r, time.minutes - parked.arrivedMinutes);
+    }
+    const before = time.minutes;
+    if (minutes > 0) runtime.advanceTime(minutes);
+    const arrivedMinutes = runtime.campaign.time.minutes;
+    runtime.recordHexArrival(map.id, to.q, to.r, arrivedMinutes);
+    runtime.updateTime({ partyHex: { mapId: map.id, q: to.q, r: to.r, arrivedMinutes } });
+    // Travel that crosses midnight brings a new day's weather with it (#79).
+    logDailyWeather(ctx, before);
+  }
+
+  // -- 4. the travel line ----------------------------------------------------
+  const hexes = opts.teleport ? 0 : steps.length;
+  const where = hexLocationLabel(runtime, { mapId: map.id, q: to.q, r: to.r });
+  const shortfall = stoppedBy ? hexDistance(to, path[path.length - 1]!) : 0;
+  let text: string;
+  if (opts.teleport) {
+    text = `${label} teleported to ${where}`;
+  } else {
+    text = `${label} travelled ${hexes} hex${hexes === 1 ? '' : 'es'} to ${where}`;
+    if (minutes > 0) text += ` — ${formatDuration(minutes)}`;
+    if (isParty) text += ` — ${campaignClock(ctx, runtime.campaign.time.minutes)}`;
+    if (stoppedBy === 'encounter') {
+      text += ` — halted by an encounter, ${shortfall} hex${shortfall === 1 ? '' : 'es'} short of ${path[path.length - 1]!.q},${path[path.length - 1]!.r}`;
+    }
+  }
+  const entry = runtime.appendLog('travel', text, opts.teleport || !isParty ? 'dm' : 'all', {
+    tokenId: token.id,
+    characterId: token.characterId,
+    mapId: map.id,
+    from: { q: from.q, r: from.r },
+    to: { q: to.q, r: to.r },
+    intended: { q: path[path.length - 1]!.q, r: path[path.length - 1]!.r },
+    hexes,
+    minutes,
+    teleport: opts.teleport,
+    approved: opts.approved ?? false,
+    stoppedBy,
+    party: prior.length,
+  });
+  notifyLog(ctx, entry);
+
+  // -- after: what the move produced -----------------------------------------
+  const newDiscoveries = [...runtime.discoveries.keys()].filter((id) => !discoveriesBefore.has(id));
+  const upgraded = [...runtime.discoveries.values()]
+    .filter((d) => locatesBefore.get(d.id) === false && d.locates)
+    .map((d) => d.id);
+  const newTrailFinds = [...runtime.trailDiscoveries.keys()].filter((id) => !trailFindsBefore.has(id));
+  const newLog = runtime.log.filter((e) => !logBefore.has(e.id)).map((e) => e.id);
+  const mapId = map.id;
+  const clockDelta = runtime.campaign.time.minutes - timeBefore.minutes;
+
+  const details: string[] = [];
+  if (clockDelta > 0) details.push(`clock rewound ${formatDuration(clockDelta)}`);
+  if (newDiscoveries.length) {
+    details.push(`${newDiscoveries.length} discover${newDiscoveries.length === 1 ? 'y' : 'ies'} revoked`);
+  }
+  runtime.pushUndo({
+    at: Date.now(),
+    kind: 'token.move',
+    mapId,
+    description:
+      `move ${label} back to ${from.q},${from.r}` + (details.length ? ` (${details.join(', ')})` : ''),
+    run: (rt) => {
+      for (const p of prior) {
+        if (rt.findToken(p.id)) rt.updateToken(mapId, p.id, { q: p.q, r: p.r });
+      }
+      restoreFogDelta(rt, mapId, fogDelta);
+      if (isParty) {
+        rt.updateTime(timeBefore);
+        rt.restoreHexVisit(mapId, to.q, to.r, toVisit);
+        if (parked) rt.restoreHexVisit(parked.mapId, parked.q, parked.r, parkedVisit);
+        if (rt.maps.has(mapId)) {
+          rt.updateMap(mapId, {
+            encounterCheck: { hexesSinceCheck: counterBefore },
+          } as unknown as Partial<MapInfo>);
+        }
+      }
+      for (const id of newDiscoveries) rt.revokeDiscovery(id);
+      for (const id of upgraded) rt.setDiscoveryLocates(id, false);
+      for (const id of newTrailFinds) rt.deleteTrailDiscovery(id);
+      rt.deleteLogEntries(newLog);
+    },
+  });
+
+  return { to, hexes, minutes, stoppedBy };
 }
 
 /**
  * Auto wandering-encounter checks: when the map's encounterCheck.autoEvery is
  * set, every N hexes of PC travel rolls the trigger die. The counter carries
- * across moves (persisted in the map's encounterCheck config) and a long drag
- * can roll more than once, at the hexes actually crossed. Teleports don't
- * count as travel.
+ * across moves (persisted in the map's encounterCheck config) and a long trip
+ * can roll more than once, at the hexes actually crossed.
+ *
+ * Returns the index (into `steps`) of the hex where an encounter TRIGGERED, or
+ * null when the party gets through unbothered. Checking stops at the first
+ * trigger: the party halts there (issue #130), so the hexes beyond are never
+ * crossed and never rolled for.
  */
-function autoEncounterChecks(
-  ctx: Ctx,
-  map: MapInfo,
-  token: Token,
-  from: { q: number; r: number },
-  to: { q: number; r: number },
-  teleport: boolean,
-): void {
-  if (teleport || token.kind !== 'pc') return;
+function autoEncounterChecks(ctx: Ctx, map: MapInfo, steps: HexCoord[]): number | null {
   const every = map.encounterCheck.autoEvery;
-  if (!every) return;
-  const steps = hexLine(from, to).slice(1);
-  if (!steps.length) return;
+  if (!every || !steps.length) return null;
   let count = map.encounterCheck.hexesSinceCheck;
-  for (const hex of steps) {
+  let halt: number | null = null;
+  for (let i = 0; i < steps.length; i++) {
+    const hex = steps[i]!;
     count += 1;
     if (count < every) continue;
     count = 0;
@@ -1556,7 +1697,8 @@ function autoEncounterChecks(
     );
     const entry = ctx.runtime.appendLog(
       'encounter',
-      `Auto check at hex ${hex.q},${hex.r} — ${result.summary}`,
+      `Auto check at hex ${hex.q},${hex.r} — ${result.summary}` +
+        (result.triggered ? ' — the party stops here' : ''),
       'dm',
       {
         triggered: result.triggered,
@@ -1572,47 +1714,15 @@ function autoEncounterChecks(
       },
     );
     notifyLog(ctx, entry);
+    if (result.triggered) {
+      halt = i;
+      break;
+    }
   }
   ctx.runtime.updateMap(map.id, {
     encounterCheck: { hexesSinceCheck: count },
   } as unknown as Partial<MapInfo>);
-}
-
-/**
- * Campaign clock + per-hex visit accounting for a party move.
- *
- * Travel costs `hexes crossed × minutesPerHex(map scale, mode, pace)`. The hex
- * the party leaves is credited with the time they lingered there — the clock
- * delta since they arrived, which excludes this move's travel time because the
- * credit is taken before the clock advances. Teleports move the party without
- * spending time (but still re-stamp where they now stand). "The party" is the
- * moved PC token; NPC tokens don't move the clock.
- */
-function advanceTravelClock(
-  ctx: Ctx,
-  map: MapInfo,
-  token: Token,
-  from: { q: number; r: number },
-  to: { q: number; r: number },
-  teleport: boolean,
-): void {
-  if (token.kind !== 'pc') return;
-  const time = ctx.runtime.campaign.time;
-  const mode = resolveTravelMode(time.travelMode, ctx.runtime.campaign.settings.customTravelModes);
-  const hexes = teleport ? 0 : Math.max(0, hexLine(from, to).length - 1);
-  const travelMinutes = hexes * minutesPerHex(map.milesPerHex, mode, time.pace);
-
-  const parked = time.partyHex;
-  if (parked) {
-    ctx.runtime.addHexTime(parked.mapId, parked.q, parked.r, time.minutes - parked.arrivedMinutes);
-  }
-  const before = time.minutes;
-  if (travelMinutes > 0) ctx.runtime.advanceTime(travelMinutes);
-  const arrivedMinutes = ctx.runtime.campaign.time.minutes;
-  ctx.runtime.recordHexArrival(map.id, to.q, to.r, arrivedMinutes);
-  ctx.runtime.updateTime({ partyHex: { mapId: map.id, q: to.q, r: to.r, arrivedMinutes } });
-  // Travel that crosses midnight brings a new day's weather with it (#79).
-  logDailyWeather(ctx, before);
+  return halt;
 }
 
 function capitalize(s: string): string {

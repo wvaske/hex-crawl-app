@@ -1245,7 +1245,8 @@ describe('campaign export / import (issue #76)', () => {
       const full = rt.buildFullState(map.id);
       // Seats are deliberately not restored (fresh DM seat, fresh token), and
       // entries whispered to one seat come back DM-only (asserted separately).
-      const { seats: _seats, ...rest } = full;
+      // The undo stack is in-memory by design and never travels.
+      const { seats: _seats, undoHistory: _undo, ...rest } = full;
       out[map.name] = scrubIds({
         ...rest,
         // Same-millisecond log ties reorder on any reload (the load query
