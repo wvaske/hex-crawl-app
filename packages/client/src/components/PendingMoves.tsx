@@ -45,19 +45,32 @@ export function PendingMoves() {
                 )
               )}
             </span>
+            {pm.routeHexes !== null && (
+              <button
+                className="px-2.5 py-1 rounded-md text-xs font-medium bg-moss-500/20 text-moss-500 border border-moss-500/50 hover:bg-moss-500/35 cursor-pointer"
+                onClick={() =>
+                  send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: true, teleport: false, route: true })
+                }
+                title={`Approve along the explored route (${pm.routeHexes} hexes): the trail is walked, discoveries and encounter checks fire on the way`}
+              >
+                ✓ Route
+              </button>
+            )}
             <button
               className="px-2.5 py-1 rounded-md text-xs font-medium bg-moss-500/20 text-moss-500 border border-moss-500/50 hover:bg-moss-500/35 cursor-pointer"
-              onClick={() => send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: true, teleport: false })}
-              title="Approve: the move happens, the trail is explored, discoveries fire"
+              onClick={() =>
+                send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: true, teleport: false, route: false })
+              }
+              title={`Approve as the straight line (${dist} hexes): the direct path is walked, unexplored hexes included`}
             >
-              ✓ Approve
+              ✓ {pm.routeHexes !== null ? 'Straight' : 'Approve'}
             </button>
             <button
               className="px-2 py-1 rounded-md text-xs font-medium bg-arcane-500/15 text-arcane-500 border border-arcane-500/40 hover:bg-arcane-500/30 cursor-pointer"
               onClick={() => send({ kind: 'move.resolve', tokenId: pm.tokenId, approve: true, teleport: true })}
-              title="Teleport: the move happens instantly with no explored trail along the path"
+              title="Teleport: the move happens instantly with no explored trail along the path and no travel time"
             >
-              ⚡
+              ⚡ Teleport
             </button>
             <button
               className="px-2.5 py-1 rounded-md text-xs font-medium bg-ember-500/15 text-ember-500 border border-ember-500/40 hover:bg-ember-500/30 cursor-pointer"

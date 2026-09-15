@@ -158,6 +158,19 @@ describe('routed travel', () => {
       approved: true,
     });
   });
+
+  it('the DM can approve a request as the straight line instead of the route', () => {
+    const { mapId, tokenId, seat } = party();
+    dm({ kind: 'map.update', mapId, patch: { moveApproval: true } } as never);
+    paintRoad(mapId);
+    asSeat(seat, { kind: 'move.request', tokenId, q: 3, r: -3 } as never);
+    dm({ kind: 'move.resolve', tokenId, approve: true, teleport: false, route: false } as never);
+    expect(runtime.log.find((e) => e.kind === 'travel')!.data).toMatchObject({
+      routed: false,
+      hexes: 3,
+      approved: true,
+    });
+  });
 });
 
 describe('halting at nightfall', () => {

@@ -296,6 +296,12 @@ export const MoveResolveCommand = z.object({
   approve: z.boolean(),
   /** Approve as a teleport (no explored trail along the path). */
   teleport: z.boolean().default(false),
+  /**
+   * Approve along the explored route (the default when one exists) or, with
+   * `false`, as the straight line the player dragged (issue #130 follow-up).
+   * Optional, not defaulted: a default would be required in CommandInput.
+   */
+  route: z.boolean().optional(),
 });
 
 export const TokenDeleteCommand = z.object({
