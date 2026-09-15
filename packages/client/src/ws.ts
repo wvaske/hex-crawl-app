@@ -94,6 +94,12 @@ function handleMessage(msg: ServerMessage): void {
         session.pushToast({ kind: 'discovery', title: 'Clue shared', text: msg.entry.text });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'check') {
         session.pushToast({ kind: 'info', title: 'Skill check', text: msg.entry.text });
+      } else if (msg.kind === 'log.appended' && msg.entry.kind === 'travel' && msg.entry.data?.stoppedBy) {
+        // A journey cut short (encounter, nightfall): the token did not land
+        // where it was dragged, and the party should know why (#127/#130).
+        session.pushToast({ kind: 'info', title: 'Travel interrupted', text: msg.entry.text });
+      } else if (msg.kind === 'log.appended' && msg.entry.kind === 'undo') {
+        session.pushToast({ kind: 'info', title: 'Undone', text: msg.entry.text });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'encounter') {
         const triggered = msg.entry.data?.triggered !== false;
         // The DM runs a triggered encounter from a dialog instead of a toast:

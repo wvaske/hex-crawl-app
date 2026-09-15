@@ -90,6 +90,8 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
     pendingReveals: [],
     encounterTables: [],
     log: full.log.filter((e) => logEntryVisibleToPlayer(e, viewer)),
+    // The undo stack describes DM edits (fog, hidden content) by name.
+    undoHistory: [],
   };
 }
 

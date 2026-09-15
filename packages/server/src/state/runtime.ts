@@ -81,6 +81,8 @@ export interface MapRuntime {
 
 const LOG_MEMORY_LIMIT = 500;
 const UNDO_STACK_LIMIT = 100;
+/** How much of the undo stack the DM snapshot describes (issue #127). */
+const UNDO_HISTORY_SHOWN = 12;
 
 /** The DM-editable map layers held stable for players during prep mode. */
 interface FrozenMapLayers {
@@ -489,6 +491,10 @@ export class CampaignRuntime {
       pendingReveals: [...this.pendingReveals.values()],
       encounterTables: [...this.encounterTables.values()],
       log: this.log,
+      undoHistory: [...this.undoStack]
+        .reverse()
+        .slice(0, UNDO_HISTORY_SHOWN)
+        .map((u) => ({ at: u.at, kind: u.kind, description: u.description })),
     };
   }
 
@@ -645,6 +651,24 @@ export class CampaignRuntime {
     const existing = rt.visits.get(key);
     if (!existing) return;
     const visit: HexVisit = { ...existing, totalMinutes: existing.totalMinutes + delta };
+    rt.visits.set(key, visit);
+    this.writeHexVisit(mapId, visit);
+  }
+
+  /**
+   * Put a hex's visit record back the way it was (undo of a move, issue
+   * #127): `null` removes a record the move created, otherwise the earlier
+   * arrival stamps and time total are written back verbatim.
+   */
+  restoreHexVisit(mapId: string, q: number, r: number, visit: HexVisit | null): void {
+    const rt = this.mapStates.get(mapId);
+    if (!rt) return;
+    const key = hexKey(q, r);
+    if (!visit) {
+      rt.visits.delete(key);
+      this.db.prepare('DELETE FROM hex_visit WHERE map_id = ? AND q = ? AND r = ?').run(mapId, q, r);
+      return;
+    }
     rt.visits.set(key, visit);
     this.writeHexVisit(mapId, visit);
   }
@@ -1401,14 +1425,29 @@ export class CampaignRuntime {
     }
   }
 
-  /** Upgrade an at-a-distance discovery: the character reached the source. */
-  markDiscoveryLocated(clueId: string, characterId: string): void {
+  /**
+   * Upgrade an at-a-distance discovery: the character reached the source.
+   * Returns the ids of discoveries that changed, so a move undo can put them
+   * back (issue #127).
+   */
+  markDiscoveryLocated(clueId: string, characterId: string): string[] {
+    const changed: string[] = [];
     for (const disc of this.discoveries.values()) {
       if (disc.clueId === clueId && disc.characterId === characterId && !disc.locates) {
         disc.locates = true;
         this.db.prepare('UPDATE discovery SET locates = 1 WHERE id = ?').run(disc.id);
+        changed.push(disc.id);
       }
     }
+    return changed;
+  }
+
+  /** Reverse a `markDiscoveryLocated` (undo of the move that reached the source). */
+  setDiscoveryLocates(discoveryId: string, locates: boolean): void {
+    const disc = this.discoveries.get(discoveryId);
+    if (!disc || disc.locates === locates) return;
+    disc.locates = locates;
+    this.db.prepare('UPDATE discovery SET locates = ? WHERE id = ?').run(locates ? 1 : 0, disc.id);
   }
 
   // -- trails ----------------------------------------------------------------
@@ -1468,6 +1507,16 @@ export class CampaignRuntime {
     return true;
   }
 
+  /** Forget one trail cell for one character (undo of the move that found it). */
+  deleteTrailDiscovery(id: string): TrailDiscovery | null {
+    const td = this.trailDiscoveries.get(id);
+    if (!td) return null;
+    this.trailDiscoveries.delete(id);
+    this.trailDiscoveryKeys.delete(`${td.trailId}|${td.cellIndex}|${td.characterId}`);
+    this.db.prepare('DELETE FROM trail_discovery WHERE id = ?').run(id);
+    return td;
+  }
+
   revokeDiscovery(discoveryId: string): Discovery | null {
     const disc = this.discoveries.get(discoveryId);
     if (!disc) return null;
@@ -1517,6 +1566,19 @@ export class CampaignRuntime {
       .prepare('INSERT INTO log (id, campaign_id, at, kind, text, visibility, data) VALUES (?,?,?,?,?,?,?)')
       .run(entry.id, this.id, entry.at, entry.kind, entry.text, entry.visibility, JSON.stringify(entry.data));
     return entry;
+  }
+
+  /**
+   * Strike log entries a move wrote before it was undone (issue #127): the
+   * travel line, any auto-encounter and weather rolls, the discoveries. The
+   * `undo` entry that replaces them says what happened instead.
+   */
+  deleteLogEntries(ids: string[]): void {
+    if (!ids.length) return;
+    const drop = new Set(ids);
+    this.log = this.log.filter((e) => !drop.has(e.id));
+    const del = this.db.prepare('DELETE FROM log WHERE id = ?');
+    for (const id of ids) del.run(id);
   }
 
   // -- helpers ---------------------------------------------------------------

@@ -892,6 +892,17 @@ export const SenseSchema = z.object({
 });
 export type Sense = z.infer<typeof SenseSchema>;
 
+/**
+ * One entry of the DM's undo history (issue #127): what the next undo (or the
+ * Nth) would revert. Descriptions only — the restore closures stay server-side.
+ */
+export const UndoSummarySchema = z.object({
+  at: z.number(),
+  kind: z.string(),
+  description: z.string(),
+});
+export type UndoSummary = z.infer<typeof UndoSummarySchema>;
+
 export const CampaignStateSchema = z.object({
   campaign: CampaignSchema,
   seats: z.array(SeatPublicSchema),
@@ -909,6 +920,8 @@ export const CampaignStateSchema = z.object({
   /** DM only; empty for players. */
   encounterTables: z.array(EncounterTableSchema),
   log: z.array(LogEntrySchema),
+  /** DM only: the undo stack, newest first (issue #127). Empty for players. */
+  undoHistory: z.array(UndoSummarySchema).default([]),
 });
 export type CampaignState = z.infer<typeof CampaignStateSchema>;
 

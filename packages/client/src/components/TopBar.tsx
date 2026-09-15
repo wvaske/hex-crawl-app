@@ -1,13 +1,16 @@
 import React from 'react';
 import {
+  MINUTES_PER_DAY,
   SUPER_SCALE,
   TRAVEL_PACES,
+  formatCalendarClock,
   formatCalendarDate,
   formatTimeOfDay,
   isNight,
   minutesPerHex,
   minutesUntilSunrise,
   resolveTravelMode,
+  timeOfDay,
   travelModes,
 } from '@hexcrawl/shared';
 import type { TravelPace } from '@hexcrawl/shared';
@@ -256,6 +259,8 @@ function TimeControl() {
             </form>
           </div>
 
+          <SetClock minutes={time.minutes} />
+
           <div>
             <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
               Weather
@@ -280,6 +285,158 @@ function TimeControl() {
     </div>
   );
 }
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * Set the clock absolutely (issue #127): a mistyped advance or a mis-drag
+ * that ate a day is fixed here, day number plus time of day. Backwards is
+ * allowed — `time.set` is bookkeeping and rerolls no weather.
+ */
+function SetClock({ minutes }: { minutes: number }) {
+  const calendar = useSession((s) => s.state?.campaign.settings.calendar ?? null);
+  const tod = timeOfDay(minutes);
+  const [day, setDay] = React.useState(String(tod.day));
+  const [clock, setClock] = React.useState(`${pad2(tod.hour)}:${pad2(tod.minute)}`);
+  React.useEffect(() => {
+    setDay(String(tod.day));
+    setClock(`${pad2(tod.hour)}:${pad2(tod.minute)}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minutes]);
+
+  const target = (() => {
+    const d = Math.floor(Number(day));
+    const [h = NaN, m = NaN] = clock.split(':').map(Number);
+    if (!Number.isFinite(d) || d < 1 || !Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return (d - 1) * MINUTES_PER_DAY + h * 60 + m;
+  })();
+  const changed = target !== null && target !== minutes;
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (target !== null && changed) send({ kind: 'time.set', minutes: target });
+      }}
+    >
+      <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+        Set the clock
+      </span>
+      <div className="flex gap-1 items-center">
+        <label className="flex items-center gap-1 text-[11px] text-ink-400">
+          Day
+          <Input
+            type="number"
+            min={1}
+            value={day}
+            onChange={(e) => setDay(e.target.value)}
+            className="!py-1 !w-16 text-[11px]"
+          />
+        </label>
+        <Input
+          type="time"
+          value={clock}
+          onChange={(e) => setClock(e.target.value)}
+          className="!py-1 text-[11px]"
+        />
+        <Button
+          type="submit"
+          variant="ghost"
+          size="sm"
+          className="border border-ink-600"
+          disabled={!changed}
+          title="Set the campaign clock to exactly this moment (rewinding is fine)"
+        >
+          Set
+        </Button>
+      </div>
+      {changed && target !== null && (
+        <p className="text-[11px] text-ink-400 mt-1">
+          → {formatCalendarClock(target, calendar)}
+          {target < minutes ? ' (rewind)' : ''}
+        </p>
+      )}
+    </form>
+  );
+}
+
+/**
+ * Undo with history (issue #127). The ↶ button pops the latest change; the ▾
+ * lists what the stack holds so the DM can see what the next undo does — and
+ * rewind several steps at once ("undo to here"), moves included.
+ */
+function UndoMenu() {
+  const history = useSession((s) => s.state?.undoHistory ?? EMPTY_HISTORY);
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  return (
+    <div className="relative flex items-center" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="!pr-1"
+        disabled={history.length === 0}
+        onClick={() => send({ kind: 'undo' })}
+        title={
+          history[0]
+            ? `Undo: ${history[0].description} — or press Ctrl/Cmd+Z`
+            : 'Nothing to undo'
+        }
+      >
+        ↶
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="!px-1"
+        disabled={history.length === 0}
+        onClick={() => setOpen((o) => !o)}
+        title="Undo history"
+        aria-label="Undo history"
+      >
+        ▾
+      </Button>
+      {open && history.length > 0 && (
+        <div className="absolute right-0 top-full mt-1 w-72 rounded-md border border-ink-700 bg-ink-900 p-1.5 shadow-lg z-40">
+          <p className="text-[10px] uppercase tracking-wider text-ink-400 px-1.5 pb-1">
+            Undo history — newest first
+          </p>
+          <ul className="max-h-72 overflow-y-auto">
+            {history.map((h, i) => (
+              <li key={`${h.at}-${i}`}>
+                <button
+                  className="w-full text-left px-1.5 py-1 rounded text-[11px] text-ink-200 hover:bg-ink-700 cursor-pointer"
+                  title={i === 0 ? 'Undo this change' : `Undo this and the ${i} change${i === 1 ? '' : 's'} after it`}
+                  onClick={() => {
+                    send({ kind: 'undo', count: i + 1 });
+                    setOpen(false);
+                  }}
+                >
+                  <span className="text-ink-400 mr-1">{i + 1}.</span>
+                  {h.description}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const EMPTY_HISTORY: never[] = [];
 
 /**
  * One row of the ⋯ menu: the same control the desktop bar shows inline, with
@@ -500,15 +657,8 @@ export function TopBar({
           <DayNightToggle />
         </MenuRow>
         {role === 'dm' && (
-          <MenuRow label="Undo last change">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => send({ kind: 'undo' })}
-              title="Undo the last change (fog, terrain, moves, deletes) — or press Ctrl/Cmd+Z"
-            >
-              ↶
-            </Button>
+          <MenuRow label="Undo">
+            <UndoMenu />
           </MenuRow>
         )}
         {role === 'dm' && (
