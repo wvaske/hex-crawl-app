@@ -4,6 +4,8 @@ import {
   PANEL_WIDTH_MAX,
   PANEL_WIDTH_MIN,
   persistPanelWidth,
+  persistPinnedPanel,
+  persistPinnedWidth,
   useUi,
   type PanelId,
 } from '../stores/ui.js';
@@ -73,34 +75,47 @@ const SHEET_MAX = 0.92;
 export function PanelShell({ campaignId }: { campaignId: string }) {
   const role = useSession((s) => s.role);
   const open = useUi((s) => s.openPanel);
+  const pinned = useUi((s) => s.pinnedPanel);
   const width = useUi((s) => s.panelWidth);
+  const pinnedWidth = useUi((s) => s.pinnedWidth);
   const setUi = useUi((s) => s.set);
   const mobile = useIsMobile();
   const [sheet, setSheet] = React.useState(SHEET_DEFAULT);
   const panels = role === 'dm' ? DM_PANELS : PLAYER_PANELS;
   // A player who somehow holds a DM-only panel id (role flipped on rejoin)
-  // must not end up staring at an empty shell.
-  const active = open && panels.includes(open) ? open : null;
+  // must not end up staring at an empty shell. A pinned panel lives in the
+  // second sidebar (desktop only), so the regular slot never repeats it.
+  const pinnedActive = !mobile && pinned && panels.includes(pinned) ? pinned : null;
+  const active = open && panels.includes(open) && open !== pinnedActive ? open : null;
 
-  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = useUi.getState().panelWidth;
-    const onMove = (ev: PointerEvent) => {
-      const next = Math.min(
-        PANEL_WIDTH_MAX,
-        Math.max(PANEL_WIDTH_MIN, startWidth + (startX - ev.clientX)),
-      );
-      useUi.getState().set('panelWidth', next);
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      persistPanelWidth(useUi.getState().panelWidth);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+  const pin = (id: PanelId | null) => {
+    setUi('pinnedPanel', id);
+    persistPinnedPanel(id);
   };
+
+  /** Drag-resize either sidebar from its left edge. */
+  const startResize =
+    (key: 'panelWidth' | 'pinnedWidth') => (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = useUi.getState()[key];
+      const onMove = (ev: PointerEvent) => {
+        const next = Math.min(
+          PANEL_WIDTH_MAX,
+          Math.max(PANEL_WIDTH_MIN, startWidth + (startX - ev.clientX)),
+        );
+        useUi.getState().set(key, next);
+      };
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        const value = useUi.getState()[key];
+        if (key === 'panelWidth') persistPanelWidth(value);
+        else persistPinnedWidth(value);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    };
 
   /**
    * Bottom-sheet grabber: drag it up/down to resize, tap it to toggle between
@@ -126,34 +141,70 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
     window.addEventListener('pointerup', onUp);
   };
 
-  const header = active && (
+  /**
+   * A panel's title bar. The regular slot offers Pin (which moves the panel
+   * into the second sidebar) and Close; the pinned slot offers Unpin.
+   */
+  const headerFor = (id: PanelId, slot: 'main' | 'pinned') => (
     <header className="flex items-center gap-2 px-3 py-2 border-b border-ink-700 shrink-0">
-      <span className="text-base leading-none">{PANEL_META[active].icon}</span>
+      <span className="text-base leading-none">{PANEL_META[id].icon}</span>
       <h2 className="text-sm font-semibold text-ink-100 flex-1 truncate">
-        {PANEL_META[active].title}
+        {PANEL_META[id].title}
+        {slot === 'pinned' && <span className="ml-1.5 text-[0.625rem] text-brass-300 font-normal">pinned</span>}
       </h2>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="!px-2 !py-1.5"
-        onClick={() => setUi('openPanel', null)}
-        title="Close this panel"
-        aria-label="Close panel"
-      >
-        ✕<Lbl>Close</Lbl>
-      </Button>
+      {!mobile && slot === 'main' && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="!px-2 !py-1.5"
+          onClick={() => {
+            pin(id);
+            setUi('openPanel', null);
+          }}
+          title="Pin this panel open in a second sidebar, so you can read it while using another panel"
+          aria-label="Pin panel"
+        >
+          📌<Lbl>Pin</Lbl>
+        </Button>
+      )}
+      {slot === 'pinned' ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="!px-2 !py-1.5"
+          onClick={() => pin(null)}
+          title="Unpin: close the second sidebar"
+          aria-label="Unpin panel"
+        >
+          📍<Lbl>Unpin</Lbl>
+        </Button>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="!px-2 !py-1.5"
+          onClick={() => setUi('openPanel', null)}
+          title="Close this panel"
+          aria-label="Close panel"
+        >
+          ✕<Lbl>Close</Lbl>
+        </Button>
+      )}
     </header>
   );
 
-  const body = active && (
+  const bodyFor = (id: PanelId) => (
     <div className="flex-1 min-h-0 flex flex-col">
-      {active === 'information' && <InformationPanel />}
-      {active === 'character' && <CharacterPanel />}
-      {active === 'history' && <HistoryPanel />}
-      {active === 'build' && <BuildPanel campaignId={campaignId} />}
-      {active === 'setup' && <SetupPanel campaignId={campaignId} />}
+      {id === 'information' && <InformationPanel />}
+      {id === 'character' && <CharacterPanel />}
+      {id === 'history' && <HistoryPanel />}
+      {id === 'build' && <BuildPanel campaignId={campaignId} />}
+      {id === 'setup' && <SetupPanel campaignId={campaignId} />}
     </div>
   );
+
+  const header = active && headerFor(active, 'main');
+  const body = active && bodyFor(active);
 
   // -- phone: bottom sheet over the map + a thumb-reachable tab bar ----------
   if (mobile) {
@@ -210,19 +261,37 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
       {active && (
         // The stored width is a desktop preference; on a tablet (or a phone
         // held landscape, which is wide enough to keep the side layout) it
-        // must never swallow the map, hence the viewport clamp. It only bites
-        // below ~1070px — a desktop keeps exactly the width it dragged.
+        // must never swallow the map, hence the viewport clamp. With a second
+        // sidebar pinned the two share the clamp.
         <aside
-          style={{ width: `min(${width}px, 60vw)` }}
+          style={{ width: `min(${width}px, ${pinnedActive ? 35 : 60}vw)` }}
           className="relative shrink-0 bg-ink-900 border-l border-ink-700 flex flex-col z-20"
         >
           <div
-            onPointerDown={startResize}
+            onPointerDown={startResize('panelWidth')}
             className="absolute left-0 top-0 bottom-0 w-1.5 -translate-x-0.5 cursor-col-resize z-30 hover:bg-brass-500/40 active:bg-brass-500/60"
             title="Drag to resize the panel"
           />
           {header}
           {body}
+        </aside>
+      )}
+
+      {pinnedActive && (
+        // The second sidebar: a pinned panel that stays put while the regular
+        // one changes — the dice-roll log beside the hex being inspected.
+        <aside
+          style={{ width: `min(${pinnedWidth}px, 35vw)` }}
+          className="relative shrink-0 bg-ink-900 border-l border-brass-500/40 flex flex-col z-20"
+          aria-label={`${PANEL_META[pinnedActive].title} (pinned)`}
+        >
+          <div
+            onPointerDown={startResize('pinnedWidth')}
+            className="absolute left-0 top-0 bottom-0 w-1.5 -translate-x-0.5 cursor-col-resize z-30 hover:bg-brass-500/40 active:bg-brass-500/60"
+            title="Drag to resize the pinned panel"
+          />
+          {headerFor(pinnedActive, 'pinned')}
+          {bodyFor(pinnedActive)}
         </aside>
       )}
 
@@ -233,21 +302,36 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
         {panels.map((id) => {
           const meta = PANEL_META[id];
           const isActive = active === id;
+          const isPinned = pinnedActive === id;
           return (
             <button
               key={id}
-              onClick={() => setUi('openPanel', isActive ? null : id)}
-              title={isActive ? `Close ${meta.title}` : `${meta.title} — ${meta.hint}`}
-              aria-pressed={isActive}
+              onClick={() => {
+                if (isPinned) pin(null);
+                else setUi('openPanel', isActive ? null : id);
+              }}
+              title={
+                isPinned
+                  ? `${meta.title} is pinned in the second sidebar — click to unpin`
+                  : isActive
+                    ? `Close ${meta.title}`
+                    : `${meta.title} — ${meta.hint}`
+              }
+              aria-pressed={isActive || isPinned}
               className={cx(
-                'flex flex-col items-center gap-0.5 py-2 cursor-pointer transition-colors border-r-2',
-                isActive
+                'relative flex flex-col items-center gap-0.5 py-2 cursor-pointer transition-colors border-r-2',
+                isActive || isPinned
                   ? 'border-brass-500 bg-ink-850 text-brass-300'
                   : 'border-transparent text-ink-400 hover:bg-ink-850/60 hover:text-ink-100',
               )}
             >
               <span className="text-base leading-none">{meta.icon}</span>
               <span className="text-[0.625rem] font-medium leading-none">{meta.label}</span>
+              {isPinned && (
+                <span className="absolute top-0.5 right-1 text-[0.625rem]" aria-hidden>
+                  📌
+                </span>
+              )}
             </button>
           );
         })}

@@ -54,6 +54,14 @@ interface UiStore {
   mapManagerOpen: boolean;
   /** Which side pop-out panel is open (null = none). */
   openPanel: PanelId | null;
+  /**
+   * A panel pinned open in a SECOND sidebar beside the regular one (desktop
+   * only): the log of dice rolls next to the hex you are inspecting. One at
+   * a time; remembered per browser.
+   */
+  pinnedPanel: PanelId | null;
+  /** Width of the pinned sidebar in px. */
+  pinnedWidth: number;
   /** Pop-out panel width in px (drag the left edge to resize). */
   panelWidth: number;
   /**
@@ -151,6 +159,48 @@ export const PANEL_WIDTH_MIN = 240;
 export const PANEL_WIDTH_MAX = 640;
 const PANEL_WIDTH_KEY = 'hexcrawl.panelWidth';
 
+const PINNED_PANEL_KEY = 'hexcrawl.pinnedPanel';
+const PINNED_WIDTH_KEY = 'hexcrawl.pinnedWidth';
+const PANEL_IDS: PanelId[] = ['information', 'character', 'history', 'build', 'setup'];
+
+function initialPinnedPanel(): PanelId | null {
+  try {
+    const stored = localStorage.getItem(PINNED_PANEL_KEY);
+    return stored && (PANEL_IDS as string[]).includes(stored) ? (stored as PanelId) : null;
+  } catch {
+    return null;
+  }
+}
+
+function initialPinnedWidth(): number {
+  try {
+    const stored = Number(localStorage.getItem(PINNED_WIDTH_KEY));
+    if (Number.isFinite(stored) && stored >= PANEL_WIDTH_MIN && stored <= PANEL_WIDTH_MAX) {
+      return stored;
+    }
+  } catch {
+    // fall through
+  }
+  return 320;
+}
+
+export function persistPinnedPanel(panel: PanelId | null): void {
+  try {
+    if (panel) localStorage.setItem(PINNED_PANEL_KEY, panel);
+    else localStorage.removeItem(PINNED_PANEL_KEY);
+  } catch {
+    // Best-effort convenience only.
+  }
+}
+
+export function persistPinnedWidth(width: number): void {
+  try {
+    localStorage.setItem(PINNED_WIDTH_KEY, String(Math.round(width)));
+  } catch {
+    // Best-effort convenience only.
+  }
+}
+
 /** Text size presets (issue #126): percent of the base size. */
 export const UI_SCALES = [90, 100, 115, 130, 150, 175] as const;
 const UI_SCALE_KEY = 'hexcrawl.uiScale';
@@ -233,6 +283,8 @@ export const useUi = create<UiStore>((set) => ({
   locationDialogContentId: null,
   mapManagerOpen: false,
   openPanel: 'information',
+  pinnedPanel: initialPinnedPanel(),
+  pinnedWidth: initialPinnedWidth(),
   panelWidth: initialPanelWidth(),
   uiScale: initialUiScale(),
   uiDensity: initialUiDensity(),
