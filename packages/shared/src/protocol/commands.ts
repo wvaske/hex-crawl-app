@@ -82,6 +82,16 @@ const CampaignSettingsPatchSchema = z
      */
     calendar: CalendarConfigSchema.nullable(),
     weatherTable: z.array(WeatherEntrySchema).max(100).nullable(),
+    /** Nested patch (issue #146); merged field-wise server-side. */
+    ddbGameLog: z
+      .object({
+        enabled: z.boolean(),
+        campaignId: z.string().max(40),
+        campaignName: z.string().max(120),
+        userId: z.string().max(40),
+        countAsSearch: z.boolean(),
+      })
+      .partial(),
   })
   .partial();
 
@@ -695,6 +705,18 @@ export const NarrateCommand = z.object({
   seatIds: z.array(z.string()),
 });
 
+/** DM: start listening to the linked D&D Beyond campaign's game log (issue #146). */
+export const DdbConnectCommand = z.object({
+  ...base,
+  kind: z.literal('ddb.connect'),
+});
+
+/** DM: stop the game-log listener. */
+export const DdbDisconnectCommand = z.object({
+  ...base,
+  kind: z.literal('ddb.disconnect'),
+});
+
 /** DM: mark a session boundary (issue #78) — drives recap grouping. */
 export const SessionMarkCommand = z.object({
   ...base,
@@ -759,6 +781,8 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   UndoCommand,
   NarrateCommand,
   SessionMarkCommand,
+  DdbConnectCommand,
+  DdbDisconnectCommand,
 ]);
 
 export type ClientCommand = z.infer<typeof ClientCommandSchema>;

@@ -238,6 +238,36 @@ export const DEFAULT_WEATHER_TABLE: WeatherEntry[] = [
   { min: 20, max: 20, text: 'Violent storm', icon: '🌪️' },
 ];
 
+/**
+ * D&D Beyond game-log import (issue #146): which D&D Beyond campaign to
+ * listen to, as which user (the DM), and whether an imported skill check
+ * counts as a search of the character's hex. The cookie that authenticates
+ * the listener is NOT here — it lives server-side, write-only.
+ */
+export const DdbGameLogSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  campaignId: z.string().max(40).default(''),
+  campaignName: z.string().max(120).default(''),
+  userId: z.string().max(40).default(''),
+  countAsSearch: z.boolean().default(false),
+});
+export type DdbGameLogSettings = z.infer<typeof DdbGameLogSettingsSchema>;
+
+/** Live state of the listener, DM-only (players get null). */
+export const DdbGameLogStatusSchema = z.object({
+  /** A cookie is stored for this campaign (its value is never sent). */
+  hasSecret: z.boolean(),
+  connected: z.boolean(),
+  since: z.number().nullable(),
+  lastEventAt: z.number().nullable(),
+  lastError: z.string().nullable(),
+  /** Rolls imported since the server started. */
+  imported: z.number().int(),
+  /** The last few raw events, truncated, for verifying the feed. */
+  recent: z.array(z.string()),
+});
+export type DdbGameLogStatus = z.infer<typeof DdbGameLogStatusSchema>;
+
 export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
   description: z.string().max(2000).default(''),
@@ -279,6 +309,8 @@ export const CampaignSettingsSchema = z.object({
   calendar: CalendarConfigSchema.nullable().default(null),
   /** Weather table rolled at dawn; null uses DEFAULT_WEATHER_TABLE. */
   weatherTable: z.array(WeatherEntrySchema).max(100).nullable().default(null),
+  /** D&D Beyond game-log import (issue #146). */
+  ddbGameLog: DdbGameLogSettingsSchema.default(() => DdbGameLogSettingsSchema.parse({})),
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 
@@ -1008,6 +1040,8 @@ export const CampaignStateSchema = z.object({
   log: z.array(LogEntrySchema),
   /** DM only: the undo stack, newest first (issue #127). Empty for players. */
   undoHistory: z.array(UndoSummarySchema).default([]),
+  /** DM only: D&D Beyond game-log listener status (issue #146); null for players. */
+  ddbGameLog: DdbGameLogStatusSchema.nullable().default(null),
 });
 export type CampaignState = z.infer<typeof CampaignStateSchema>;
 

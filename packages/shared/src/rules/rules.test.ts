@@ -112,6 +112,7 @@ function fullState(): CampaignState {
         mapDefaults: MapDefaultsSchema.parse({}),
         calendar: null,
         weatherTable: null,
+        ddbGameLog: { enabled: false, campaignId: '', campaignName: '', userId: '', countAsSearch: false },
       },
       time: { minutes: 8 * 60, travelMode: 'foot', pace: 'normal', partyHex: null, weather: null },
     },
@@ -192,6 +193,7 @@ function fullState(): CampaignState {
       { id: 'l4', at: 4, kind: 'discovery', text: 'bob private', visibility: 's2', data: {} },
     ],
     undoHistory: [{ at: 5, kind: 'fog', description: 'fog change (3 hexes)' }],
+    ddbGameLog: null,
   };
 }
 

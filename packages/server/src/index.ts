@@ -2,7 +2,8 @@ import { serve } from '@hono/node-server';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import { ClientCommandSchema, seededRng } from '@hexcrawl/shared';
-import { HOST, PORT } from './config.js';
+import { DDB_GAMELOG, HOST, PORT } from './config.js';
+import { startConnector } from './engine/ddbGameLog.js';
 import { openDatabase } from './db/index.js';
 import { Store } from './state/store.js';
 import { Hub, type Conn } from './ws/hub.js';
@@ -19,6 +20,17 @@ const store = await Store.create(db);
 const hub = new Hub();
 const rng = seededRng(Date.now() ^ (Math.random() * 0xffffffff));
 const app = createApp(store, hub);
+
+// D&D Beyond game-log listeners (issue #146) resume for every campaign that
+// left one enabled — the DM's cookie is on disk, the connection is not.
+if (DDB_GAMELOG) {
+  for (const row of db.prepare('SELECT id FROM campaign').all() as Array<{ id: string }>) {
+    const runtime = store.getCampaign(row.id);
+    if (runtime?.campaign.settings.ddbGameLog.enabled && runtime.getSecret('ddbCobalt')) {
+      startConnector(runtime, hub);
+    }
+  }
+}
 
 const server = serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
   console.log(

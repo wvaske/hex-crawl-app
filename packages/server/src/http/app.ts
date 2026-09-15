@@ -11,6 +11,7 @@ import type { Content, ImageLayer } from '@hexcrawl/shared';
 import { ContentTypeSchema, GateSchema, pixelToHex } from '@hexcrawl/shared';
 import { evaluateKnowledge } from '../engine/knowledge.js';
 import { evaluateTrails } from '../engine/trails.js';
+import { discoverCampaigns, mintToken, stopConnector } from '../engine/ddbGameLog.js';
 import { fetchDdbCharacter, parseDdbId } from '../engine/ddb.js';
 import { generateSettlementClues } from '../engine/settlements.js';
 import {
@@ -24,6 +25,7 @@ import {
   TRUST_PROXY,
   UPLOAD_QUOTA_BYTES,
   UPLOADS_DIR,
+  DDB_GAMELOG,
 } from '../config.js';
 import {
   MAX_IMPORT_BYTES,
@@ -108,10 +110,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       const verdict = limiters[name].check(ip);
       if (!verdict.ok) {
         c.header('Retry-After', String(verdict.retryAfterSec));
-        return c.json(
-          { error: `Too many requests — try again in ${verdict.retryAfterSec}s` },
-          429,
-        );
+        return c.json({ error: `Too many requests — try again in ${verdict.retryAfterSec}s` }, 429);
       }
       await next();
     };
@@ -281,8 +280,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
         name: ch.name,
         color: ch.color,
         glyph: ch.glyph,
-        claimedBy:
-          [...runtime.seats.values()].find((s) => s.characterId === ch.id)?.name ?? null,
+        claimedBy: [...runtime.seats.values()].find((s) => s.characterId === ch.id)?.name ?? null,
       })),
     });
   });
@@ -329,7 +327,12 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
     const seat = getSeat(c, runtime);
     if (!seat) return c.json({ error: 'No seat' }, 401);
-    return c.json({ seatId: seat.id, role: seat.role, name: seat.name, characterId: seat.characterId });
+    return c.json({
+      seatId: seat.id,
+      role: seat.role,
+      name: seat.name,
+      characterId: seat.characterId,
+    });
   });
 
   /**
@@ -394,6 +397,63 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Sync failed' }, 502);
     }
+  });
+
+  // -- D&D Beyond game log (issue #146) ---------------------------------------
+
+  /**
+   * Store the DM's CobaltSession cookie (write-only; never read back), mint a
+   * token with it, and report the account's active campaigns so the DM can
+   * pick one. The cookie is a session credential: it stays in
+   * `integration_secret` and is deleted with DELETE below.
+   */
+  app.post('/api/campaigns/:id/integrations/ddb/secret', async (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const seat = getSeat(c, runtime);
+    if (!seat || seat.role !== 'dm') return c.json({ error: 'DM only' }, 403);
+    if (!DDB_GAMELOG)
+      return c.json({ error: 'D&D Beyond import is disabled on this instance (DDB_GAMELOG)' }, 400);
+    const body = z
+      .object({ cookie: z.string().min(10).max(4000) })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: 'Paste the CobaltSession cookie value' }, 400);
+    const cookie = body.data.cookie.trim().replace(/^CobaltSession=/, '');
+    try {
+      const token = await mintToken(cookie);
+      const campaigns = await discoverCampaigns(token.token);
+      runtime.setSecret('ddbCobalt', cookie);
+      const settings = runtime.campaign.settings.ddbGameLog;
+      const patch: Record<string, unknown> = { userId: token.userId };
+      // One campaign, or the one already chosen, needs no further click.
+      const chosen =
+        campaigns.find((cp) => cp.id === settings.campaignId) ??
+        (campaigns.length === 1 ? campaigns[0] : undefined);
+      if (chosen) {
+        patch.campaignId = chosen.id;
+        patch.campaignName = chosen.name;
+      }
+      runtime.updateCampaign({ settings: { ddbGameLog: patch as never } });
+      hub.scheduleSync(runtime);
+      return c.json({ userId: token.userId, displayName: token.displayName, campaigns });
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : 'D&D Beyond rejected the cookie' },
+        502,
+      );
+    }
+  });
+
+  app.delete('/api/campaigns/:id/integrations/ddb/secret', (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const seat = getSeat(c, runtime);
+    if (!seat || seat.role !== 'dm') return c.json({ error: 'DM only' }, 403);
+    stopConnector(runtime, 'cookie removed');
+    runtime.setSecret('ddbCobalt', null);
+    runtime.updateCampaign({ settings: { ddbGameLog: { enabled: false } } });
+    hub.scheduleSync(runtime);
+    return c.json({ ok: true });
   });
 
   // -- image upload ----------------------------------------------------------
@@ -483,8 +543,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     const filePath = path.join(uploadsDir, campaignId, file);
     if (!fs.existsSync(filePath)) return c.text('Not found', 404);
     const ext = path.extname(filePath);
-    const mime =
-      ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
     return c.body(fs.readFileSync(filePath), 200, {
       'Content-Type': mime,
       'Cache-Control': 'public, max-age=31536000, immutable',
@@ -494,7 +553,9 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
   // -- integration API (for dm-companion and friends) ------------------------
   // Auth: Authorization: Bearer <campaign dm key>. Campaign-scoped.
 
-  const integrationAuth = (c: { req: { raw: Request; header(n: string): string | undefined; param(n: string): string } }) => {
+  const integrationAuth = (c: {
+    req: { raw: Request; header(n: string): string | undefined; param(n: string): string };
+  }) => {
     const runtime = store.getCampaign(c.req.param('id'));
     if (!runtime) return null;
     const auth = c.req.header('Authorization') ?? '';
@@ -547,9 +608,15 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     enabled: z.boolean().optional(),
     knownLocation: z.boolean().optional(),
     /** Multi-hex footprint (issue #69): members beside the anchor q/r. */
-    area: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(2000).optional(),
+    area: z
+      .array(z.object({ q: z.number().int(), r: z.number().int() }))
+      .max(2000)
+      .optional(),
     /** Vantage hexes for every clue (issue #123). */
-    observeFrom: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(2000).optional(),
+    observeFrom: z
+      .array(z.object({ q: z.number().int(), r: z.number().int() }))
+      .max(2000)
+      .optional(),
     quest: z.string().max(120).default(''),
     clues: z
       .array(
@@ -572,7 +639,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     const runtime = integrationAuth(c);
     if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
     const body = IntegrationContentSchema.safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? 'Invalid body' }, 400);
+    if (!body.success)
+      return c.json({ error: body.error.issues[0]?.message ?? 'Invalid body' }, 400);
     const input = body.data;
     const map = runtime.maps.get(input.mapId);
     const rt = runtime.mapStates.get(input.mapId);
@@ -582,7 +650,11 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     let r = input.r;
     if ((q === undefined || r === undefined) && input.x !== undefined && input.y !== undefined) {
       const hex = pixelToHex(
-        { orientation: map.orientation, size: map.hexSize, origin: { x: map.originX, y: map.originY } },
+        {
+          orientation: map.orientation,
+          size: map.hexSize,
+          origin: { x: map.originX, y: map.originY },
+        },
         { x: input.x, y: input.y },
       );
       q = hex.q;
@@ -645,7 +717,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       cells: z.array(z.object({ q: z.number().int(), r: z.number().int() })).min(2),
     });
     const body = schema.safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? 'Invalid body' }, 400);
+    if (!body.success)
+      return c.json({ error: body.error.issues[0]?.message ?? 'Invalid body' }, 400);
     const input = body.data;
     const rt = runtime.mapStates.get(input.mapId);
     if (!rt) return c.json({ error: 'Map not found' }, 404);
@@ -728,15 +801,26 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
 
 function mimeFor(ext: string): string {
   switch (ext) {
-    case '.html': return 'text/html; charset=utf-8';
-    case '.js': return 'text/javascript';
-    case '.css': return 'text/css';
-    case '.svg': return 'image/svg+xml';
-    case '.png': return 'image/png';
-    case '.jpg': case '.jpeg': return 'image/jpeg';
-    case '.webp': return 'image/webp';
-    case '.woff2': return 'font/woff2';
-    case '.json': return 'application/json';
-    default: return 'application/octet-stream';
+    case '.html':
+      return 'text/html; charset=utf-8';
+    case '.js':
+      return 'text/javascript';
+    case '.css':
+      return 'text/css';
+    case '.svg':
+      return 'image/svg+xml';
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.webp':
+      return 'image/webp';
+    case '.woff2':
+      return 'font/woff2';
+    case '.json':
+      return 'application/json';
+    default:
+      return 'application/octet-stream';
   }
 }

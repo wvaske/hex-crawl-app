@@ -94,6 +94,8 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
     ),
     // The undo stack describes DM edits (fog, hidden content) by name.
     undoHistory: [],
+    // The listener's status includes raw D&D Beyond events (whispers too).
+    ddbGameLog: null,
   };
 }
 

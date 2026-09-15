@@ -241,6 +241,21 @@ export const POSTGRES_SCHEMA = `
     );
     CREATE INDEX IF NOT EXISTS pending_reveal_campaign ON pending_reveal(campaign_id);
     CREATE UNIQUE INDEX IF NOT EXISTS pending_reveal_unique ON pending_reveal(clue_id, character_id);
+
+    CREATE TABLE IF NOT EXISTS integration_secret (
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (campaign_id, kind)
+    );
+
+    CREATE TABLE IF NOT EXISTS imported_roll (
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      external_id TEXT NOT NULL,
+      at BIGINT NOT NULL,
+      PRIMARY KEY (campaign_id, external_id)
+    );
 `;
 
 /**
