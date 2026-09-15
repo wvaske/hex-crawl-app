@@ -195,7 +195,7 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
                 )}
               >
                 <span className="text-lg leading-none">{meta.icon}</span>
-                <span className="text-[11px] font-medium leading-none">{meta.label}</span>
+                <span className="text-[0.6875rem] font-medium leading-none">{meta.label}</span>
               </button>
             );
           })}
@@ -247,7 +247,7 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
               )}
             >
               <span className="text-base leading-none">{meta.icon}</span>
-              <span className="text-[10px] font-medium leading-none">{meta.label}</span>
+              <span className="text-[0.625rem] font-medium leading-none">{meta.label}</span>
             </button>
           );
         })}
@@ -281,7 +281,7 @@ function SubTabs<T extends string>({
           className={cx(
             // Roomier on touch — a pill that's 18px tall is a coin toss with
             // a thumb, and these are the panel's primary navigation.
-            'px-3 py-1.5 md:px-2.5 md:py-0.5 rounded-full text-[11px] cursor-pointer border transition-colors',
+            'px-3 py-1.5 md:px-2.5 md:py-0.5 rounded-full text-[0.6875rem] cursor-pointer border transition-colors',
             value === t.id
               ? 'border-brass-500 bg-brass-500/15 text-brass-300'
               : 'border-ink-700 text-ink-300 hover:bg-ink-700',

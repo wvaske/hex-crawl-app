@@ -243,10 +243,10 @@ function RegionCard({
       <div className={cx('text-sm truncate', selected ? 'text-brass-300' : 'text-ink-200')}>
         {region.glyph || CONTENT_TYPE_GLYPHS[region.type]} {region.title}
       </div>
-      <div className="text-[11px] text-ink-400">
+      <div className="text-[0.6875rem] text-ink-400">
         {size} hex{size === 1 ? '' : 'es'}
       </div>
-      <div className="text-[10px] text-ink-500 truncate" title={summaryText(rows)}>
+      <div className="text-[0.625rem] text-ink-500 truncate" title={summaryText(rows)}>
         {summaryText(rows)}
       </div>
     </button>
@@ -428,7 +428,7 @@ function RegionDetail({
         </p>
         <span className="flex-1" />
         <button
-          className="text-[11px] text-brass-400 hover:text-brass-300 cursor-pointer"
+          className="text-[0.6875rem] text-brass-400 hover:text-brass-300 cursor-pointer"
           onClick={() => {
             setUi('contentDialogHex', { q: region.q, r: region.r });
             setUi('editingContentId', region.id);
@@ -438,7 +438,7 @@ function RegionDetail({
           Open full editor
         </button>
         <button
-          className="text-[11px] text-ink-400 hover:text-ember-500 cursor-pointer disabled:opacity-30 disabled:cursor-default"
+          className="text-[0.6875rem] text-ink-400 hover:text-ember-500 cursor-pointer disabled:opacity-30 disabled:cursor-default"
           disabled={region.area.length === 0}
           onClick={() => {
             if (confirm(`Clear the ${region.area.length}-hex area of "${region.title}"?`)) {
@@ -451,7 +451,7 @@ function RegionDetail({
       </div>
 
       <section className="border border-ink-700 rounded-lg p-3 space-y-2">
-        <h3 className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
+        <h3 className="text-[0.6875rem] uppercase tracking-wider text-ink-400 font-semibold">
           Auto-detect the area
         </h3>
         <div className="flex items-center gap-2">
@@ -468,7 +468,7 @@ function RegionDetail({
             </option>
           </Select>
           {!baseLayer && (
-            <span className="text-[11px] text-ink-500">
+            <span className="text-[0.6875rem] text-ink-500">
               Add a map image layer to detect against the art.
             </span>
           )}
@@ -476,7 +476,7 @@ function RegionDetail({
 
         {mode === 'terrain' ? (
           <div>
-            <p className="text-[11px] text-ink-400 mb-1">
+            <p className="text-[0.6875rem] text-ink-400 mb-1">
               Grow from the anchor across these terrains (unpainted hexes always stop the fill):
             </p>
             <div className="flex flex-wrap gap-1">
@@ -485,7 +485,7 @@ function RegionDetail({
                   key={id}
                   onClick={() => toggleTerrain(id)}
                   className={cx(
-                    'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border',
+                    'px-2 py-0.5 rounded-full text-[0.6875rem] cursor-pointer border',
                     terrains.includes(id)
                       ? 'border-brass-500 bg-brass-500/15 text-brass-300'
                       : 'border-ink-700 text-ink-300 hover:bg-ink-700',
@@ -502,7 +502,7 @@ function RegionDetail({
           </div>
         ) : (
           <div>
-            <label className="text-[11px] text-ink-400 flex items-center gap-2">
+            <label className="text-[0.6875rem] text-ink-400 flex items-center gap-2">
               Colour tolerance
               <input
                 type="range"
@@ -514,7 +514,7 @@ function RegionDetail({
               />
               <span className="w-8 text-right text-ink-200">{tolerance}</span>
             </label>
-            <p className="text-[11px] text-ink-500 mt-1">
+            <p className="text-[0.6875rem] text-ink-500 mt-1">
               Every hex is compared against the anchor's colour on{' '}
               {baseLayer ? baseLayer.name : 'the base image'} — low values hug one flat colour,
               high values cross shading.
@@ -523,7 +523,7 @@ function RegionDetail({
         )}
 
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-[11px] text-ink-400 flex items-center gap-1.5">
+          <label className="text-[0.6875rem] text-ink-400 flex items-center gap-1.5">
             Max hexes
             <Input
               type="number"
@@ -547,12 +547,12 @@ function RegionDetail({
           >
             {busy ? 'Detecting…' : '🔍 Preview'}
           </Button>
-          {error && <span className="text-[11px] text-ember-500">{error}</span>}
+          {error && <span className="text-[0.6875rem] text-ember-500">{error}</span>}
         </div>
       </section>
 
       <section className="border border-ink-700 rounded-lg p-3 space-y-2">
-        <h3 className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
+        <h3 className="text-[0.6875rem] uppercase tracking-wider text-ink-400 font-semibold">
           Terrain fill
         </h3>
         <div className="flex items-center gap-2 flex-wrap">
@@ -571,7 +571,7 @@ function RegionDetail({
           <Button size="sm" variant="primary" onClick={applyFill} disabled={changing === 0}>
             Apply — {changing} hex{changing === 1 ? '' : 'es'} change
           </Button>
-          <span className="text-[11px] text-ink-400">
+          <span className="text-[0.6875rem] text-ink-400">
             {changing === 0
               ? fill === 'erase'
                 ? 'nothing to erase'
@@ -586,7 +586,7 @@ function RegionDetail({
             onChange={(e) => setSkipOtherRegions(e.target.checked)}
           />
           Skip hexes in other regions
-          <span className="text-[11px] text-ink-400">
+          <span className="text-[0.6875rem] text-ink-400">
             ({countOverlap(region, regions)} shared)
           </span>
         </label>
@@ -868,7 +868,7 @@ function RegionPreview({
   return (
     <div className="flex-1 min-h-52 border-t border-ink-700 px-4 py-2.5 flex flex-col">
       <div className="flex items-center gap-2 mb-1.5 shrink-0">
-        <p className="text-[11px] uppercase tracking-wider text-ink-400">
+        <p className="text-[0.6875rem] uppercase tracking-wider text-ink-400">
           Preview — {cells.length} hex{cells.length === 1 ? '' : 'es'}
           {proposal && (
             <span className="text-emerald-400 normal-case tracking-normal">

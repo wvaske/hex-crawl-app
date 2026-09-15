@@ -56,6 +56,12 @@ interface UiStore {
   openPanel: PanelId | null;
   /** Pop-out panel width in px (drag the left edge to resize). */
   panelWidth: number;
+  /**
+   * Text size for all UI chrome (issue #126), as a percentage of the base
+   * size. Applied as the root font-size, so every rem-based utility scales
+   * with it; the map canvas is untouched. Per browser, in localStorage.
+   */
+  uiScale: number;
   measureStart: HexCoord | null;
   /** Held spacebar: pan with left-drag regardless of the active tool. */
   spacePan: boolean;
@@ -140,6 +146,30 @@ export const PANEL_WIDTH_MIN = 240;
 export const PANEL_WIDTH_MAX = 640;
 const PANEL_WIDTH_KEY = 'hexcrawl.panelWidth';
 
+/** Text size presets (issue #126): percent of the base size. */
+export const UI_SCALES = [90, 100, 115, 130, 150, 175] as const;
+const UI_SCALE_KEY = 'hexcrawl.uiScale';
+
+function initialUiScale(): number {
+  try {
+    const stored = Number(localStorage.getItem(UI_SCALE_KEY));
+    if ((UI_SCALES as readonly number[]).includes(stored)) return stored;
+  } catch {
+    // Storage unavailable — default size.
+  }
+  return 100;
+}
+
+/** Apply a text-size preset to the document and remember it for next time. */
+export function applyUiScale(scale: number): void {
+  document.documentElement.style.fontSize = scale === 100 ? '' : `${scale}%`;
+  try {
+    localStorage.setItem(UI_SCALE_KEY, String(scale));
+  } catch {
+    // Best-effort convenience only.
+  }
+}
+
 function initialPanelWidth(): number {
   try {
     const stored = Number(localStorage.getItem(PANEL_WIDTH_KEY));
@@ -178,6 +208,7 @@ export const useUi = create<UiStore>((set) => ({
   mapManagerOpen: false,
   openPanel: 'information',
   panelWidth: initialPanelWidth(),
+  uiScale: initialUiScale(),
   measureStart: null,
   spacePan: false,
   scaleLock: 'auto',

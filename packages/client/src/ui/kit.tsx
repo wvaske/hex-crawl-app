@@ -82,7 +82,7 @@ export function Select({
 
 export function Label({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <label className={cx('block text-[11px] uppercase tracking-wider text-ink-400 mb-1', className)}>
+    <label className={cx('block text-[0.6875rem] uppercase tracking-wider text-ink-400 mb-1', className)}>
       {children}
     </label>
   );
@@ -191,7 +191,7 @@ export function Section({
   return (
     <div className="mb-4">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">{title}</h3>
+        <h3 className="text-[0.6875rem] uppercase tracking-wider text-ink-400 font-semibold">{title}</h3>
         {actions}
       </div>
       {children}

@@ -55,7 +55,7 @@ export function Toolbar() {
         <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-44 overflow-y-auto">
           {ui.tool === 'paint' && (
             <>
-              <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">
+              <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">
                 Terrain
               </p>
               <div className="grid grid-cols-4 gap-1 mb-2">
@@ -89,7 +89,7 @@ export function Toolbar() {
           )}
           {ui.tool === 'fog' && (
             <>
-              <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">
+              <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">
                 Set hexes to
               </p>
               <div className="flex flex-col gap-1 mb-2">
@@ -118,7 +118,7 @@ export function Toolbar() {
               <ApplyFogToAll />
             </>
           )}
-          <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+          <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1">
             Brush size
           </p>
           <div className="flex gap-1">
@@ -245,11 +245,11 @@ function RegionOptions() {
 
   return (
     <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-52 overflow-y-auto space-y-2">
-      <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">
+      <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold">
         Paint the area of
       </p>
       {options.length === 0 ? (
-        <p className="text-[11px] text-ink-400">
+        <p className="text-[0.6875rem] text-ink-400">
           No content on this map yet. Create a region with the Content tool (C), then come back here
           to paint its footprint.
         </p>
@@ -270,18 +270,18 @@ function RegionOptions() {
         </select>
       )}
       {target ? (
-        <p className="text-[11px] text-ink-300">
+        <p className="text-[0.6875rem] text-ink-300">
           <span className="text-brass-300 font-medium">{targetCells}</span> hex
           {targetCells === 1 ? '' : 'es'} — drag on the map to paint. The anchor hex always belongs
           to the region.
         </p>
       ) : (
         options.length > 0 && (
-          <p className="text-[11px] text-ink-400">Pick a target before painting.</p>
+          <p className="text-[0.6875rem] text-ink-400">Pick a target before painting.</p>
         )
       )}
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+        <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1">
           Brush
         </p>
         <RegionBrushControls />
@@ -330,7 +330,7 @@ function StickerPicker() {
               setQuery('');
             }}
             className={cx(
-              'px-1.5 py-0.5 rounded text-[10px] cursor-pointer border',
+              'px-1.5 py-0.5 rounded text-[0.625rem] cursor-pointer border',
               !q && category === c.id
                 ? 'border-brass-500 bg-brass-500/15 text-brass-300'
                 : 'border-ink-700 hover:bg-ink-700 text-ink-300',
@@ -346,11 +346,11 @@ function StickerPicker() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      {groups.length === 0 && <p className="text-[11px] text-ink-400 mb-2">No sticker matches.</p>}
+      {groups.length === 0 && <p className="text-[0.6875rem] text-ink-400 mb-2">No sticker matches.</p>}
       {groups.map((group) => (
         <div key={group.id} className="mb-2">
           {q && (
-            <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+            <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1">
               {group.label}
             </p>
           )}
@@ -396,7 +396,7 @@ function StickerPicker() {
           </div>
         </div>
       ))}
-      <label className="block text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+      <label className="block text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1">
         Size — {ui.markerScale.toFixed(1)}×
       </label>
       <input
@@ -485,11 +485,11 @@ function TrailOptions() {
 
   return (
     <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-52 overflow-y-auto space-y-2">
-      <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">
+      <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold">
         {editing ? `Editing: ${editing.name}` : 'New trail'} — {draft.length} cell
         {draft.length === 1 ? '' : 's'}
       </p>
-      <p className="text-[11px] text-ink-400">
+      <p className="text-[0.6875rem] text-ink-400">
         Click hexes in order; click the last cell again to step back. Walkers learn only the
         direction onward and back.
       </p>
@@ -500,7 +500,7 @@ function TrailOptions() {
         maxLength={120}
         onChange={(e) => setName(e.target.value)}
       />
-      <div className="flex items-center gap-1.5 text-[11px] text-ink-300">
+      <div className="flex items-center gap-1.5 text-[0.6875rem] text-ink-300">
         <select
           className="flex-1 bg-ink-950 border border-ink-600 rounded px-1 py-0.5 cursor-pointer capitalize"
           value={skill}

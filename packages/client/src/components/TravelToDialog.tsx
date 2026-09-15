@@ -89,7 +89,7 @@ export function TravelToDialog() {
               <span className="text-base">{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-ink-100 truncate">{content.title}</p>
-                <p className="text-[11px] text-ink-400">
+                <p className="text-[0.6875rem] text-ink-400">
                   {dist} hex{dist === 1 ? '' : 'es'} away
                   {hexes !== null ? (
                     <span className="text-brass-300">

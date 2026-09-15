@@ -192,7 +192,7 @@ function DmDetails({ content }: { content: Content }) {
                     return d ? (
                       <span
                         key={ch.id}
-                        className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-ink-950 cursor-pointer"
+                        className="px-1.5 py-0.5 rounded-full text-[0.625rem] font-medium text-ink-950 cursor-pointer"
                         style={{ background: ch.color }}
                         title="Knows this — click to revoke"
                         onClick={() => send({ kind: 'discovery.revoke', discoveryId: d.id })}
@@ -202,7 +202,7 @@ function DmDetails({ content }: { content: Content }) {
                     ) : (
                       <span
                         key={ch.id}
-                        className="px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-dashed cursor-pointer text-ink-300 hover:text-ink-100"
+                        className="px-1.5 py-0.5 rounded-full text-[0.625rem] font-medium border border-dashed cursor-pointer text-ink-300 hover:text-ink-100"
                         style={{ borderColor: ch.color }}
                         title={`Doesn't know yet — click to reveal to ${ch.name}`}
                         onClick={() =>
@@ -214,7 +214,7 @@ function DmDetails({ content }: { content: Content }) {
                     );
                   })}
                   <button
-                    className="text-[10px] text-brass-400 hover:text-brass-300 cursor-pointer px-1"
+                    className="text-[0.625rem] text-brass-400 hover:text-brass-300 cursor-pointer px-1"
                     onClick={() => send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [] })}
                     title="Reveal to everyone"
                   >
@@ -242,7 +242,7 @@ function PlayerDetails({ content }: { content: ContentPlayerView }) {
           <li key={c.clueId} className="text-sm text-ink-200 flex items-start gap-2">
             <span className="flex-1">{c.text}</span>
             <button
-              className="shrink-0 text-[10px] text-brass-400 hover:text-brass-300 cursor-pointer"
+              className="shrink-0 text-[0.625rem] text-brass-400 hover:text-brass-300 cursor-pointer"
               title="Tell the party — everyone learns this clue"
               onClick={() => send({ kind: 'clue.share', clueId: c.clueId })}
             >

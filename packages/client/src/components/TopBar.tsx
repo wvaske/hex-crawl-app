@@ -15,7 +15,7 @@ import {
 } from '@hexcrawl/shared';
 import type { TravelPace } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
-import { useUi } from '../stores/ui.js';
+import { UI_SCALES, useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { Button, Input, Select, cx } from '../ui/kit.js';
 import { useIsMobile } from '../ui/responsive.js';
@@ -66,7 +66,7 @@ function ScaleControl({ baseMiles }: { baseMiles: number }) {
   const labels = [0, 1, 2].map((l) => `${Math.round(baseMiles * Math.pow(SUPER_SCALE, l))}mi`);
   return (
     <div
-      className="hidden md:flex items-center rounded-md border border-ink-600 overflow-hidden text-[11px]"
+      className="hidden md:flex items-center rounded-md border border-ink-600 overflow-hidden text-[0.6875rem]"
       title="Hex scale: Auto follows zoom; lock a scale for travel or searching"
     >
       {(['auto', 0, 1, 2] as const).map((opt) => {
@@ -131,7 +131,7 @@ function TimeControl() {
       <button
         onClick={() => role === 'dm' && setOpen((o) => !o)}
         className={cx(
-          'flex items-center gap-1.5 rounded-md border border-ink-600 px-2 py-1 text-[11px] text-ink-200',
+          'flex items-center gap-1.5 rounded-md border border-ink-600 px-2 py-1 text-[0.6875rem] text-ink-200',
           role === 'dm' ? 'cursor-pointer hover:bg-ink-700' : 'cursor-default',
         )}
         title={
@@ -149,7 +149,7 @@ function TimeControl() {
       {open && role === 'dm' && (
         <div className="absolute left-0 top-full mt-1 w-60 rounded-md border border-ink-700 bg-ink-900 p-2.5 shadow-lg space-y-2 z-40">
           <div>
-            <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+            <span className="block text-[0.625rem] uppercase tracking-wider text-ink-400 mb-1">
               Travel mode
             </span>
             <Select
@@ -165,10 +165,10 @@ function TimeControl() {
           </div>
 
           <div>
-            <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+            <span className="block text-[0.625rem] uppercase tracking-wider text-ink-400 mb-1">
               Pace
             </span>
-            <div className="flex items-center rounded-md border border-ink-600 overflow-hidden text-[11px]">
+            <div className="flex items-center rounded-md border border-ink-600 overflow-hidden text-[0.6875rem]">
               {TRAVEL_PACES.map((p: TravelPace) => (
                 <button
                   key={p}
@@ -187,13 +187,13 @@ function TimeControl() {
           </div>
 
           {perHex !== null && (
-            <p className="text-[11px] text-ink-400">
+            <p className="text-[0.6875rem] text-ink-400">
               {perHex} min per hex at {map!.milesPerHex} mi/hex
             </p>
           )}
 
           <div>
-            <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+            <span className="block text-[0.625rem] uppercase tracking-wider text-ink-400 mb-1">
               Advance time
             </span>
             <div className="flex gap-1">
@@ -251,7 +251,7 @@ function TimeControl() {
                 value={custom}
                 onChange={(e) => setCustom(e.target.value)}
                 placeholder="minutes"
-                className="!py-1 text-[11px]"
+                className="!py-1 text-[0.6875rem]"
               />
               <Button type="submit" variant="ghost" size="sm" className="border border-ink-600">
                 Add
@@ -262,11 +262,11 @@ function TimeControl() {
           <SetClock minutes={time.minutes} />
 
           <div>
-            <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+            <span className="block text-[0.625rem] uppercase tracking-wider text-ink-400 mb-1">
               Weather
             </span>
             <div className="flex items-center gap-2">
-              <span className="flex-1 text-[11px] text-ink-200 truncate">
+              <span className="flex-1 text-[0.6875rem] text-ink-200 truncate">
                 {time.weather ? `${time.weather.icon} ${time.weather.text}` : 'Not yet rolled'}
               </span>
               <Button
@@ -321,25 +321,25 @@ function SetClock({ minutes }: { minutes: number }) {
         if (target !== null && changed) send({ kind: 'time.set', minutes: target });
       }}
     >
-      <span className="block text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+      <span className="block text-[0.625rem] uppercase tracking-wider text-ink-400 mb-1">
         Set the clock
       </span>
       <div className="flex gap-1 items-center">
-        <label className="flex items-center gap-1 text-[11px] text-ink-400">
+        <label className="flex items-center gap-1 text-[0.6875rem] text-ink-400">
           Day
           <Input
             type="number"
             min={1}
             value={day}
             onChange={(e) => setDay(e.target.value)}
-            className="!py-1 !w-16 text-[11px]"
+            className="!py-1 !w-16 text-[0.6875rem]"
           />
         </label>
         <Input
           type="time"
           value={clock}
           onChange={(e) => setClock(e.target.value)}
-          className="!py-1 text-[11px]"
+          className="!py-1 text-[0.6875rem]"
         />
         <Button
           type="submit"
@@ -353,7 +353,7 @@ function SetClock({ minutes }: { minutes: number }) {
         </Button>
       </div>
       {changed && target !== null && (
-        <p className="text-[11px] text-ink-400 mt-1">
+        <p className="text-[0.6875rem] text-ink-400 mt-1">
           → {formatCalendarClock(target, calendar)}
           {target < minutes ? ' (rewind)' : ''}
         </p>
@@ -410,14 +410,14 @@ function UndoMenu() {
       </Button>
       {open && history.length > 0 && (
         <div className="absolute right-0 top-full mt-1 w-72 rounded-md border border-ink-700 bg-ink-900 p-1.5 shadow-lg z-40">
-          <p className="text-[10px] uppercase tracking-wider text-ink-400 px-1.5 pb-1">
+          <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 px-1.5 pb-1">
             Undo history — newest first
           </p>
           <ul className="max-h-72 overflow-y-auto">
             {history.map((h, i) => (
               <li key={`${h.at}-${i}`}>
                 <button
-                  className="w-full text-left px-1.5 py-1 rounded text-[11px] text-ink-200 hover:bg-ink-700 cursor-pointer"
+                  className="w-full text-left px-1.5 py-1 rounded text-[0.6875rem] text-ink-200 hover:bg-ink-700 cursor-pointer"
                   title={i === 0 ? 'Undo this change' : `Undo this and the ${i} change${i === 1 ? '' : 's'} after it`}
                   onClick={() => {
                     send({ kind: 'undo', count: i + 1 });
@@ -464,12 +464,51 @@ function WeatherReadout() {
   if (!weather) return null;
   return (
     <span
-      className="hidden md:flex items-center gap-1 rounded-md border border-ink-600 px-2 py-1 text-[11px] text-ink-200 max-w-40"
+      className="hidden md:flex items-center gap-1 rounded-md border border-ink-600 px-2 py-1 text-[0.6875rem] text-ink-200 max-w-40"
       title={`Weather: ${weather.text}`}
     >
       <span>{weather.icon}</span>
       <span className="truncate">{weather.text}</span>
     </span>
+  );
+}
+
+/**
+ * Text size (issue #126): A− / A+ step through preset percentages for every
+ * piece of UI chrome — panels, dialogs, this bar. The map is unaffected.
+ * Both roles; remembered per browser.
+ */
+function TextSizeControl() {
+  const scale = useUi((s) => s.uiScale);
+  const setUi = useUi((s) => s.set);
+  const idx = Math.max(0, UI_SCALES.indexOf(scale as (typeof UI_SCALES)[number]));
+  const step = (d: number) => {
+    const next = UI_SCALES[Math.min(UI_SCALES.length - 1, Math.max(0, idx + d))]!;
+    setUi('uiScale', next);
+  };
+  return (
+    <div
+      className="flex items-center rounded-md border border-ink-600 overflow-hidden text-[0.6875rem]"
+      title={`Text size ${scale}% — applies to panels and dialogs, not the map`}
+    >
+      <button
+        className="px-1.5 py-1 cursor-pointer text-ink-300 hover:bg-ink-700 disabled:opacity-40 disabled:cursor-default"
+        disabled={idx === 0}
+        onClick={() => step(-1)}
+        aria-label="Smaller text"
+      >
+        A−
+      </button>
+      <span className="px-1 text-ink-400 tabular-nums">{scale}%</span>
+      <button
+        className="px-1.5 py-1 cursor-pointer text-ink-300 hover:bg-ink-700 disabled:opacity-40 disabled:cursor-default"
+        disabled={idx === UI_SCALES.length - 1}
+        onClick={() => step(1)}
+        aria-label="Larger text"
+      >
+        A+
+      </button>
+    </div>
   );
 }
 
@@ -596,7 +635,7 @@ export function TopBar({
         {/* The map picker beside this already names the map — on a phone the
             subline is redundant, and the width is worth more to the title. */}
         {map && (
-          <p className="hidden md:block text-[11px] text-ink-400 leading-tight truncate">
+          <p className="hidden md:block text-[0.6875rem] text-ink-400 leading-tight truncate">
             {map.name} · {map.milesPerHex} mi/hex
           </p>
         )}
@@ -616,7 +655,7 @@ export function TopBar({
           return (
             <span
               key={seat.id}
-              className="w-6 h-6 rounded-full border-2 border-ink-900 flex items-center justify-center text-[10px] font-bold text-ink-950"
+              className="w-6 h-6 rounded-full border-2 border-ink-900 flex items-center justify-center text-[0.625rem] font-bold text-ink-950"
               style={{ background: character?.color ?? (seat.role === 'dm' ? '#c9a24b' : '#7b86a5') }}
               title={`${seat.name}${seat.role === 'dm' ? ' (DM)' : character ? ` — ${character.name}` : ''}`}
             >
@@ -653,6 +692,9 @@ export function TopBar({
         it — one affordance instead of two competing ones.
       */}
       <Overflow extra={mapPicker}>
+        <MenuRow label="Text size">
+          <TextSizeControl />
+        </MenuRow>
         <MenuRow label="Day/night tint">
           <DayNightToggle />
         </MenuRow>

@@ -95,7 +95,7 @@ export function CharacterDialog({ character, onClose }: { character: Character; 
         <CharacterEditor character={character} readOnly={!canEdit} canRoll={canEdit} />
 
         <div className="space-y-3 pt-3 border-t border-ink-700">
-          <p className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
+          <p className="text-[0.6875rem] uppercase tracking-wider text-ink-400 font-semibold">
             Character details
           </p>
           {EXTRA_FIELDS.map(({ key, label, placeholder, rows, hint }) => (
@@ -113,7 +113,7 @@ export function CharacterDialog({ character, onClose }: { character: Character; 
               ) : (
                 <p className="text-sm text-ink-500 italic">—</p>
               )}
-              {hint && <p className="text-[11px] text-ink-500 mt-1">{hint}</p>}
+              {hint && <p className="text-[0.6875rem] text-ink-500 mt-1">{hint}</p>}
             </Field>
           ))}
         </div>

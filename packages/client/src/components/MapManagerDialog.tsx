@@ -159,7 +159,7 @@ function MapCard({
         >
           {map.name}
         </span>
-        {active && <span className="text-[10px] text-brass-300">ACTIVE</span>}
+        {active && <span className="text-[0.625rem] text-brass-300">ACTIVE</span>}
         <button
           className="text-ink-400 hover:text-ink-100 text-xs cursor-pointer disabled:opacity-25"
           disabled={first}
@@ -208,7 +208,7 @@ function Thumbnail({ map, thumb }: { map: MapInfo; thumb: MapThumb | undefined }
       >
         ⬡
       </span>
-      <span className="text-[10px] text-ink-400">
+      <span className="text-[0.625rem] text-ink-400">
         {thumb ? `${thumb.hexCount} hex${thumb.hexCount === 1 ? '' : 'es'} painted` : 'no image'}
       </span>
     </div>
@@ -240,7 +240,7 @@ function Row({
   const inherited = field !== null && map.inheritedFields.includes(field);
   return (
     <div className="flex items-center gap-2 py-1">
-      <span className="w-40 shrink-0 text-[11px] uppercase tracking-wider text-ink-400" title={hint}>
+      <span className="w-40 shrink-0 text-[0.6875rem] uppercase tracking-wider text-ink-400" title={hint}>
         {label}
       </span>
       <div className={cx('flex-1 min-w-0', inherited && 'opacity-60')}>{children(inherited)}</div>
@@ -507,7 +507,7 @@ function CampaignDefaults() {
 
   return (
     <div className="mb-4 rounded-lg border border-brass-500/40 bg-brass-500/5 p-3">
-      <p className="text-[11px] uppercase tracking-wider text-brass-300 font-semibold mb-1">
+      <p className="text-[0.6875rem] uppercase tracking-wider text-brass-300 font-semibold mb-1">
         Campaign defaults
       </p>
       <p className="text-xs text-ink-400 mb-2">
@@ -599,15 +599,15 @@ function DefaultRow({
   const allLinked = total > 0 && count === total;
   return (
     <div className="flex items-center gap-2 py-1">
-      <span className="w-40 shrink-0 text-[11px] uppercase tracking-wider text-ink-400">{label}</span>
+      <span className="w-40 shrink-0 text-[0.6875rem] uppercase tracking-wider text-ink-400">{label}</span>
       <div className="flex-1 min-w-0">{children}</div>
-      <span className="w-16 shrink-0 text-right text-[10px] text-ink-500" title="Maps following this default">
+      <span className="w-16 shrink-0 text-right text-[0.625rem] text-ink-500" title="Maps following this default">
         🔗 {count}/{total}
       </span>
       <Button
         variant="ghost"
         size="sm"
-        className="!px-1.5 !py-0.5 shrink-0 text-[10px] border border-ink-600 disabled:opacity-30"
+        className="!px-1.5 !py-0.5 shrink-0 text-[0.625rem] border border-ink-600 disabled:opacity-30"
         disabled={allLinked}
         onClick={onLinkAll}
         title={

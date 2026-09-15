@@ -35,7 +35,7 @@ export function SensesTab() {
           ))}
         </div>
       </Section>
-      <p className="text-[11px] text-ink-400 mt-2">
+      <p className="text-[0.6875rem] text-ink-400 mt-2">
         Click a clue to highlight every hex you've visited where it can be sensed — walk the edges
         of that area to triangulate the source.
       </p>
@@ -72,7 +72,7 @@ export function SenseRow({ sense }: { sense: Sense }) {
         {sense.text}
         {sense.direction && <span className="text-brass-300"> — to the {sense.direction}</span>}
       </span>
-      <span className="block text-[11px] text-ink-400 mt-0.5">
+      <span className="block text-[0.6875rem] text-ink-400 mt-0.5">
         {sense.located && sense.contentTitle ? (
           <>
             Source found: <span className="text-ink-200">{sense.contentTitle}</span>
@@ -109,7 +109,7 @@ export function SenseRow({ sense }: { sense: Sense }) {
             .map((ch) => (
               <span
                 key={ch.id}
-                className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-ink-950"
+                className="px-1.5 py-0.5 rounded-full text-[0.625rem] font-medium text-ink-950"
                 style={{ background: ch.color }}
                 title={`${ch.name} has sensed this`}
               >
@@ -121,7 +121,7 @@ export function SenseRow({ sense }: { sense: Sense }) {
             .map((ch) => (
               <span
                 key={ch.id}
-                className="px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-dashed text-ink-500 opacity-60"
+                className="px-1.5 py-0.5 rounded-full text-[0.625rem] font-medium border border-dashed text-ink-500 opacity-60"
                 style={{ borderColor: ch.color }}
                 title={`${ch.name} hasn't sensed this`}
               >

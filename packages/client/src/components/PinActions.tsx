@@ -42,7 +42,7 @@ export function PinActions() {
           </span>
           <button
             className={cx(
-              'px-1.5 py-0.5 rounded text-[11px] cursor-pointer',
+              'px-1.5 py-0.5 rounded text-[0.6875rem] cursor-pointer',
               c.enabled ? 'text-brass-300 hover:bg-ink-700' : 'text-ink-400 hover:bg-ink-700',
             )}
             title={c.enabled ? 'Live for players — click to disable' : 'Disabled — click to enable'}
@@ -54,7 +54,7 @@ export function PinActions() {
           </button>
           <button
             className={cx(
-              'px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap',
+              'px-1.5 py-0.5 rounded text-[0.6875rem] cursor-pointer whitespace-nowrap',
               c.knownLocation ? 'bg-brass-500/25 text-brass-300' : 'text-ink-300 hover:bg-ink-700',
             )}
             title={
@@ -99,7 +99,7 @@ export function PinActions() {
             <button
               key={s}
               className={cx(
-                'px-1.5 py-0.5 rounded text-[11px] capitalize cursor-pointer',
+                'px-1.5 py-0.5 rounded text-[0.6875rem] capitalize cursor-pointer',
                 fog === s ? 'bg-brass-500/25 text-brass-300' : 'text-ink-300 hover:bg-ink-700',
               )}
               title={`Set this hex's fog to ${s}`}
@@ -110,7 +110,7 @@ export function PinActions() {
           ))}
           <span className="w-px h-4 bg-ink-700" />
           <button
-            className="px-1.5 py-0.5 rounded text-[11px] cursor-pointer text-ink-300 hover:bg-ink-700"
+            className="px-1.5 py-0.5 rounded text-[0.6875rem] cursor-pointer text-ink-300 hover:bg-ink-700"
             title="Move: click the destination hex"
             onClick={() => {
               useUi.getState().set('movingContentId', c.id);
@@ -124,7 +124,7 @@ export function PinActions() {
             Move
           </button>
           <button
-            className="px-1.5 py-0.5 rounded text-[11px] cursor-pointer text-ink-300 hover:bg-ink-700"
+            className="px-1.5 py-0.5 rounded text-[0.6875rem] cursor-pointer text-ink-300 hover:bg-ink-700"
             title="Everything about this location: clues, visits, wiki page"
             onClick={() => useUi.getState().set('locationDialogContentId', c.id)}
           >
@@ -141,7 +141,7 @@ export function PinActions() {
               Wiki
             </a>
           ) : (
-            <span className="px-1.5 py-0.5 text-[11px] text-ink-600" title="No wiki page set">
+            <span className="px-1.5 py-0.5 text-[0.6875rem] text-ink-600" title="No wiki page set">
               Wiki
             </span>
           )}

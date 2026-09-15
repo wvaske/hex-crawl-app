@@ -72,7 +72,7 @@ export function LogTab() {
               setMode('log');
             }}
             className={cx(
-              'px-2 py-0.5 rounded-full text-[11px] capitalize cursor-pointer border',
+              'px-2 py-0.5 rounded-full text-[0.6875rem] capitalize cursor-pointer border',
               mode === 'log' && filter === f
                 ? 'border-brass-500 bg-brass-500/15 text-brass-300'
                 : 'border-ink-700 text-ink-300 hover:bg-ink-700',
@@ -84,7 +84,7 @@ export function LogTab() {
         <button
           onClick={() => setMode(mode === 'recaps' ? 'log' : 'recaps')}
           className={cx(
-            'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border ml-auto',
+            'px-2 py-0.5 rounded-full text-[0.6875rem] cursor-pointer border ml-auto',
             mode === 'recaps'
               ? 'border-brass-500 bg-brass-500/15 text-brass-300'
               : 'border-ink-700 text-ink-300 hover:bg-ink-700',
@@ -118,11 +118,11 @@ export function LogTab() {
               >
                 <div className="flex items-center gap-1.5 text-ink-400 mb-0.5">
                   <span>{meta.icon}</span>
-                  <span className="uppercase tracking-wider text-[10px] font-semibold">
+                  <span className="uppercase tracking-wider text-[0.625rem] font-semibold">
                     {meta.label}
                   </span>
                   {role === 'dm' && entry.visibility === 'dm' && (
-                    <span className="text-[10px] text-ember-500/80">DM only</span>
+                    <span className="text-[0.625rem] text-ember-500/80">DM only</span>
                   )}
                   <span className="ml-auto">{formatTime(entry.at)}</span>
                 </div>
@@ -213,9 +213,9 @@ function SessionRecapRow({
         <span>🎬</span>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-ink-100">{session.label}</div>
-          {span && <div className="text-[11px] text-ink-400">{span}</div>}
+          {span && <div className="text-[0.6875rem] text-ink-400">{span}</div>}
         </div>
-        <span className="text-[11px] text-ink-400 shrink-0">{recap.entryCount} entries</span>
+        <span className="text-[0.6875rem] text-ink-400 shrink-0">{recap.entryCount} entries</span>
         <span className="text-ink-400 shrink-0">{isOpen ? '▾' : '▸'}</span>
       </button>
       {isOpen && (
@@ -246,7 +246,7 @@ export function RecapBody({ recap }: { recap: Recap }) {
 
   return (
     <>
-      <div className="text-[11px] text-ink-300">
+      <div className="text-[0.6875rem] text-ink-300">
         Time advanced: {formatDuration(recap.timeAdvancedMinutes)}
         {recap.wallClockMs > 0 && <> · session ran {formatWallClock(recap.wallClockMs)}</>}
       </div>
@@ -254,7 +254,7 @@ export function RecapBody({ recap }: { recap: Recap }) {
         (s) =>
           s.texts.length > 0 && (
             <div key={s.label}>
-              <div className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-0.5 flex items-center gap-1">
+              <div className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-0.5 flex items-center gap-1">
                 <span>{s.icon}</span>
                 <span>
                   {s.label} ({s.texts.length})
@@ -312,7 +312,7 @@ function NarrateBox() {
       </div>
       {playerSeats.length > 0 && (
         <select
-          className="w-full bg-ink-900 border border-ink-700 rounded px-1.5 py-1 text-[11px] text-ink-300 cursor-pointer focus:outline-none"
+          className="w-full bg-ink-900 border border-ink-700 rounded px-1.5 py-1 text-[0.6875rem] text-ink-300 cursor-pointer focus:outline-none"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
         >
