@@ -12,6 +12,7 @@ import {
   matchCharacter,
   parseGameLogEvent,
   skillOf,
+  userIdFromClaims,
 } from './engine/ddbGameLog.js';
 
 /**
@@ -141,6 +142,20 @@ function event(over: {
     },
   });
 }
+
+describe('userIdFromClaims', () => {
+  it('reads sub, plain ids, or .NET schema-URI claims, and gives up quietly', () => {
+    expect(userIdFromClaims({ sub: '42' })).toBe('42');
+    expect(userIdFromClaims({ userId: 7 })).toBe('7');
+    expect(
+      userIdFromClaims({
+        'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier': '99',
+        'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name': 'wes',
+      }),
+    ).toBe('99');
+    expect(userIdFromClaims({ displayName: 'wes', exp: 1 })).toBe('');
+  });
+});
 
 describe('parseGameLogEvent', () => {
   it('reads a plain check', () => {
