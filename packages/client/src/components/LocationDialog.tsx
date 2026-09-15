@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   CONTENT_TYPE_GLYPHS,
   compassDirection,
+  clueObserveSet,
   describeGate,
   formatClock,
   formatDuration,
@@ -184,7 +185,7 @@ function DmDetails({ content }: { content: Content }) {
             return (
               <li key={clue.id} className="bg-ink-900 border border-ink-700 rounded-lg p-2">
                 <p className="text-sm text-ink-100">{clue.text}</p>
-                <p className="text-xs text-ink-400 mt-0.5">{describeGate(clue.gate)}</p>
+                <p className="text-xs text-ink-400 mt-0.5">{describeGate(clue.gate)}{vantageNote(clue, content)}</p>
                 <div className="flex items-center gap-1 flex-wrap mt-1.5">
                   {characters.map((ch) => {
                     const d = known.find((k) => k.characterId === ch.id);
@@ -488,4 +489,15 @@ function WikiPanel({
       )}
     </Section>
   );
+}
+
+/** " · from N vantage hexes" when a clue is restricted to chosen hexes (#123). */
+function vantageNote(
+  clue: { gate: Content['clues'][number]['gate']; observeFrom?: { q: number; r: number }[] },
+  content: Content,
+): string {
+  const set = clueObserveSet(clue, content);
+  if (!set) return '';
+  const own = (clue.observeFrom?.length ?? 0) > 0;
+  return ` · from ${set.length} vantage hex${set.length === 1 ? '' : 'es'}${own ? '' : ' (content-wide)'}`;
 }

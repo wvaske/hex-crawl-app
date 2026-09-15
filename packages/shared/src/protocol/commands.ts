@@ -419,9 +419,14 @@ export const ContentUpsertCommand = z.object({
     enabled: z.boolean().default(true),
     knownLocation: z.boolean().default(false),
     quest: z.string().max(120).default(''),
+    /** Vantage hexes for every clue (issue #123); omitted = keep what's stored. */
+    observeFrom: z.array(HexRefSchema).max(2000).optional(),
     clues: z.array(
-      ClueSchema.omit({ id: true, contentId: true }).extend({
+      // `observeFrom` is re-declared optional: reusing the domain default
+      // would make it required in `CommandInput` at every call site.
+      ClueSchema.omit({ id: true, contentId: true, observeFrom: true }).extend({
         id: z.string().nullable().default(null),
+        observeFrom: z.array(HexRefSchema).max(2000).optional(),
       }),
     ),
   }),

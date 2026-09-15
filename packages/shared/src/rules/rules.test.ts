@@ -71,6 +71,14 @@ describe('gates', () => {
     expect(gateOpensPassively(highDc, scout, 0).opens).toBe(false);
   });
 
+  it('an explicit in-range verdict replaces the distance rule (vantage hexes, #123)', () => {
+    const gate = { kind: 'skill', skill: 'perception', dc: 14, maxDistance: 2, mode: 'passive' } as const;
+    expect(gateOpensPassively(gate, scout, 9, true).opens).toBe(true);
+    expect(gateOpensPassively(gate, scout, 0, false).opens).toBe(false);
+    expect(gateOpensPassively({ kind: 'auto' }, scout, 3, true).opens).toBe(true);
+    expect(gateOpensPassively({ kind: 'auto' }, scout, 0, false).opens).toBe(false);
+  });
+
   it('active and manual gates never open passively', () => {
     expect(
       gateOpensPassively(
@@ -138,15 +146,15 @@ function fullState(): CampaignState {
       ],
       contents: [
         {
-          id: 'ct1', mapId: 'm1', q: 1, r: 0, area: [], type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '',
+          id: 'ct1', mapId: 'm1', q: 1, r: 0, area: [], type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '', observeFrom: [],
           clues: [
-            { id: 'cl1', contentId: 'ct1', text: 'Dead vegetation', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false, revealsLocation: true },
-            { id: 'cl2', contentId: 'ct1', text: 'Acid scars', gate: { kind: 'manual' }, sortOrder: 1, indicatesDirection: false, revealsLocation: true },
+            { id: 'cl1', contentId: 'ct1', text: 'Dead vegetation', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false, revealsLocation: true, observeFrom: [] },
+            { id: 'cl2', contentId: 'ct1', text: 'Acid scars', gate: { kind: 'manual' }, sortOrder: 1, indicatesDirection: false, revealsLocation: true, observeFrom: [] },
           ],
         },
         {
-          id: 'ct2', mapId: 'm1', q: 2, r: 0, area: [], type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '',
-          clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false, revealsLocation: true }],
+          id: 'ct2', mapId: 'm1', q: 2, r: 0, area: [], type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '', observeFrom: [],
+          clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false, revealsLocation: true, observeFrom: [] }],
         },
       ],
       pendingMoves: [],

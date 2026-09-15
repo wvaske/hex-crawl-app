@@ -537,6 +537,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     knownLocation: z.boolean().optional(),
     /** Multi-hex footprint (issue #69): members beside the anchor q/r. */
     area: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(2000).optional(),
+    /** Vantage hexes for every clue (issue #123). */
+    observeFrom: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(2000).optional(),
     quest: z.string().max(120).default(''),
     clues: z
       .array(
@@ -545,6 +547,10 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
           gate: GateSchema.default({ kind: 'auto' }),
           indicatesDirection: z.boolean().default(false),
           revealsLocation: z.boolean().default(true),
+          observeFrom: z
+            .array(z.object({ q: z.number().int(), r: z.number().int() }))
+            .max(2000)
+            .default([]),
         }),
       )
       .default([]),
@@ -585,6 +591,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       q,
       r,
       area: input.area ?? existing?.area ?? [],
+      observeFrom: input.observeFrom ?? existing?.observeFrom ?? [],
       type: input.type ?? existing?.type ?? 'landmark',
       title: input.title,
       dmNotes: input.dmNotes || existing?.dmNotes || '',
@@ -604,6 +611,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
             sortOrder: i,
             indicatesDirection: cl.indicatesDirection,
             revealsLocation: cl.revealsLocation,
+            observeFrom: cl.observeFrom,
           }))
         : (existing?.clues ?? []),
     };

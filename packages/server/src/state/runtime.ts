@@ -6,6 +6,7 @@ import type {
   CampaignState,
   CampaignTime,
   Character,
+  Clue,
   Content,
   Discovery,
   Trail,
@@ -412,6 +413,7 @@ export class CampaignRuntime {
         sortOrder: cl.sort_order as number,
         indicatesDirection: Boolean(cl.indicates_direction),
         revealsLocation: Boolean(cl.reveals_location ?? 1),
+        observeFrom: safeJson(cl.observe_from as string, []) as Clue['observeFrom'],
       }));
       rt.contents.set(c.id as string, {
         id: c.id as string,
@@ -429,6 +431,7 @@ export class CampaignRuntime {
         enabled: Boolean(c.enabled ?? 1),
         knownLocation: Boolean(c.known_location),
         quest: (c.quest as string) ?? '',
+        observeFrom: safeJson(c.observe_from as string, []) as Content['observeFrom'],
         clues,
       });
     }
@@ -1220,10 +1223,10 @@ export class CampaignRuntime {
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label, scale_visibility, wiki_page, enabled, quest, known_location, area) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label, scale_visibility=excluded.scale_visibility, wiki_page=excluded.wiki_page, enabled=excluded.enabled, quest=excluded.quest, known_location=excluded.known_location, area=excluded.area`,
+          `INSERT INTO content (id, map_id, q, r, type, title, dm_notes, glyph, show_label, scale_visibility, wiki_page, enabled, quest, known_location, area, observe_from) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET q=excluded.q, r=excluded.r, type=excluded.type, title=excluded.title, dm_notes=excluded.dm_notes, glyph=excluded.glyph, show_label=excluded.show_label, scale_visibility=excluded.scale_visibility, wiki_page=excluded.wiki_page, enabled=excluded.enabled, quest=excluded.quest, known_location=excluded.known_location, area=excluded.area, observe_from=excluded.observe_from`,
         )
-        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0, content.scaleVisibility, content.wikiPage, content.enabled ? 1 : 0, content.quest, content.knownLocation ? 1 : 0, JSON.stringify(content.area ?? []));
+        .run(content.id, content.mapId, content.q, content.r, content.type, content.title, content.dmNotes, content.glyph, content.showLabel ? 1 : 0, content.scaleVisibility, content.wikiPage, content.enabled ? 1 : 0, content.quest, content.knownLocation ? 1 : 0, JSON.stringify(content.area ?? []), JSON.stringify(content.observeFrom ?? []));
       const keep = new Set(content.clues.map((c) => c.id));
       if (existing) {
         for (const old of existing.clues) {
@@ -1231,8 +1234,8 @@ export class CampaignRuntime {
         }
       }
       const put = this.db.prepare(
-        `INSERT INTO clue (id, content_id, text, gate, sort_order, indicates_direction, reveals_location) VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET text=excluded.text, gate=excluded.gate, sort_order=excluded.sort_order, indicates_direction=excluded.indicates_direction, reveals_location=excluded.reveals_location`,
+        `INSERT INTO clue (id, content_id, text, gate, sort_order, indicates_direction, reveals_location, observe_from) VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET text=excluded.text, gate=excluded.gate, sort_order=excluded.sort_order, indicates_direction=excluded.indicates_direction, reveals_location=excluded.reveals_location, observe_from=excluded.observe_from`,
       );
       for (const clue of content.clues) {
         put.run(
@@ -1243,6 +1246,7 @@ export class CampaignRuntime {
           clue.sortOrder,
           clue.indicatesDirection ? 1 : 0,
           clue.revealsLocation ? 1 : 0,
+          JSON.stringify(clue.observeFrom ?? []),
         );
       }
     });

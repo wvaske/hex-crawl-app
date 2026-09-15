@@ -11,12 +11,12 @@ import type {
   TrailSign,
 } from '../domain.js';
 import {
-  contentCells,
-  distanceToContent,
+  clueInRange,
+  clueObservableCells,
   isFullContent,
   nearestContentCell,
 } from '../domain.js';
-import { hexKey, hexRange } from '../hex/coords.js';
+import { hexKey } from '../hex/coords.js';
 import { bearingAngle, compassDirection, withDirection } from '../hex/direction.js';
 import type { HexOrientation } from '../hex/layout.js';
 
@@ -257,27 +257,24 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
         const d = mine.get(clue.id);
         return d ? discoveryLocates(d) : false;
       });
-    const cells = contentCells(content);
     for (const clue of content.clues) {
       const d = mine.get(clue.id);
       if (!d) continue;
-      const radius = clue.gate.kind === 'skill' ? clue.gate.maxDistance : 0;
       const here = myToken ? { q: myToken.q, r: myToken.r } : null;
       // A multi-hex region is sensed from — and points toward — its nearest
       // member hex, so a footprint reads as one place from any side.
       const src = here ? nearestContentCell(content, here) : { q: content.q, r: content.r };
-      const inRange = here ? distanceToContent(content, here) <= radius : false;
+      // Vantage hexes (issue #123) replace the radius when the clue has them.
+      const inRange = here ? clueInRange(clue, content, here) : false;
       const liveDirection =
         inRange && here && clue.indicatesDirection
           ? compassDirection(here, src, orientation)
           : null;
-      // Triangulation ground: the union of each member hex's sensing range.
+      // Triangulation ground: the sensing area, but only where they've been.
       const observable = new Map<string, { q: number; r: number }>();
-      for (const cell of cells) {
-        for (const c of hexRange(cell, radius)) {
-          const key = hexKey(c.q, c.r);
-          if (visited.has(key)) observable.set(key, c);
-        }
+      for (const c of clueObservableCells(clue, content)) {
+        const key = hexKey(c.q, c.r);
+        if (visited.has(key)) observable.set(key, c);
       }
       senses.push({
         clueId: clue.id,
