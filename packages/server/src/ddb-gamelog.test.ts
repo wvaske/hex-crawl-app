@@ -10,6 +10,7 @@ import {
   DdbGameLogConnector,
   importRoll,
   matchCharacter,
+  notationOf,
   parseGameLogEvent,
   skillOf,
   userIdFromClaims,
@@ -157,6 +158,17 @@ describe('userIdFromClaims', () => {
   });
 });
 
+describe('notationOf', () => {
+  it('accepts strings and the object form, never "[object Object]"', () => {
+    expect(notationOf('1d20+5')).toBe('1d20+5');
+    expect(notationOf({ set: [{ count: 1, dieType: 'd20' }], constant: 5 })).toBe('1d20+5');
+    expect(notationOf({ set: [{ count: 2, dieType: 'd6' }], constant: -1 })).toBe('2d6-1');
+    expect(notationOf({ set: [{ count: 1, dieType: 'd8' }], constant: 0 })).toBe('1d8');
+    expect(notationOf({ weird: true })).toBe('');
+    expect(notationOf(undefined)).toBe('');
+  });
+});
+
 describe('parseGameLogEvent', () => {
   it('reads a plain check', () => {
     const roll = parseGameLogEvent(event({}))!;
@@ -220,7 +232,7 @@ describe('matching and importing', () => {
     const entry = runtime.log[runtime.log.length - 1]!;
     expect(entry.kind).toBe('check');
     expect(entry.data).toMatchObject({ source: 'ddb', unmatched: true });
-    expect(entry.text).toMatch(/Stranger: 19/);
+    expect(entry.text).toBe('Perception · D&D Beyond · Stranger: 19 (d20 14+5)');
   });
 
   it('logs a matched check with the tray-roll shape, tagged with the hex, and dedupes', () => {
@@ -244,7 +256,9 @@ describe('matching and importing', () => {
         },
       ],
     });
-    expect(entry.text).toMatch(/D&D Beyond: Carl: 19/);
+    expect(entry.text).toBe(
+      'Perception [advantage] · D&D Beyond · Carl: 19 (d20 14 (adv, dropped 9)+5)',
+    );
     // The player sees their own roll like any other.
     const view = filterStateForViewer(runtime.buildFullState(), {
       seatId: seat.id,

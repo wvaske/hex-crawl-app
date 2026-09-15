@@ -4,6 +4,7 @@ import type { CampaignRuntime } from '../state/runtime.js';
 import type { Hub } from '../ws/hub.js';
 import {
   CORE_SKILLS,
+  formatCheck,
   type Character,
   type DdbGameLogStatus,
   type RollDetail,
@@ -191,7 +192,7 @@ export function parseGameLogEvent(raw: string | Record<string, unknown>): DdbRol
   const kind = String(first.rollKind ?? '').toLowerCase();
   const advantage =
     kind === 'advantage' ? 'advantage' : kind === 'disadvantage' ? 'disadvantage' : 'none';
-  const notation = String(first.diceNotationStr ?? first.diceNotation ?? '');
+  const notation = notationOf(first.diceNotationStr ?? first.diceNotation);
   const isD20 = /d20\b/i.test(notation);
   let roll = values[0] ?? 0;
   if (isD20 && values.length > 1) {
@@ -221,6 +222,33 @@ export function parseGameLogEvent(raw: string | Record<string, unknown>): DdbRol
   };
 }
 
+/**
+ * The dice notation as a string. The feed sends either "1d20+5" or an object
+ * like `{ set: [{ count: 1, dieType: 'd20' }], constant: 5 }`; anything else
+ * reads as an empty notation rather than "[object Object]".
+ */
+export function notationOf(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (!value || typeof value !== 'object') return '';
+  const v = value as Record<string, unknown>;
+  const set: Record<string, unknown>[] = Array.isArray(v.set)
+    ? (v.set as Record<string, unknown>[])
+    : v.dieType
+      ? [v]
+      : [];
+  const dice = set
+    .map((d) => {
+      const die = String(d.dieType ?? d.sides ?? '').replace(/^d?/, 'd');
+      const count = Number(d.count ?? d.dieCount ?? 1) || 1;
+      return die.length > 1 ? `${count}${die}` : '';
+    })
+    .filter(Boolean)
+    .join('+');
+  const constant = Number(v.constant ?? 0) || 0;
+  if (!dice) return constant ? String(constant) : '';
+  return constant ? `${dice}${constant > 0 ? '+' : ''}${constant}` : dice;
+}
+
 /** Match the roll's character: by linked D&D Beyond id first, then by name. */
 export function matchCharacter(runtime: CampaignRuntime, roll: DdbRoll): Character | null {
   if (roll.characterDdbId) {
@@ -236,13 +264,15 @@ export function matchCharacter(runtime: CampaignRuntime, roll: DdbRoll): Charact
   return null;
 }
 
-/** "Perception" → 'perception' when the roll is a skill check the app knows. */
-export function skillOf(roll: DdbRoll, character: Character | null): string | null {
+/**
+ * "Perception" → 'perception' when the roll is a skill check the app knows.
+ * Only the core exploration skills qualify — those are what clue gates use —
+ * so a Persuasion or Athletics roll is logged as itself, never as a search.
+ */
+export function skillOf(roll: DdbRoll, _character: Character | null): string | null {
   if (roll.rollType !== 'check') return null;
   const key = roll.action.trim().toLowerCase();
-  if ((CORE_SKILLS as readonly string[]).includes(key)) return key;
-  if (character && key in character.skills) return key;
-  return null;
+  return (CORE_SKILLS as readonly string[]).includes(key) ? key : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,15 +328,20 @@ export function importRoll(runtime: CampaignRuntime, hub: Hub, roll: DdbRoll): b
     pending = outcome.pending;
   }
   const label = skill ? capitalize(skill) : roll.action;
-  const kindTag = roll.rollType && roll.rollType !== 'check' ? ` (${roll.rollType})` : '';
+  const kindTag =
+    roll.rollType && roll.rollType !== 'check' && roll.rollType !== 'roll'
+      ? ` (${roll.rollType})`
+      : '';
   const where = searching ? ` on hex ${hex!.q},${hex!.r}` : '';
   const adv = roll.advantage !== 'none' ? ` [${roll.advantage}]` : '';
-  const dice =
-    roll.values.length > 1
-      ? `d20 ${roll.roll} (${roll.advantage === 'none' ? 'dice' : roll.advantage === 'advantage' ? 'adv' : 'dis'}: ${roll.values.join(', ')})`
-      : `${roll.notation || 'd20'} ${roll.roll}`;
+  // Same arithmetic string as a tray roll ("d20 14+5", "d20 17 (adv,
+  // dropped 4)+5"); damage and other non-d20 rolls show their notation.
+  const isD20 = roll.notation === '' || /d20\b/i.test(roll.notation);
+  const dice = isD20
+    ? formatCheck({ roll: roll.roll, modifier: roll.modifier, detail })
+    : `${roll.notation} [${roll.values.join(', ')}]${roll.modifier ? `${roll.modifier > 0 ? '+' : ''}${roll.modifier}` : ''}`;
   const text =
-    `${label}${kindTag}${where}${adv} · D&D Beyond: ${result.name}: ${roll.total} (${dice}${roll.modifier ? `${roll.modifier > 0 ? '+' : ''}${roll.modifier}` : ''})` +
+    `${label}${kindTag}${where}${adv} · D&D Beyond · ${result.name}: ${roll.total} (${dice})` +
     (searching && !result.counts ? ' · re-roll' : '') +
     (pending
       ? ` — ${pending} awaiting your approval`
@@ -326,6 +361,7 @@ export function importRoll(runtime: CampaignRuntime, hub: Hub, roll: DdbRoll): b
     ddbRollId: roll.id,
     rollType: roll.rollType,
     action: roll.action,
+    notation: roll.notation,
     pending,
     unmatched: !character,
   });
