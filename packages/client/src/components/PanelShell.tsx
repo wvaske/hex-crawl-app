@@ -7,7 +7,7 @@ import {
   useUi,
   type PanelId,
 } from '../stores/ui.js';
-import { Button, cx } from '../ui/kit.js';
+import { Button, cx, Lbl } from '../ui/kit.js';
 import { useIsMobile } from '../ui/responsive.js';
 import { CharacterDialog } from './CharacterDialog.js';
 import { InspectTab } from './panels/InspectTab.js';
@@ -140,7 +140,7 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
         title="Close this panel"
         aria-label="Close panel"
       >
-        ✕
+        ✕<Lbl>Close</Lbl>
       </Button>
     </header>
   );

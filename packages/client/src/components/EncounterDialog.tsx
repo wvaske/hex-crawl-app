@@ -4,7 +4,7 @@ import { formatRoll } from '@hexcrawl/shared';
 import { useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
-import { Button } from '../ui/kit.js';
+import { Button, Lbl } from '../ui/kit.js';
 
 /**
  * DM popup for a triggered encounter (manual roll or auto travel check):
@@ -72,7 +72,7 @@ export function EncounterDialog() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-700">
           <h2 className="font-semibold text-ink-100">⚔️ Encounter</h2>
           <Button variant="ghost" size="sm" onClick={close} aria-label="Close">
-            ✕
+            ✕<Lbl>Close</Lbl>
           </Button>
         </div>
 

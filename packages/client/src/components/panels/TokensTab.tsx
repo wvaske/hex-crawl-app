@@ -3,7 +3,7 @@ import type { Token } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
-import { Button, EmptyNote, Field, Input, Section, Toggle } from '../../ui/kit.js';
+import { Button, EmptyNote, Field, Input, Section, Toggle, Lbl } from '../../ui/kit.js';
 import { SendTokenButton } from '../SendTokenButton.js';
 import { TravelToButton } from '../TravelToDialog.js';
 
@@ -104,7 +104,7 @@ function NpcCreator({ mapId, q, r, hasHex }: { mapId: string; q: number; r: numb
             onKeyDown={(e) => e.key === 'Enter' && create()}
           />
           <Button size="sm" onClick={create} disabled={!label.trim()}>
-            +
+            +<Lbl>Add</Lbl>
           </Button>
         </div>
         <Toggle checked={visible} onChange={setVisible} label="Visible to players" />
@@ -139,7 +139,7 @@ function TokenRow({ token }: { token: Token }) {
       <SendTokenButton tokenId={token.id} name={token.label || 'token'} />
       {token.kind === 'pc' && <TravelToButton tokenId={token.id} name={token.label || 'token'} />}
       <button
-        className={`text-xs cursor-pointer ${token.partyId ? '' : 'opacity-35 grayscale'}`}
+        className={`text-xs cursor-pointer whitespace-nowrap ${token.partyId ? '' : 'opacity-35 grayscale'}`}
         title={
           token.partyId
             ? 'In the party — moves with the group. Click to detach.'
@@ -153,7 +153,7 @@ function TokenRow({ token }: { token: Token }) {
           })
         }
       >
-        🧭
+        🧭<Lbl>{token.partyId ? 'Party' : 'Solo'}</Lbl>
       </button>
       {token.kind === 'npc' && (
         <button
@@ -163,7 +163,7 @@ function TokenRow({ token }: { token: Token }) {
             send({ kind: 'token.update', tokenId: token.id, patch: { playerVisible: !token.playerVisible } })
           }
         >
-          {token.playerVisible ? '👁️' : '🚫'}
+          {token.playerVisible ? '👁️' : '🚫'}<Lbl>{token.playerVisible ? 'Shown' : 'Hidden'}</Lbl>
         </button>
       )}
       <input
@@ -180,7 +180,7 @@ function TokenRow({ token }: { token: Token }) {
         onClick={() => send({ kind: 'token.delete', tokenId: token.id })}
         title="Remove token"
       >
-        ✕
+        ✕<Lbl>Remove</Lbl>
       </button>
     </div>
   );

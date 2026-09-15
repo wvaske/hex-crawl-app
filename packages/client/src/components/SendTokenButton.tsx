@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
-import { cx } from '../ui/kit.js';
+import { cx, Lbl } from '../ui/kit.js';
 
 /**
  * Arms "click the map to send this token there" mode — a long-distance
@@ -35,7 +35,7 @@ export function SendTokenButton({ tokenId, name }: { tokenId: string; name: stri
         });
       }}
     >
-      🎯
+      🎯<Lbl>Send</Lbl>
     </button>
   );
 }

@@ -17,7 +17,7 @@ import {
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
-import { Button, EmptyNote, Input, Select, cx } from '../ui/kit.js';
+import { Button, EmptyNote, Input, Select, cx, Lbl } from '../ui/kit.js';
 import { baseImageLayer, detectByImage, detectByTerrain } from '../engine/regionDetect.js';
 
 /**
@@ -126,7 +126,7 @@ export function RegionManagerDialog() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-700 shrink-0">
           <h2 className="font-semibold text-ink-100">Regions</h2>
           <Button variant="ghost" size="sm" onClick={close} aria-label="Close">
-            ✕
+            ✕<Lbl>Close</Lbl>
           </Button>
         </div>
 

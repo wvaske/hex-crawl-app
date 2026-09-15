@@ -12,7 +12,7 @@ import {
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi, type AreaPaintTarget } from '../stores/ui.js';
 import { send } from '../ws.js';
-import { Button, Dialog, Field, Input, Select, TextArea, cx } from '../ui/kit.js';
+import { Button, Dialog, Field, Input, Select, TextArea, cx, Lbl } from '../ui/kit.js';
 import { RegionBrushControls } from './Toolbar.js';
 
 interface ClueDraft {
@@ -395,8 +395,8 @@ function ClueEditor({
           onChange={(e) => onChange({ ...clue, text: e.target.value })}
           placeholder="What the character learns, in player-facing words…"
         />
-        <button className="text-ink-400 hover:text-ember-500 cursor-pointer text-sm mt-1" onClick={onRemove}>
-          ✕
+        <button className="text-ink-400 hover:text-ember-500 cursor-pointer text-sm mt-1 whitespace-nowrap" onClick={onRemove}>
+          ✕<Lbl>Remove</Lbl>
         </button>
       </div>
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">

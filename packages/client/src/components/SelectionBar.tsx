@@ -1,3 +1,4 @@
+import { Lbl } from '../ui/kit.js';
 import React, { useState } from 'react';
 import { useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
@@ -67,7 +68,7 @@ export function SelectionBar() {
         Tag
       </button>
       <button className="text-ink-400 hover:text-ink-100 cursor-pointer px-1" onClick={clear}>
-        ✕
+        ✕<Lbl>Clear</Lbl>
       </button>
     </div>
   );

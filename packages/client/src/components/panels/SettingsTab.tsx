@@ -8,7 +8,8 @@ import {
 import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { fetchInviteKeys, type InviteKeys } from '../../api.js';
-import { Button, Field, Input, Section, Select, TextArea, Toggle } from '../../ui/kit.js';
+import { DensityControl, TextSizeControl } from '../TopBar.js';
+import { Button, Field, Input, Section, Select, TextArea, Toggle, Lbl } from '../../ui/kit.js';
 
 export function SettingsTab({ campaignId }: { campaignId: string }) {
   const state = useSession((s) => s.state);
@@ -54,6 +55,18 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
       </Section>
 
       <CalendarSettings />
+
+      <Section title="Display (this browser)">
+        <div className="flex items-center gap-2 flex-wrap">
+          <TextSizeControl />
+          <DensityControl />
+        </div>
+        <p className="text-xs text-ink-400 mt-1.5">
+          Text size and button wording are remembered per browser, not per campaign. Verbose puts
+          a word on every button; compact shows glyphs only. Players have the same controls in
+          the top bar.
+        </p>
+      </Section>
 
       <Section title="Dice">
         <Field label="Who sees players' skill rolls">
@@ -134,7 +147,7 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
                       }
                     }}
                   >
-                    ✕
+                    ✕<Lbl>Remove</Lbl>
                   </button>
                 )}
               </li>
