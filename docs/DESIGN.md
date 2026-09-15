@@ -81,6 +81,16 @@ Right for personal-group use; role checks still happen on every server command.
   DM tokens (NPCs, monsters, party marker) with a player-visible toggle.
 - Drag with hex snap; server validates ownership + adjacency rules (configurable
   free-move vs adjacent-step mode).
+- **Routed travel** (#130): a move of more than one hex follows the shortest
+  route through explored hexes when one exists (per-map `routeExplored`,
+  inheritable); step mode means one hex into the unknown, any distance across
+  known ground. A route preview shows while dragging; a "Travel to…" picker
+  lists known settlements with route length and ETA. A triggered auto
+  encounter halts the party at that hex; with `stopTravelAtNight` a routed
+  journey halts where dusk falls. Every move writes a `travel` log line, and
+  one undo reverts the whole move (clock, visits, discoveries included).
+- Characters can be split off the travel group (👥/👤 on the party row) without
+  leaving the campaign (#124).
 - Labels, colors, initials or emoji glyphs; size (1 hex default).
 
 ### Effect markers
@@ -90,9 +100,16 @@ Right for personal-group use; role checks still happen on every server command.
 - Used for weather effects, ongoing hazards, party camp, plot pins, etc.
 
 ### Characters & skills
-- A character = name, color/glyph, speed, and skill modifiers (Perception, Survival,
-  Nature, Arcana, Religion, History, Investigation, Insight, Stealth + custom).
+- A character = name, color/glyph, speed, skill modifiers (Perception, Survival,
+  Nature, Arcana, Religion, History, Investigation, Insight, Stealth + custom)
+  and a proficiency list (★ on the sheet, synced from D&D Beyond).
   Passive score = 10 + modifier.
+- **Dice tray** (#129): extra dice and flat terms (Guidance, Bardic
+  Inspiration, a penalty die), advantage/disadvantage, "DM only" rolls, and a
+  DM "proficient only" group roll. A character's first roll of a skill on a hex
+  is the one that can find a clue; re-rolls are dice for the table. Every roll
+  is tagged with the hex it was made on ("Rolls here" in Inspect). Campaign
+  setting `rollVisibility`: own (default) or everyone-sees-everyone's.
 - Owned by a claimed seat; DM can edit all.
 
 ### Hex content & the knowledge engine
@@ -104,6 +121,12 @@ Right for personal-group use; role checks still happen on every server command.
     within `maxDistance` hexes. E.g. *"DC 14 Survival within 2 hexes: dead
     vegetation in a widening cone — something poisons this land."*
   - `manual` — DM reveals by hand.
+  - **Vantage hexes** (#123): a clue (or all clues of a content) can be
+    restricted to explicit hexes it is perceivable from, which replaces the
+    distance rule entirely; a clue's set overrides the content's.
+- DM Inspect lists every clue perceivable from the selected hex, with who would
+  notice it passively and a toggle to paint its sensing area (#125); a player
+  sees what their character sensed from a selected hex (#128).
 - On every token move (and on gate edits), the server re-evaluates gates for each
   character: distance from that character's token to the content hex, passive skill
   vs DC. Newly-passed gates create **discoveries** — persisted per character,
@@ -130,6 +153,8 @@ Right for personal-group use; role checks still happen on every server command.
   never a change to the arithmetic. Equal-length months plus intercalary
   festivals that belong to no month; `null` renders the original "Day N". Harptos
   ships as a preset (Shieldmeet leap days are not modelled).
+- The DM can set the clock absolutely from the clock popover, and undo a
+  move to rewind it (#127).
 - **Weather** rolls once per in-game day off `settings.weatherTable` (or a
   built-in temperate d20 table), stored on the campaign `time` blob and logged
   for everyone as a `weather` entry. Crossing midnight — by travel or by a manual
@@ -146,7 +171,8 @@ Right for personal-group use; role checks still happen on every server command.
   to back up.
 
 ### Session log & journal
-- DM feed: every reveal, move, roll, discovery, encounter — timestamped.
+- DM feed: every reveal, move (`travel` lines with hexes and time), roll,
+  discovery, encounter, undo — timestamped.
 - Player journal: their own discoveries and shared narration, grouped by hex.
 
 ## Out of scope (v1)
@@ -190,7 +216,7 @@ generation, accounts/multi-tenant hosting hardening, mobile-native.
 ```
 campaign      id, name, dmSecret, playerSecret, activeMapId, settings(json), createdAt
 seat          id, campaignId, name, kind(dm|player), token(cookie secret), characterId?
-character     id, campaignId, name, color, glyph, speed, skills(json {skill: mod})
+character     id, campaignId, name, color, glyph, speed, skills(json {skill: mod}), proficiencies(json)
 map           id, campaignId, name, orientation, hexSize, originX/Y, gridStyle(json),
               sightRadius, fogMode, encounterDie(json), sortOrder
 image_layer   id, mapId, path, x, y, scale, opacity, z, dmOnly
@@ -199,8 +225,8 @@ fog           mapId, q, r, state(hidden|explored|visible)   (sparse; default hid
 token         id, mapId, q, r, kind(pc|npc), characterId?, label, color, glyph,
               playerVisible, size
 marker        id, mapId, q, r, glyph, label?, dmOnly, createdAt
-content       id, mapId, q, r, type, title, dmNotes, glyph?, discovered-marker?
-clue          id, contentId, text, gate(json: {kind, skill?, dc?, maxDistance?, mode?})
+content       id, mapId, q, r, type, title, dmNotes, glyph?, area(json), observeFrom(json)
+clue          id, contentId, text, gate(json: {kind, skill?, dc?, maxDistance?, mode?}), observeFrom(json)
 discovery     id, clueId, characterId, at, how(json roll/derivation)
 enc_table     id, campaignId, name, terrains(json), die, entries(json)
 log           id, campaignId, at, kind, payload(json), visibility(dm|all|seatId)

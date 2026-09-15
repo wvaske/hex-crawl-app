@@ -276,6 +276,55 @@ player-facing data).
 - CI (`.github/workflows/ci.yml`) runs typecheck + test on PRs; pnpm is
   pinned there and in the Dockerfile — keep the versions in sync.
 
+## Travel, undo, clues, dice (issues #123–#130, 2026-09-15)
+
+- **One move path.** `performTravel` in `ws/handlers.ts` runs every party
+  move (`token.move`, approved `move.resolve`): nightfall truncation, auto
+  encounter checks (a TRIGGERED encounter halts the party at that hex), the
+  token shift for every party member, fog, knowledge/trails, the clock and
+  hex-visit accounting, a `travel` log line, and ONE undo entry that puts all
+  of it back (token positions, fog delta, the whole `time` blob, both visit
+  records, the encounter counter, discoveries/trail finds/log lines the move
+  produced). If you add a side effect to a move, add it to the before/after
+  capture in `performTravel` or undo will leave it behind. Player moves push
+  undo entries too; `undo` takes a `count`; the DM snapshot carries
+  `undoHistory` (players get `[]`). The stack is still in-memory by design.
+- **Routing (#130).** `travelPath` picks the shortest route through
+  explored/visible fog (`shared/rules/route.ts` `findRoute`, bounded BFS)
+  when the map's inheritable `routeExplored` is on and the move is >1 hex;
+  otherwise `hexLine`. Step mode = one hex into the unknown, any distance
+  across known ground. The client mirrors the route in
+  `CanvasEngine.routeFor` (fog index cached on `lastFog`) for the drag
+  preview and the Travel-to picker. `settings.stopTravelAtNight` halts a
+  ROUTED journey at the hex where dusk falls; a party that departs after
+  dark is not stopped.
+- **Clue geometry (#123).** Never compare `distance` to `gate.maxDistance`
+  inline. `clueInRange(clue, content, pos)` / `clueObservableCells` /
+  `clueObserveSet` (shared `domain.ts`) apply the vantage sets
+  (`clue.observeFrom` overrides `content.observeFrom`; either replaces the
+  radius entirely). `gateOpensPassively` takes the in-range verdict as its
+  4th argument. A search on a vantage hex you stand on searches for what is
+  visible from there. The content dialog's `ui.areaPaint` now carries a
+  `target` (`area` | `observe` | `clue:i`) — the engine must spread the
+  existing object when it writes `cells`.
+- **Dice (#129).** `rollCheck` / `formatCheck` in `shared/rules/dice.ts`;
+  `check.roll` carries `extras`, `advantage`, `proficientOnly`, `secret`.
+  Results (log `data.results`, `search_attempt.detail`) keep the arithmetic.
+  A character's FIRST roll of a skill on a hex is the one that records an
+  attempt and evaluates gates; later rolls are logged with `counts: false`.
+  Sheet rolls carry `data.hex` (the character's token hex) so Inspect's
+  "Rolls here" can list them. `settings.rollVisibility` ('own' | 'all') is
+  read by `logEntryVisibleToPlayer` AND mirrored in the handler's live toast
+  targeting — change both. The client dice tray is `stores/roll.ts` +
+  `components/RollOptions.tsx`; one-shots (dice, advantage) clear on
+  `consume()`.
+- **Text size (#126).** `ui.uiScale` sets the root `font-size`; every text
+  utility must be rem-based (`text-[0.6875rem]`, never `text-[11px]`) or it
+  will not scale.
+- **Party split (#124).** `token.update` lets a player patch `partyId` on
+  their own PC token only. `deleteCharacter` deletes the character's tokens
+  and cascades discoveries, trail finds, search attempts and pending reveals.
+
 ## Dev & verification
 
 - `pnpm install`, then `pnpm dev` (server :3000, Vite client :5173, both on
