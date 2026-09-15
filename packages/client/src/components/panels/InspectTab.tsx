@@ -3,18 +3,26 @@ import {
   CONTENT_TYPE_GLYPHS,
   CORE_SKILLS,
   TERRAINS,
+  clueInRange,
+  clueObservableCells,
   compassDirection,
   contentCells,
   contentCoversHex,
+  distanceToContent,
+  gateOpensPassively,
+  hexDistance,
   isFullContent,
   clueObserveSet,
   describeGate,
   hexKey,
+  passiveScore,
+  type Clue,
   type Content,
   type ContentPlayerView,
   type FogState,
   type SearchAttempt,
 } from '@hexcrawl/shared';
+import { SenseRow } from './SensesTab.js';
 import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
@@ -208,6 +216,9 @@ export function InspectTab() {
           )}
         </div>
       </Section>
+
+      {isDm && <PerceivableSection hex={hex} />}
+      {!isDm && <SensedHereSection hex={hex} />}
 
       <TrailInfo hex={hex} isDm={isDm} />
 
@@ -784,58 +795,245 @@ function DmContentCard({ content }: { content: Content }) {
       )}
       {content.clues.length > 0 && (
         <ul className="mt-2 space-y-1.5">
-          {content.clues.map((clue) => {
-            const known = discoveries.filter((d) => d.clueId === clue.id);
-            return (
-              <li key={clue.id} className="text-xs border-t border-ink-700 pt-1.5">
-                <p className="text-ink-200">{clue.text}</p>
-                <p className="text-ink-400 mt-0.5">{describeGate(clue.gate)}{vantageNote(clue, content)}</p>
-                <div className="flex items-center gap-1 flex-wrap mt-1">
-                  {known.map((d) => {
-                    const ch = characters.find((c) => c.id === d.characterId);
-                    return (
-                      <span
-                        key={d.id}
-                        className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-ink-950 cursor-pointer"
-                        style={{ background: ch?.color ?? '#888' }}
-                        title="Knows this — click to revoke"
-                        onClick={() => send({ kind: 'discovery.revoke', discoveryId: d.id })}
-                      >
-                        {ch?.name ?? '?'} ✓
-                      </span>
-                    );
-                  })}
-                  {characters
-                    .filter((ch) => !known.some((d) => d.characterId === ch.id))
-                    .map((ch) => (
-                      <span
-                        key={ch.id}
-                        className="px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-dashed cursor-pointer text-ink-300 hover:text-ink-100"
-                        style={{ borderColor: ch.color }}
-                        title={`Doesn't know yet — click to reveal to ${ch.name}`}
-                        onClick={() =>
-                          send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [ch.id] })
-                        }
-                      >
-                        {ch.name}
-                      </span>
-                    ))}
-                  <button
-                    className="text-[10px] text-brass-400 hover:text-brass-300 cursor-pointer px-1"
-                    onClick={() => send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [] })}
-                    title="Reveal to everyone"
-                  >
-                    Reveal to all
-                  </button>
-                </div>
-              </li>
-            );
-          })}
+          {content.clues.map((clue) => (
+            <li key={clue.id} className="text-xs border-t border-ink-700 pt-1.5">
+              <p className="text-ink-200">{clue.text}</p>
+              <p className="text-ink-400 mt-0.5">{describeGate(clue.gate)}{vantageNote(clue, content)}</p>
+              <CluePills clue={clue} />
+            </li>
+          ))}
         </ul>
       )}
     </div>
   );
 }
+
+/**
+ * Who knows a clue (solid pill, click revokes), who doesn't (dashed, click
+ * reveals), and a reveal-to-all — the DM's per-clue controls, shared by the
+ * content card and the perceivable-from-here list (#125).
+ */
+function CluePills({ clue }: { clue: Clue }) {
+  const state = useSession((s) => s.state);
+  const discoveries = state?.discoveries ?? [];
+  const characters = state?.characters ?? [];
+  const known = discoveries.filter((d) => d.clueId === clue.id);
+  return (
+    <div className="flex items-center gap-1 flex-wrap mt-1">
+      {known.map((d) => {
+        const ch = characters.find((c) => c.id === d.characterId);
+        return (
+          <span
+            key={d.id}
+            className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-ink-950 cursor-pointer"
+            style={{ background: ch?.color ?? '#888' }}
+            title="Knows this — click to revoke"
+            onClick={() => send({ kind: 'discovery.revoke', discoveryId: d.id })}
+          >
+            {ch?.name ?? '?'} ✓
+          </span>
+        );
+      })}
+      {characters
+        .filter((ch) => !known.some((d) => d.characterId === ch.id))
+        .map((ch) => (
+          <span
+            key={ch.id}
+            className="px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-dashed cursor-pointer text-ink-300 hover:text-ink-100"
+            style={{ borderColor: ch.color }}
+            title={`Doesn't know yet — click to reveal to ${ch.name}`}
+            onClick={() => send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [ch.id] })}
+          >
+            {ch.name}
+          </span>
+        ))}
+      <button
+        className="text-[10px] text-brass-400 hover:text-brass-300 cursor-pointer px-1"
+        onClick={() => send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [] })}
+        title="Reveal to everyone"
+      >
+        Reveal to all
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The DM's "what could be perceived from this hex" (issue #125): every clue
+ * on the map whose geometry reaches the inspected hex — by radius or by
+ * vantage set — grouped by content, with who would notice it passively from
+ * here and a toggle that paints the clue's whole sensing area on the map.
+ * Content sitting ON the hex is listed in the Content section above, so it
+ * is skipped here. A prep tool: it works for hidden hexes too.
+ */
+function PerceivableSection({ hex }: { hex: { q: number; r: number } }) {
+  const state = useSession((s) => s.state);
+  const map = activeMap(state);
+  const highlight = useUi((u) => u.senseHighlight);
+  const setUi = useUi((s) => s.set);
+  if (!state?.mapState || !map) return null;
+  const characters = state.characters;
+
+  const groups = state.mapState.contents
+    .filter(isFullContent)
+    .filter((c) => !contentCoversHex(c, hex))
+    .map((content) => ({
+      content,
+      distance: distanceToContent(content, hex),
+      clues: content.clues.filter((clue) => clueInRange(clue, content, hex)),
+    }))
+    .filter((g) => g.clues.length > 0)
+    .sort((a, b) => a.distance - b.distance);
+
+  // Trails whose gate reaches this hex from at least one cell.
+  const trails = state.mapState.trails
+    .map((trail) => {
+      const reach = trail.gate.kind === 'skill' ? trail.gate.maxDistance : 0;
+      const cells = trail.cells.filter((c) => hexDistance(c, hex) <= reach).length;
+      return { trail, cells };
+    })
+    .filter((t) => t.cells > 0 && !t.trail.cells.some((c) => c.q === hex.q && c.r === hex.r));
+
+  if (groups.length === 0 && trails.length === 0) return null;
+
+  const toggleArea = (clueId: string, cells: { q: number; r: number }[]) =>
+    setUi('senseHighlight', highlight?.clueId === clueId ? null : { clueId, cells });
+
+  return (
+    <Section title="Perceivable from here">
+      <div className="space-y-2">
+        {groups.map(({ content, distance, clues }) => {
+          const allCells = new Map<string, { q: number; r: number }>();
+          for (const clue of clues) {
+            for (const c of clueObservableCells(clue, content)) allCells.set(hexKey(c.q, c.r), c);
+          }
+          const groupId = `content:${content.id}`;
+          const groupActive = highlight?.clueId === groupId;
+          return (
+            <div
+              key={content.id}
+              className={cx(
+                'bg-ink-850 border rounded-lg p-2.5',
+                content.enabled ? 'border-ink-700' : 'border-ink-700 opacity-60',
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <span>{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
+                <span className="font-medium text-sm text-ink-100 truncate flex-1">{content.title}</span>
+                <span className="text-[11px] text-ink-400 shrink-0">
+                  {distance} hex{distance === 1 ? '' : 'es'} away
+                </span>
+                {!content.enabled && (
+                  <span className="text-[10px] text-ember-500 shrink-0" title="Disabled — players can't perceive it yet">
+                    disabled
+                  </span>
+                )}
+                <button
+                  className={cx(
+                    'text-[11px] cursor-pointer shrink-0',
+                    groupActive ? 'text-brass-300' : 'text-ink-400 hover:text-brass-300',
+                  )}
+                  title={groupActive ? 'Hide the sensing area' : 'Show every hex these clues can be perceived from'}
+                  onClick={() => toggleArea(groupId, [...allCells.values()])}
+                >
+                  ◌ area
+                </button>
+              </div>
+              <ul className="mt-1.5 space-y-1.5">
+                {clues.map((clue) => {
+                  const cells = clueObservableCells(clue, content);
+                  const active = highlight?.clueId === clue.id;
+                  const noticers =
+                    clue.gate.kind === 'skill' && clue.gate.mode === 'passive'
+                      ? characters.filter((ch) => gateOpensPassively(clue.gate, ch, distance, true).opens)
+                      : [];
+                  return (
+                    <li key={clue.id} className="text-xs border-t border-ink-700 pt-1.5">
+                      <p className="text-ink-200">{clue.text}</p>
+                      <p className="text-ink-400 mt-0.5">
+                        {describeGate(clue.gate)}
+                        {vantageNote(clue, content)}
+                        {' · '}
+                        <button
+                          className={cx('cursor-pointer', active ? 'text-brass-300' : 'hover:text-brass-300')}
+                          title={active ? 'Hide the sensing area' : `Show the ${cells.length} hexes this clue can be perceived from`}
+                          onClick={() => toggleArea(clue.id, cells)}
+                        >
+                          ◌ {cells.length} hexes
+                        </button>
+                      </p>
+                      {clue.gate.kind === 'skill' && clue.gate.mode === 'passive' && (
+                        <p className="text-ink-400 mt-0.5">
+                          From here, passively:{' '}
+                          {noticers.length
+                            ? noticers
+                                .map((ch) => `${ch.name} (${passiveScore(ch.skills, clue.gate.kind === 'skill' ? clue.gate.skill : '')})`)
+                                .join(', ')
+                            : 'nobody qualifies'}
+                        </p>
+                      )}
+                      {clue.gate.kind === 'auto' && (
+                        <p className="text-ink-400 mt-0.5">From here: anyone, on arrival</p>
+                      )}
+                      {clue.gate.kind === 'skill' && clue.gate.mode === 'active' && (
+                        <p className="text-ink-400 mt-0.5">From here: on a search roll of {clue.gate.dc}+</p>
+                      )}
+                      <CluePills clue={clue} />
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+        {trails.length > 0 && (
+          <div className="bg-ink-850 border border-ink-700 rounded-lg p-2.5">
+            <p className="text-xs font-medium text-ink-300 mb-1">Trails within reach</p>
+            <ul className="space-y-0.5">
+              {trails.map(({ trail, cells }) => (
+                <li key={trail.id} className="text-xs text-ink-200">
+                  {trail.glyph} {trail.name}
+                  <span className="text-ink-400">
+                    {' '}
+                    — {cells} cell{cells === 1 ? '' : 's'} noticeable from here (
+                    {trail.gate.kind === 'skill' ? `${trail.gate.skill} DC ${trail.gate.dc}` : 'obvious'})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+/**
+ * The player's "what did we sense from this hex" (issue #128): every sensed
+ * clue whose observable hexes include the inspected one — the inverse of
+ * the senses list, per place. Only clues the character already holds; a
+ * hex they never stood on has nothing to say.
+ */
+function SensedHereSection({ hex }: { hex: { q: number; r: number } }) {
+  const senses = useSession((s) => s.state?.senses ?? EMPTY_SENSES);
+  const visited = useSession((s) =>
+    s.state?.mapState?.visits.some((v) => v.q === hex.q && v.r === hex.r) ?? false,
+  );
+  const here = senses.filter((s) => s.observableFrom.some((c) => c.q === hex.q && c.r === hex.r));
+  if (here.length === 0 && !visited) return null;
+  return (
+    <Section title="Sensed from here">
+      {here.length === 0 && <EmptyNote>Nothing was sensed from this hex.</EmptyNote>}
+      <div className="space-y-1.5">
+        {here.map((s) => (
+          <SenseRow key={s.clueId} sense={s} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+const EMPTY_SENSES: never[] = [];
 
 function PlayerContentCard({ content }: { content: ContentPlayerView }) {
   const wikiBase = useSession((s) => s.state?.campaign.settings.wikiBaseUrl ?? '');

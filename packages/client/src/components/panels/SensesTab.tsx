@@ -43,7 +43,7 @@ export function SensesTab() {
   );
 }
 
-function SenseRow({ sense }: { sense: Sense }) {
+export function SenseRow({ sense }: { sense: Sense }) {
   const characters = useSession((s) => s.state?.characters ?? []);
   const highlighted = useUi((u) => u.senseHighlight?.clueId === sense.clueId);
   const toggle = () => {
