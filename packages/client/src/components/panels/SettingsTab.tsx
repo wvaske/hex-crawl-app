@@ -356,8 +356,9 @@ function DdbGameLog({ campaignId }: { campaignId: string }) {
   const [cookie, setCookie] = useState('');
   const [busy, setBusy] = useState(false);
   const [campaigns, setCampaigns] = useState<
-    { id: string; name: string; dmUsername: string }[] | null
+    { id: string; name: string; dmId: string; dmUsername: string }[] | null
   >(null);
+  const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   if (!settings) return null;
 
@@ -372,16 +373,24 @@ function DdbGameLog({ campaignId }: { campaignId: string }) {
       });
       const data = (await res.json()) as {
         error?: string;
-        campaigns?: { id: string; name: string; dmUsername: string }[];
+        campaigns?: { id: string; name: string; dmId: string; dmUsername: string }[];
         displayName?: string;
+        userId?: string;
+        tokenClaims?: string[];
+        warning?: string | null;
       };
       if (!res.ok) throw new Error(data.error ?? 'Failed');
       setCampaigns(data.campaigns ?? []);
+      setDiagnostic(
+        data.warning
+          ? `${data.warning} Token claims: ${(data.tokenClaims ?? []).join(', ') || 'none'}.`
+          : null,
+      );
       setCookie('');
       useSession.getState().pushToast({
-        kind: 'info',
+        kind: data.warning ? 'error' : 'info',
         title: 'D&D Beyond cookie accepted',
-        text: `Signed in as ${data.displayName || 'the DM'} — ${data.campaigns?.length ?? 0} active campaign(s).`,
+        text: `Signed in as ${data.displayName || 'the DM'}${data.userId ? ` (#${data.userId})` : ''} — ${data.campaigns?.length ?? 0} active campaign(s).${data.warning ? ` ${data.warning}` : ''}`,
       });
     } catch (err) {
       useSession.getState().pushToast({
@@ -404,7 +413,15 @@ function DdbGameLog({ campaignId }: { campaignId: string }) {
     const chosen = campaigns?.find((c) => c.id === id);
     send({
       kind: 'campaign.update',
-      settings: { ddbGameLog: { campaignId: id, campaignName: chosen?.name ?? '' } },
+      settings: {
+        ddbGameLog: {
+          campaignId: id,
+          campaignName: chosen?.name ?? '',
+          // The DM is who listens; the campaign knows their id even when
+          // the token does not name it.
+          ...(chosen?.dmId ? { userId: chosen.dmId } : {}),
+        },
+      },
     });
   };
 
@@ -459,7 +476,8 @@ function DdbGameLog({ campaignId }: { campaignId: string }) {
             </Button>
           </div>
         </Field>
-        {campaigns && campaigns.length > 1 && (
+        {diagnostic && <p className="text-xs text-ember-500">{diagnostic}</p>}
+        {campaigns && campaigns.length > 0 && (
           <Field label="D&D Beyond campaign">
             <Select value={settings.campaignId} onChange={(e) => pick(e.target.value)}>
               <option value="">Pick a campaign…</option>
@@ -476,7 +494,13 @@ function DdbGameLog({ campaignId }: { campaignId: string }) {
         )}
         <div className="flex items-center gap-2 flex-wrap">
           {status?.hasSecret && settings.campaignId && !settings.enabled && (
-            <Button size="sm" variant="primary" onClick={() => send({ kind: 'ddb.connect' })}>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!settings.userId}
+              title={settings.userId ? undefined : 'No DM user id yet — pick the campaign above'}
+              onClick={() => send({ kind: 'ddb.connect' })}
+            >
               ▶ Connect
             </Button>
           )}

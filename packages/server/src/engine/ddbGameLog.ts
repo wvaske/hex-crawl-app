@@ -34,11 +34,19 @@ export interface DdbToken {
   token: string;
   /** Seconds, as reported by the auth service. */
   ttl: number;
+  /** The account's user id when the token names it; '' otherwise (see `claims`). */
   userId: string;
   displayName: string;
+  /** Claim names found in the token — diagnostics for an unfamiliar shape. */
+  claims: string[];
 }
 
-/** Exchange the cookie for a short-lived bearer token (and the user's id). */
+/**
+ * Exchange the cookie for a short-lived bearer token, and read the user's id
+ * out of it when it is there. D&D Beyond's backend is .NET, so the id may sit
+ * under a schema-URI claim name rather than `sub`; an id-less token is still
+ * usable — the campaign list names the DM's id too.
+ */
 export async function mintToken(cobalt: string, fetchFn: typeof fetch = fetch): Promise<DdbToken> {
   const res = await fetchFn(DDB_AUTH_URL, {
     method: 'POST',
@@ -49,14 +57,42 @@ export async function mintToken(cobalt: string, fetchFn: typeof fetch = fetch): 
   const body = JSON.parse(text) as { token?: string; ttl?: number };
   if (!body.token) throw new Error('D&D Beyond returned no token for that cookie');
   const payload = decodeJwtPayload(body.token);
-  const userId = String(payload.sub ?? payload.userId ?? payload.id ?? '');
-  if (!userId) throw new Error('D&D Beyond token carries no user id');
   return {
     token: body.token,
     ttl: Number(body.ttl ?? 300),
-    userId,
-    displayName: String(payload.displayName ?? payload.name ?? ''),
+    userId: userIdFromClaims(payload),
+    displayName: displayNameFromClaims(payload),
+    claims: Object.keys(payload),
   };
+}
+
+/** Pick the user id out of JWT claims of any of the shapes we know of. */
+export function userIdFromClaims(payload: Record<string, unknown>): string {
+  const direct = payload.sub ?? payload.userId ?? payload.userID ?? payload.id ?? payload.uid;
+  if (direct !== undefined && direct !== null && String(direct).trim())
+    return String(direct).trim();
+  for (const [key, value] of Object.entries(payload)) {
+    const k = key.toLowerCase();
+    if (
+      (k.endsWith('/nameidentifier') || k.endsWith('nameid') || k.endsWith('userid')) &&
+      value !== null &&
+      value !== undefined &&
+      String(value).trim()
+    ) {
+      return String(value).trim();
+    }
+  }
+  return '';
+}
+
+function displayNameFromClaims(payload: Record<string, unknown>): string {
+  const direct = payload.displayName ?? payload.name ?? payload.username ?? payload.unique_name;
+  if (direct) return String(direct);
+  for (const [key, value] of Object.entries(payload)) {
+    const k = key.toLowerCase();
+    if ((k.endsWith('/name') || k.endsWith('displayname')) && value) return String(value);
+  }
+  return '';
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
@@ -362,6 +398,13 @@ export class DdbGameLogConnector {
       return;
     }
     const uid = userId || token.userId;
+    if (!uid) {
+      this.setStatus({
+        connected: false,
+        lastError: `No DM user id: pick the campaign in Setup (token claims: ${token.claims.join(', ') || 'none'})`,
+      });
+      return;
+    }
     const url = `${DDB_GAMELOG_WS}?gameId=${encodeURIComponent(campaignId)}&userId=${encodeURIComponent(uid)}&stt=${encodeURIComponent(token.token)}`;
     const ws = this.opts.makeSocket
       ? this.opts.makeSocket(url)

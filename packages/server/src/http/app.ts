@@ -419,29 +419,52 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'Paste the CobaltSession cookie value' }, 400);
     const cookie = body.data.cookie.trim().replace(/^CobaltSession=/, '');
+    let token;
     try {
-      const token = await mintToken(cookie);
-      const campaigns = await discoverCampaigns(token.token);
-      runtime.setSecret('ddbCobalt', cookie);
-      const settings = runtime.campaign.settings.ddbGameLog;
-      const patch: Record<string, unknown> = { userId: token.userId };
-      // One campaign, or the one already chosen, needs no further click.
-      const chosen =
-        campaigns.find((cp) => cp.id === settings.campaignId) ??
-        (campaigns.length === 1 ? campaigns[0] : undefined);
-      if (chosen) {
-        patch.campaignId = chosen.id;
-        patch.campaignName = chosen.name;
-      }
-      runtime.updateCampaign({ settings: { ddbGameLog: patch as never } });
-      hub.scheduleSync(runtime);
-      return c.json({ userId: token.userId, displayName: token.displayName, campaigns });
+      token = await mintToken(cookie);
     } catch (err) {
       return c.json(
         { error: err instanceof Error ? err.message : 'D&D Beyond rejected the cookie' },
         502,
       );
     }
+    // The cookie works: keep it even if the campaign list is unavailable.
+    runtime.setSecret('ddbCobalt', cookie);
+    let campaigns: Awaited<ReturnType<typeof discoverCampaigns>> = [];
+    let warning: string | null = null;
+    try {
+      campaigns = await discoverCampaigns(token.token);
+    } catch (err) {
+      warning = err instanceof Error ? err.message : 'campaign list failed';
+    }
+    const settings = runtime.campaign.settings.ddbGameLog;
+    // One campaign, or the one already chosen, needs no further click. The
+    // DM's user id comes from the token when it names it, else from the
+    // campaign (the DM is who listens).
+    const chosen =
+      campaigns.find((cp) => cp.id === settings.campaignId) ??
+      (campaigns.length === 1 ? campaigns[0] : undefined);
+    const userId = token.userId || chosen?.dmId || settings.userId || '';
+    const patch: Record<string, unknown> = { userId };
+    if (chosen) {
+      patch.campaignId = chosen.id;
+      patch.campaignName = chosen.name;
+    }
+    runtime.updateCampaign({ settings: { ddbGameLog: patch as never } });
+    hub.scheduleSync(runtime);
+    if (!userId && !warning) {
+      warning =
+        campaigns.length > 1
+          ? 'Pick the campaign below to set the DM user id.'
+          : `Could not read a user id from the token (claims: ${token.claims.join(', ') || 'none'}).`;
+    }
+    return c.json({
+      userId,
+      displayName: token.displayName,
+      campaigns,
+      tokenClaims: token.claims,
+      warning,
+    });
   });
 
   app.delete('/api/campaigns/:id/integrations/ddb/secret', (c) => {
