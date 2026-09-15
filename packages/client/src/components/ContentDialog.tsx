@@ -10,7 +10,7 @@ import {
   type HexCoord,
 } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
-import { useUi } from '../stores/ui.js';
+import { useUi, type AreaPaintTarget } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { Button, Dialog, Field, Input, Select, TextArea, cx } from '../ui/kit.js';
 import { RegionBrushControls } from './Toolbar.js';
@@ -21,6 +21,8 @@ interface ClueDraft {
   gate: Gate;
   indicatesDirection: boolean;
   revealsLocation: boolean;
+  /** Vantage hexes: perceivable only from these (issue #123). */
+  observeFrom: HexCoord[];
 }
 
 /** DM editor for hex content and its gated clues. */
@@ -49,20 +51,8 @@ export function ContentDialog() {
   const [knownLocation, setKnownLocation] = useState(existing?.knownLocation ?? false);
   const [quest, setQuest] = useState(existing?.quest ?? '');
   const [area, setArea] = useState<HexCoord[]>(existing?.area ?? []);
+  const [observeFrom, setObserveFrom] = useState<HexCoord[]>(existing?.observeFrom ?? []);
   const areaPaint = useUi((s) => s.areaPaint);
-
-  // Painting lives in the ui store (the engine writes the toggles); the draft
-  // comes back here whenever the mode ends — Done, Escape, or otherwise — so
-  // no route out of paint mode silently drops the work.
-  const painted = React.useRef<HexCoord[] | null>(null);
-  React.useEffect(() => {
-    if (areaPaint) {
-      painted.current = areaPaint.cells;
-    } else if (painted.current) {
-      setArea(painted.current);
-      painted.current = null;
-    }
-  }, [areaPaint]);
   const [clues, setClues] = useState<ClueDraft[]>(
     existing?.clues.map((c) => ({
       id: c.id,
@@ -70,8 +60,26 @@ export function ContentDialog() {
       gate: c.gate,
       indicatesDirection: c.indicatesDirection,
       revealsLocation: c.revealsLocation,
+      observeFrom: c.observeFrom,
     })) ?? [],
   );
+
+  // Painting lives in the ui store (the engine writes the toggles); the draft
+  // comes back here whenever the mode ends — Done, Escape, or otherwise — so
+  // no route out of paint mode silently drops the work. The target says
+  // which draft the cells belong to (issue #123).
+  const painted = React.useRef<{ cells: HexCoord[]; target: AreaPaintTarget } | null>(null);
+  React.useEffect(() => {
+    if (areaPaint) {
+      painted.current = { cells: areaPaint.cells, target: areaPaint.target ?? { kind: 'area' } };
+    } else if (painted.current) {
+      const { cells, target } = painted.current;
+      painted.current = null;
+      if (target.kind === 'area') setArea(cells);
+      else if (target.kind === 'observe') setObserveFrom(cells);
+      else setClues((prev) => prev.map((c, i) => (i === target.index ? { ...c, observeFrom: cells } : c)));
+    }
+  }, [areaPaint]);
 
   const close = () => {
     setUi('areaPaint', null);
@@ -82,22 +90,33 @@ export function ContentDialog() {
   // Painting hands the map over to the DM: the modal would swallow the
   // clicks, so it collapses to a floating bar until they're done. The
   // component stays mounted, so the rest of the draft survives untouched.
-  const startPaint = () => setUi('areaPaint', { cells: area });
+  const startPaint = () => setUi('areaPaint', { cells: area, target: { kind: 'area' } });
+  const startObservePaint = () =>
+    setUi('areaPaint', { cells: observeFrom, target: { kind: 'observe' } });
+  const startCluePaint = (index: number) =>
+    setUi('areaPaint', { cells: clues[index]?.observeFrom ?? [], target: { kind: 'clue', index } });
 
   if (!map) return null;
 
   if (areaPaint) {
+    const target = areaPaint.target ?? { kind: 'area' };
+    const what =
+      target.kind === 'area'
+        ? 'the area of'
+        : target.kind === 'observe'
+          ? 'the vantage hexes of'
+          : `the vantage hexes of clue ${target.index + 1} on`;
     return (
       <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 flex-wrap justify-center max-w-[calc(100vw-1.5rem)] bg-ink-850/95 border border-brass-500/60 rounded-xl shadow-2xl px-4 py-2.5 backdrop-blur">
         <span className="text-sm text-ink-100">
-          Painting the area of <span className="font-medium">{title.trim() || 'this content'}</span>
+          Painting {what} <span className="font-medium">{title.trim() || 'this content'}</span>
         </span>
         <span className="text-xs text-ink-400">
-          {areaPaint.cells.length} extra hex{areaPaint.cells.length === 1 ? '' : 'es'} · drag to
-          paint
+          {areaPaint.cells.length} {target.kind === 'area' ? 'extra ' : ''}hex
+          {areaPaint.cells.length === 1 ? '' : 'es'} · drag to paint
         </span>
         <RegionBrushControls compact />
-        <Button size="sm" variant="ghost" onClick={() => setUi('areaPaint', { cells: [] })}>
+        <Button size="sm" variant="ghost" onClick={() => setUi('areaPaint', { cells: [], target })}>
           Clear
         </Button>
         <Button size="sm" variant="primary" onClick={() => setUi('areaPaint', null)}>
@@ -128,6 +147,7 @@ export function ContentDialog() {
         enabled,
         knownLocation,
         quest: quest.trim(),
+        observeFrom,
         clues: clues
           .filter((c) => c.text.trim())
           .map((c, i) => ({
@@ -137,6 +157,7 @@ export function ContentDialog() {
             sortOrder: i,
             indicatesDirection: c.indicatesDirection,
             revealsLocation: c.revealsLocation,
+            observeFrom: c.observeFrom,
           })),
       },
     });
@@ -239,6 +260,32 @@ export function ContentDialog() {
           </p>
         </div>
 
+        <div className="border border-ink-700 rounded-lg p-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
+              Vantage hexes
+            </span>
+            <span className="text-xs text-ink-300">
+              {observeFrom.length === 0
+                ? 'by distance (each clue’s "within N hexes")'
+                : `${observeFrom.length} hex${observeFrom.length === 1 ? '' : 'es'} — clues perceivable only from there`}
+            </span>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={startObservePaint}>
+              👁 Paint vantage
+            </Button>
+            {observeFrom.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setObserveFrom([])}>
+                Clear
+              </Button>
+            )}
+          </div>
+          <p className="text-[11px] text-ink-400 mt-1">
+            Restrict every clue here to specific hexes instead of a radius — the ridge you can see
+            the tower from, the bend where the smell drifts. A clue can set its own hexes below,
+            which override these.
+          </p>
+        </div>
+
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
@@ -256,6 +303,7 @@ export function ContentDialog() {
                     gate: { kind: 'skill', skill: 'perception', dc: 12, maxDistance: 1, mode: 'passive' },
                     indicatesDirection: false,
                     revealsLocation: true,
+                    observeFrom: [],
                   },
                 ])
               }
@@ -275,6 +323,8 @@ export function ContentDialog() {
               <ClueEditor
                 key={i}
                 clue={clue}
+                inheritedVantage={observeFrom.length}
+                onPaintVantage={() => startCluePaint(i)}
                 onChange={(next) => setClues(clues.map((c, j) => (j === i ? next : c)))}
                 onRemove={() => setClues(clues.filter((_, j) => j !== i))}
               />
@@ -311,10 +361,15 @@ export function ContentDialog() {
 
 function ClueEditor({
   clue,
+  inheritedVantage,
+  onPaintVantage,
   onChange,
   onRemove,
 }: {
   clue: ClueDraft;
+  /** Size of the content-level vantage set this clue inherits (0 = none). */
+  inheritedVantage: number;
+  onPaintVantage: () => void;
   onChange: (c: ClueDraft) => void;
   onRemove: () => void;
 }) {
@@ -446,6 +501,33 @@ function ClueEditor({
         >
           📍 location
         </button>
+        <button
+          onClick={onPaintVantage}
+          className={cx(
+            'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border',
+            clue.observeFrom.length > 0
+              ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+              : 'border-ink-700 text-ink-300 hover:bg-ink-700',
+          )}
+          title={
+            clue.observeFrom.length > 0
+              ? `Perceivable only from ${clue.observeFrom.length} chosen hex(es) — click to repaint them`
+              : inheritedVantage > 0
+                ? `Inherits the content's ${inheritedVantage} vantage hex(es) — click to paint this clue's own`
+                : 'Paint the hexes this clue can be perceived from (replaces "within N hexes")'
+          }
+        >
+          👁 {clue.observeFrom.length > 0 ? `${clue.observeFrom.length} hexes` : 'vantage'}
+        </button>
+        {clue.observeFrom.length > 0 && (
+          <button
+            onClick={() => onChange({ ...clue, observeFrom: [] })}
+            className="text-[11px] text-ink-400 hover:text-ember-500 cursor-pointer"
+            title="Back to the distance rule"
+          >
+            clear
+          </button>
+        )}
       </div>
     </div>
   );

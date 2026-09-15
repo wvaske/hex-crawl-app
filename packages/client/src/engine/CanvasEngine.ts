@@ -1960,7 +1960,7 @@ export class CanvasEngine {
     if (stroke.contentId) {
       ui.set('areaHighlight', { contentId: stroke.contentId, cells: next });
     } else {
-      ui.set('areaPaint', { cells: next });
+      ui.set('areaPaint', { ...(ui.areaPaint ?? {}), cells: next });
     }
   }
 

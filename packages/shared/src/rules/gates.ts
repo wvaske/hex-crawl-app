@@ -13,14 +13,21 @@ export function gateOpensPassively(
   gate: Gate,
   character: Character,
   distance: number,
+  /**
+   * Geometry override (issue #123): whether the character is somewhere the
+   * clue can be perceived from. Defaults to the distance rule; a clue with a
+   * vantage set passes `clueInRange(...)` instead.
+   */
+  inRange?: boolean,
 ): { opens: boolean; passive?: number } {
   switch (gate.kind) {
     case 'auto':
-      return { opens: distance === 0 };
+      return { opens: inRange ?? distance === 0 };
     case 'skill': {
       if (gate.mode !== 'passive') return { opens: false };
       const passive = passiveScore(character.skills, gate.skill);
-      return { opens: distance <= gate.maxDistance && passive >= gate.dc, passive };
+      const near = inRange ?? distance <= gate.maxDistance;
+      return { opens: near && passive >= gate.dc, passive };
     }
     case 'manual':
       return { opens: false };

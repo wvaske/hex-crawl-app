@@ -7,6 +7,7 @@ import {
   contentCells,
   contentCoversHex,
   isFullContent,
+  clueObserveSet,
   describeGate,
   hexKey,
   type Content,
@@ -788,7 +789,7 @@ function DmContentCard({ content }: { content: Content }) {
             return (
               <li key={clue.id} className="text-xs border-t border-ink-700 pt-1.5">
                 <p className="text-ink-200">{clue.text}</p>
-                <p className="text-ink-400 mt-0.5">{describeGate(clue.gate)}</p>
+                <p className="text-ink-400 mt-0.5">{describeGate(clue.gate)}{vantageNote(clue, content)}</p>
                 <div className="flex items-center gap-1 flex-wrap mt-1">
                   {known.map((d) => {
                     const ch = characters.find((c) => c.id === d.characterId);
@@ -874,4 +875,15 @@ function PlayerContentCard({ content }: { content: ContentPlayerView }) {
       </ul>
     </div>
   );
+}
+
+/** " · from N vantage hexes" when a clue is restricted to chosen hexes (#123). */
+function vantageNote(
+  clue: { gate: Content['clues'][number]['gate']; observeFrom?: { q: number; r: number }[] },
+  content: Content,
+): string {
+  const set = clueObserveSet(clue, content);
+  if (!set) return '';
+  const own = (clue.observeFrom?.length ?? 0) > 0;
+  return ` · from ${set.length} vantage hex${set.length === 1 ? '' : 'es'}${own ? '' : ' (content-wide)'}`;
 }

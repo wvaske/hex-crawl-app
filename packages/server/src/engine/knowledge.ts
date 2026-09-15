@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { Character, Discovery } from '@hexcrawl/shared';
 import {
+  clueInRange,
   compassDirection,
   distanceToContent,
   gateOpensPassively,
@@ -60,7 +61,13 @@ export function evaluateKnowledge(
           }
           continue;
         }
-        const evaluation = gateOpensPassively(clue.gate, character, distance);
+        // A clue with vantage hexes opens from those hexes only (#123).
+        const evaluation = gateOpensPassively(
+          clue.gate,
+          character,
+          distance,
+          clueInRange(clue, content, pos),
+        );
         if (!evaluation.opens) continue;
         const direction = clue.indicatesDirection
           ? compassDirection(pos, nearestContentCell(content, pos), orientation)

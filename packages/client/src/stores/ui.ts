@@ -26,6 +26,12 @@ export type Tool =
  */
 export type PanelId = 'information' | 'character' | 'history' | 'build' | 'setup';
 
+/** What a content-dialog paint session is painting (issue #123). */
+export type AreaPaintTarget =
+  | { kind: 'area' }
+  | { kind: 'observe' }
+  | { kind: 'clue'; index: number };
+
 interface UiStore {
   tool: Tool;
   paintTerrain: TerrainId | null; // null = eraser
@@ -96,8 +102,10 @@ interface UiStore {
    * the map brushes hexes into (or out of) `cells` instead of running the
    * active tool. The dialog owns the draft until it's saved, so this holds
    * live cells, not an id — a brand-new content item has no id yet.
+   * `target` says which draft the cells belong to (issue #123): the content's
+   * footprint, its vantage set, or one clue's vantage set.
    */
-  areaPaint: { cells: HexCoord[] } | null;
+  areaPaint: { cells: HexCoord[]; target?: AreaPaintTarget } | null;
   /**
    * Region tool (issue #108): which existing content the brush paints into.
    * Unlike `areaPaint`, strokes here go straight to the server as

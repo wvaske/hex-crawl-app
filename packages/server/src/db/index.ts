@@ -317,6 +317,9 @@ export function migrate(d: DB): void {
   ensureColumn(d, 'content', 'area', "TEXT NOT NULL DEFAULT '[]'");
   // Routed travel through explored hexes (issue #130): on for every map.
   ensureColumn(d, 'map', 'route_explored', 'INTEGER NOT NULL DEFAULT 1');
+  // Clue vantage hexes (issue #123): JSON arrays of {q,r}; empty = by distance.
+  ensureColumn(d, 'clue', 'observe_from', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(d, 'content', 'observe_from', "TEXT NOT NULL DEFAULT '[]'");
 }
 
 /**

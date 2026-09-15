@@ -572,6 +572,9 @@ export const GateSchema = z.discriminatedUnion('kind', [
 ]);
 export type Gate = z.infer<typeof GateSchema>;
 
+/** A hex coordinate pair as stored inside content areas and trail paths. */
+export const HexRefSchema = z.object({ q: z.number().int(), r: z.number().int() });
+
 export const ClueSchema = z.object({
   id: z.string(),
   contentId: z.string(),
@@ -579,6 +582,12 @@ export const ClueSchema = z.object({
   text: z.string().min(1).max(2000),
   gate: GateSchema,
   sortOrder: z.number().int().default(0),
+  /**
+   * Vantage hexes (issue #123): when non-empty, this clue can be perceived
+   * ONLY from these hexes — the gate's distance is ignored entirely. Overrides
+   * the content's own `observeFrom`. Empty = the usual radius rule.
+   */
+  observeFrom: z.array(HexRefSchema).default([]),
   /**
    * Append an auto-computed compass bearing (from the discovering character
    * toward this content's hex) to the delivered text: "… — to the north-east".
@@ -592,9 +601,6 @@ export const ClueSchema = z.object({
   revealsLocation: z.boolean().default(true),
 });
 export type Clue = z.infer<typeof ClueSchema>;
-
-/** A hex coordinate pair as stored inside content areas and trail paths. */
-export const HexRefSchema = z.object({ q: z.number().int(), r: z.number().int() });
 
 export const ContentSchema = z.object({
   id: z.string(),
@@ -629,6 +635,12 @@ export const ContentSchema = z.object({
   quest: z.string().max(120).default(''),
   /** Wiki page title (or full URL) players can read for more information. */
   wikiPage: z.string().max(300).default(''),
+  /**
+   * Vantage hexes for every clue of this content (issue #123): when non-empty
+   * the clues are perceivable only from these hexes instead of by distance.
+   * A clue's own `observeFrom` overrides this.
+   */
+  observeFrom: z.array(HexRefSchema).default([]),
   clues: z.array(ClueSchema),
 });
 export type Content = z.infer<typeof ContentSchema>;
@@ -1002,4 +1014,68 @@ export function nearestContentCell(content: ContentFootprint, from: HexCoord): H
  */
 export function distanceToContent(content: ContentFootprint, from: HexCoord): number {
   return hexDistance(from, nearestContentCell(content, from));
+}
+
+// ---------------------------------------------------------------------------
+// Clue vantage (issue #123)
+// ---------------------------------------------------------------------------
+
+/** What the vantage helpers need of a clue and its content. */
+export interface ClueVantage {
+  gate: Gate;
+  observeFrom?: HexCoord[];
+}
+export interface ContentVantage extends ContentFootprint {
+  observeFrom?: HexCoord[];
+}
+
+/**
+ * The explicit set of hexes a clue can be perceived from — the clue's own
+ * list, else the content's, else null meaning "by distance" (the gate's
+ * `maxDistance`, or the footprint itself for auto gates).
+ */
+export function clueObserveSet(clue: ClueVantage, content: ContentVantage): HexCoord[] | null {
+  if (clue.observeFrom && clue.observeFrom.length > 0) return clue.observeFrom;
+  if (content.observeFrom && content.observeFrom.length > 0) return content.observeFrom;
+  return null;
+}
+
+/** Hexes within a clue's sensing distance of the content (the radius rule). */
+export function clueRadius(clue: ClueVantage): number {
+  return clue.gate.kind === 'skill' ? clue.gate.maxDistance : 0;
+}
+
+/**
+ * Can a character standing at `from` perceive this clue, geometrically? A
+ * vantage set replaces the distance rule outright; otherwise it is distance
+ * to the nearest footprint hex against the gate's reach (0 for auto/manual,
+ * which only open on the place itself).
+ */
+export function clueInRange(clue: ClueVantage, content: ContentVantage, from: HexCoord): boolean {
+  const set = clueObserveSet(clue, content);
+  if (set) return set.some((c) => c.q === from.q && c.r === from.r);
+  return distanceToContent(content, from) <= clueRadius(clue);
+}
+
+/**
+ * Every hex from which this clue can be perceived: the vantage set, or the
+ * union of each footprint hex's sensing range. Used to draw sensing areas
+ * and to intersect with the hexes a character has walked.
+ */
+export function clueObservableCells(clue: ClueVantage, content: ContentVantage): HexCoord[] {
+  const set = clueObserveSet(clue, content);
+  if (set) return set.map((c) => ({ q: c.q, r: c.r }));
+  const radius = clueRadius(clue);
+  const out = new Map<string, HexCoord>();
+  for (const cell of contentCells(content)) {
+    for (let q = -radius; q <= radius; q++) {
+      const rMin = Math.max(-radius, -q - radius);
+      const rMax = Math.min(radius, -q + radius);
+      for (let r = rMin; r <= rMax; r++) {
+        const h = { q: cell.q + q, r: cell.r + r };
+        out.set(`${h.q},${h.r}`, h);
+      }
+    }
+  }
+  return [...out.values()];
 }

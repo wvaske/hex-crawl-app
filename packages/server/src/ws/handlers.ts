@@ -12,6 +12,8 @@ import type {
   Token,
 } from '@hexcrawl/shared';
 import {
+  clueInRange,
+  clueObserveSet,
   compassDirection,
   contentCells,
   contentCoversHex,
@@ -527,13 +529,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     // An omitted area MERGES with what's stored: senders that predate
     // footprints (the pin popup's quick toggles) must not wipe a painted
     // region. Clearing an area sends an explicit empty list.
-    const priorArea = ctx.runtime.mapStates.get(cmd.content.mapId)?.contents.get(id)?.area;
+    const prior = ctx.runtime.mapStates.get(cmd.content.mapId)?.contents.get(id);
     const content: Content = {
       id,
       mapId: cmd.content.mapId,
       q: cmd.content.q,
       r: cmd.content.r,
-      area: cmd.content.area ?? priorArea ?? [],
+      area: cmd.content.area ?? prior?.area ?? [],
+      observeFrom: cmd.content.observeFrom ?? prior?.observeFrom ?? [],
       type: cmd.content.type,
       title: cmd.content.title,
       dmNotes: cmd.content.dmNotes,
@@ -552,6 +555,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         sortOrder: i,
         indicatesDirection: c.indicatesDirection ?? false,
         revealsLocation: c.revealsLocation ?? true,
+        observeFrom: c.observeFrom ?? [],
       })),
     };
     ctx.runtime.upsertContent(content);
@@ -969,12 +973,16 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
           const character = ctx.runtime.characters.get(r.characterId)!;
           for (const content of rt.contents.values()) {
             if (!content.enabled) continue;
-            // A search on ANY hex of a region's footprint searches the region.
-            if (!contentCoversHex(content, cmd.hex)) continue;
+            // A search on ANY hex of a region's footprint searches the region;
+            // a search on one of a clue's vantage hexes (#123) searches for
+            // what can be seen from there.
+            const covers = contentCoversHex(content, cmd.hex);
             const distance = distanceToContent(content, { q: token.q, r: token.r });
             for (const clue of content.clues) {
               if (clue.gate.kind !== 'skill' || clue.gate.skill !== cmd.skill) continue;
-              if (distance > clue.gate.maxDistance) continue;
+              const vantage = clueObserveSet(clue, content);
+              if (!covers && !vantage?.some((v) => v.q === cmd.hex!.q && v.r === cmd.hex!.r)) continue;
+              if (!clueInRange(clue, content, { q: token.q, r: token.r })) continue;
               if (r.total < clue.gate.dc) continue;
               if (ctx.runtime.hasDiscovery(clue.id, r.characterId)) continue;
               const direction =
