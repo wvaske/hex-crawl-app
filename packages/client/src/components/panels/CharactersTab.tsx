@@ -105,6 +105,7 @@ export function CharactersTab() {
 
   return (
     <div>
+      <CampaignLinks isDm={isDm} />
       <Section
         title="Party"
         actions={
@@ -251,6 +252,75 @@ export function CharactersTab() {
             <CharacterDialog character={sheetCharacter} onClose={() => setSheetCharacterId(null)} />
           );
         })()}
+    </div>
+  );
+}
+
+/**
+ * Where the campaign lives elsewhere: the D&D Beyond campaign and the VTT the
+ * table uses. The DM fills the URLs in here; once set, everyone sees them as
+ * links at the top of the party list.
+ */
+function CampaignLinks({ isDm }: { isDm: boolean }) {
+  const settings = useSession((s) => s.state?.campaign.settings);
+  const [editing, setEditing] = useState(false);
+  if (!settings) return null;
+  const links = [
+    { key: 'ddbCampaignUrl' as const, label: 'D&D Beyond campaign', icon: '🐉', url: settings.ddbCampaignUrl },
+    { key: 'vttUrl' as const, label: 'VTT', icon: '🗺️', url: settings.vttUrl },
+  ];
+  const any = links.some((l) => l.url.trim());
+  const href = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
+  if (!any && !isDm) return null;
+  return (
+    <div className="mb-3">
+      {any && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {links
+            .filter((l) => l.url.trim())
+            .map((l) => (
+              <a
+                key={l.key}
+                href={href(l.url.trim())}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border border-ink-600 bg-ink-800 px-2.5 py-1 text-xs text-ink-100 hover:border-brass-500 hover:text-brass-300"
+                title={l.url}
+              >
+                {l.icon} {l.label} ↗
+              </a>
+            ))}
+          {isDm && (
+            <button
+              className="text-[0.6875rem] text-ink-400 hover:text-ink-100 cursor-pointer"
+              onClick={() => setEditing((e) => !e)}
+            >
+              {editing ? 'done' : 'edit links'}
+            </button>
+          )}
+        </div>
+      )}
+      {isDm && (!any || editing) && (
+        <div className="mt-2 space-y-2 rounded-lg border border-ink-700 p-2.5">
+          {links.map((l) => (
+            <Field key={l.key} label={`${l.label} link`}>
+              <Input
+                key={`${l.key}-${l.url}`}
+                defaultValue={l.url}
+                placeholder={l.key === 'ddbCampaignUrl' ? 'https://www.dndbeyond.com/campaigns/…' : 'https://…'}
+                maxLength={300}
+                onBlur={(e) => {
+                  const next = e.target.value.trim();
+                  if (next !== l.url) send({ kind: 'campaign.update', settings: { [l.key]: next } });
+                }}
+              />
+            </Field>
+          ))}
+          <p className="text-[0.6875rem] text-ink-400">
+            Shown to the whole party at the top of this tab once filled in.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
