@@ -15,6 +15,7 @@ export function HexReadout() {
   const state = useSession((s) => s.state);
   const hover = useUi((s) => s.hoverHex);
   const measureStart = useUi((s) => s.measureStart);
+  const routePreview = useUi((s) => s.routePreview);
   const tool = useUi((s) => s.tool);
   const map = activeMap(state);
   if (!map || !hover || !state?.mapState) return null;
@@ -22,7 +23,18 @@ export function HexReadout() {
   const terrain = state.mapState.hexes.find((h) => hexKey(h.q, h.r) === hexKey(hover.q, hover.r))
     ?.terrain;
   const measuring = tool === 'measure' && measureStart;
-  const dist = measuring ? hexDistance(measureStart, hover) : null;
+  // A token in flight (issue #130): the readout says whether the drop would
+  // follow an explored route, and how long that route is, so the player
+  // knows before letting go.
+  const routing =
+    routePreview && routePreview.target.q === hover.q && routePreview.target.r === hover.r
+      ? routePreview
+      : null;
+  const dist = measuring
+    ? hexDistance(measureStart, hover)
+    : routing?.cells
+      ? routing.cells.length - 1
+      : null;
 
   // Travel-time estimate (#77): distance at the campaign's current travel
   // mode/pace. Both roles see it — it's the "should we push on?" question.
@@ -46,10 +58,14 @@ export function HexReadout() {
       {dist !== null && (
         <span className="text-arcane-500 font-medium">
           {' '}
-          · {dist} hex{dist === 1 ? '' : 'es'} ≈ {dist * map.milesPerHex} mi
+          · {routing ? 'route ' : ''}
+          {dist} hex{dist === 1 ? '' : 'es'} ≈ {dist * map.milesPerHex} mi
         </span>
       )}
       {travelEstimate && <span className="text-ink-400"> · {travelEstimate}</span>}
+      {routing && !routing.cells && (
+        <span className="text-ember-500"> · no explored route (straight line)</span>
+      )}
     </div>
   );
 }

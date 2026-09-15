@@ -33,6 +33,8 @@ import {
   MAX_SCALE_LEVEL,
   SUPER_SCALE,
   TERRAINS,
+  exploredPassable,
+  findRoute,
   fineToIndex,
   fractionalIndex,
   hexCornerOffsets,
@@ -174,6 +176,12 @@ export class CanvasEngine {
   /** DM shift+drag rubber band (world coords) for bulk content selection. */
   private boxSelect: { start: { x: number; y: number }; end: { x: number; y: number } } | null =
     null;
+  /**
+   * Fog states by hex key for route finding (issue #130), rebuilt only when
+   * the fog snapshot changes — a hover-time BFS must not rebuild a
+   * 100k-cell map each time.
+   */
+  private fogIndex: { source: FogCell[]; states: Map<string, FogCell['state']> } | null = null;
 
   async init(host: HTMLElement): Promise<void> {
     this.host = host;
@@ -977,6 +985,27 @@ export class CanvasEngine {
       g.stroke({ width: lineW * 1.5, color: 0x8b7fd4, alpha: 0.9 });
     }
 
+    // Route preview for a token in flight (issue #130): the explored path the
+    // server will walk, drawn hex-centre to hex-centre with a light wash on
+    // each hex; a missing route paints the destination in warning red.
+    if (ui.routePreview) {
+      const cells = ui.routePreview.cells;
+      if (cells && cells.length > 1) {
+        const pts = cells.map((c) => hexToPixel(this.layout!, c));
+        for (let i = 0; i < pts.length; i++) {
+          if (i === 0) g.moveTo(pts[i]!.x, pts[i]!.y);
+          else g.lineTo(pts[i]!.x, pts[i]!.y);
+        }
+        g.stroke({ width: lineW * 2, color: 0xd9b44f, alpha: 0.9 });
+        for (const c of cells) g.poly(this.polyPoints(hexToPixel(this.layout!, c), corners));
+        g.fill({ color: 0xd9b44f, alpha: 0.12 });
+      } else if (!cells) {
+        const center = cellCenter(ui.routePreview.target);
+        g.poly(this.polyPoints(center, activeCorners));
+        g.stroke({ width: lineW * 2, color: 0xd96c4f, alpha: 0.9 });
+      }
+    }
+
     // Shift+drag rubber band for content selection.
     if (this.boxSelect) {
       const b = this.boxSelect;
@@ -1679,6 +1708,7 @@ export class CanvasEngine {
       if (ui.movingTokenId) {
         const view = this.tokens.get(ui.movingTokenId);
         useUi.getState().set('movingTokenId', null);
+        this.clearRoutePreview();
         this.viewport.cursor = 'default';
         if (view && this.canMove(view.token)) {
           if (!(hex.q === view.token.q && hex.r === view.token.r)) {
@@ -1794,6 +1824,14 @@ export class CanvasEngine {
       ) {
         useUi.getState().set('hoverHex', hex);
         if (this.stroke && hex) this.strokeApply(hex);
+        // A token in flight previews the route the drop would walk.
+        const flying = this.drag?.active
+          ? this.drag.view.token
+          : ui.movingTokenId
+            ? this.tokens.get(ui.movingTokenId)?.token
+            : undefined;
+        if (flying) this.previewRoute(flying, hex);
+        else if (ui.routePreview) useUi.getState().set('routePreview', null);
       }
       if (this.drag) {
         if (!this.drag.active) {
@@ -1806,6 +1844,7 @@ export class CanvasEngine {
           if (travelled < threshold) return;
           this.drag.active = true;
           this.drag.view.dragging = true;
+          if (hex) this.previewRoute(this.drag.view.token, hex);
         }
         const world = this.viewport.toWorld(e.global.x, e.global.y);
         this.drag.view.root.position.set(world.x, world.y);
@@ -1962,6 +2001,7 @@ export class CanvasEngine {
     const drag = this.drag;
     this.drag = null;
     this.updateDragMode();
+    this.clearRoutePreview();
     if (!drag || !this.layout) return;
     drag.view.dragging = false;
     // `targetX/Y` is where the sync loop wants this token (hex centre plus any
@@ -1978,6 +2018,7 @@ export class CanvasEngine {
     const drag = this.drag;
     this.drag = null;
     this.updateDragMode();
+    this.clearRoutePreview();
     if (!drag || !this.layout) return;
     drag.view.dragging = false;
     const dropHex = pixelToHex(this.layout, {
@@ -2016,14 +2057,20 @@ export class CanvasEngine {
       });
       return 'requested';
     }
-    // Step-mode limit for players (server validates too).
+    // Step-mode limit for players (server validates too): one hex into the
+    // unknown, any distance along an explored route (issue #130).
     if (this.role !== 'dm' && map?.moveMode === 'step' && hexDistance(token, dropHex) > 1) {
-      useSession.getState().pushToast({
-        kind: 'info',
-        title: 'One hex at a time',
-        text: 'This map only allows single-hex steps.',
-      });
-      return 'denied';
+      const routed = map.routeExplored && this.routeFor(token, dropHex) !== null;
+      if (!routed) {
+        useSession.getState().pushToast({
+          kind: 'info',
+          title: map.routeExplored ? 'No explored route' : 'One hex at a time',
+          text: map.routeExplored
+            ? 'Step one hex at a time into unexplored land, or pick a destination you can reach through explored hexes.'
+            : 'This map only allows single-hex steps.',
+        });
+        return 'denied';
+      }
     }
     const teleport = this.role === 'dm' && useUi.getState().altTeleport;
     useSession.getState().optimisticTokenMove(token.id, dropHex.q, dropHex.r);
@@ -2046,6 +2093,44 @@ export class CanvasEngine {
     // Landing selects the destination, so the inspect tab shows the new hex.
     if (token.kind === 'pc') useUi.getState().selectHex(dropHex);
     return 'moved';
+  }
+
+  /**
+   * Shortest route through explored/visible fog from a token to a hex, or
+   * null when the destination is not reachable over known ground (issue
+   * #130). Mirrors the server's `exploredRoute`; the fog a viewer holds is
+   * exactly what the server would route over for them.
+   */
+  routeFor(from: HexCoord, to: HexCoord): HexCoord[] | null {
+    if (!this.fogIndex || this.fogIndex.source !== this.lastFog) {
+      const states = new Map<string, FogCell['state']>();
+      for (const f of this.lastFog) states.set(hexKey(f.q, f.r), f.state);
+      this.fogIndex = { source: this.lastFog, states };
+    }
+    const states = this.fogIndex.states;
+    return findRoute(from, to, exploredPassable((h) => states.get(hexKey(h.q, h.r))));
+  }
+
+  /** Publish the route a drop on `hex` would walk (or that there is none). */
+  private previewRoute(token: Token, hex: HexCoord): void {
+    const ui = useUi.getState();
+    const map = this.lastMap;
+    const far = hexDistance(token, hex) > 1;
+    if (!map?.routeExplored || !far || (ui.altTeleport && this.role === 'dm')) {
+      if (ui.routePreview) ui.set('routePreview', null);
+      this.drawHighlight();
+      return;
+    }
+    ui.set('routePreview', { cells: this.routeFor(token, hex), target: hex });
+    this.drawHighlight();
+  }
+
+  private clearRoutePreview(): void {
+    const ui = useUi.getState();
+    if (ui.routePreview) {
+      ui.set('routePreview', null);
+      this.drawHighlight();
+    }
   }
 
   /** Center and zoom the view on the viewer's own PC token ("Go to me"). */
