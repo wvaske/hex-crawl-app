@@ -121,7 +121,7 @@ function RollPanel({ mapId }: { mapId: string }) {
           />
         </Field>
         {map.encounterCheck.autoEvery > 0 && (
-          <p className="text-[11px] text-ink-400 mt-1">
+          <p className="text-[0.6875rem] text-ink-400 mt-1">
             Rolling automatically as the party travels — every{' '}
             {map.encounterCheck.autoEvery === 1
               ? 'hex'
@@ -343,7 +343,7 @@ function TableEditor({ table, onClose }: { table: EncounterTable | null; onClose
                 )
               }
               className={cx(
-                'px-1.5 py-0.5 rounded text-[11px] cursor-pointer border',
+                'px-1.5 py-0.5 rounded text-[0.6875rem] cursor-pointer border',
                 terrains.includes(id)
                   ? 'border-brass-500 bg-brass-500/15 text-brass-300'
                   : 'border-ink-700 text-ink-300 hover:bg-ink-700',

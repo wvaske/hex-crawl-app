@@ -237,7 +237,7 @@ export function ContentDialog() {
 
         <div className="border border-ink-700 rounded-lg p-2.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
+            <span className="text-[0.6875rem] uppercase tracking-wider text-ink-400 font-semibold">
               Area
             </span>
             <span className="text-xs text-ink-300">
@@ -254,7 +254,7 @@ export function ContentDialog() {
               </Button>
             )}
           </div>
-          <p className="text-[11px] text-ink-400 mt-1">
+          <p className="text-[0.6875rem] text-ink-400 mt-1">
             A multi-hex region is explored if the party reaches <em>any</em> of its hexes: gates,
             searches and distances all use the nearest one.
           </p>
@@ -262,7 +262,7 @@ export function ContentDialog() {
 
         <div className="border border-ink-700 rounded-lg p-2.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
+            <span className="text-[0.6875rem] uppercase tracking-wider text-ink-400 font-semibold">
               Vantage hexes
             </span>
             <span className="text-xs text-ink-300">
@@ -279,7 +279,7 @@ export function ContentDialog() {
               </Button>
             )}
           </div>
-          <p className="text-[11px] text-ink-400 mt-1">
+          <p className="text-[0.6875rem] text-ink-400 mt-1">
             Restrict every clue here to specific hexes instead of a radius — the ridge you can see
             the tower from, the bend where the smell drifts. A clue can set its own hexes below,
             which override these.
@@ -288,7 +288,7 @@ export function ContentDialog() {
 
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">
+            <span className="text-[0.6875rem] uppercase tracking-wider text-ink-400 font-semibold">
               Clues — what players can learn
             </span>
             <Button
@@ -405,7 +405,7 @@ function ClueEditor({
             key={k}
             onClick={() => setGateKind(k)}
             className={cx(
-              'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border capitalize',
+              'px-2 py-0.5 rounded-full text-[0.6875rem] cursor-pointer border capitalize',
               gate.kind === k
                 ? 'border-brass-500 bg-brass-500/15 text-brass-300'
                 : 'border-ink-700 text-ink-300 hover:bg-ink-700',
@@ -424,7 +424,7 @@ function ClueEditor({
         {gate.kind === 'skill' && (
           <>
             <select
-              className="bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[11px] text-ink-100 cursor-pointer"
+              className="bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[0.6875rem] text-ink-100 cursor-pointer"
               value={gate.skill}
               onChange={(e) => onChange({ ...clue, gate: { ...gate, skill: e.target.value } })}
             >
@@ -434,26 +434,26 @@ function ClueEditor({
                 </option>
               ))}
             </select>
-            <label className="text-[11px] text-ink-400">
+            <label className="text-[0.6875rem] text-ink-400">
               DC{' '}
               <input
                 type="number"
                 min={1}
                 max={40}
-                className="w-12 bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[11px] text-ink-100"
+                className="w-12 bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[0.6875rem] text-ink-100"
                 value={gate.dc}
                 onChange={(e) =>
                   onChange({ ...clue, gate: { ...gate, dc: clampInt(e.target.value, 1, 40, gate.dc) } })
                 }
               />
             </label>
-            <label className="text-[11px] text-ink-400">
+            <label className="text-[0.6875rem] text-ink-400">
               within{' '}
               <input
                 type="number"
                 min={0}
                 max={30}
-                className="w-12 bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[11px] text-ink-100"
+                className="w-12 bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[0.6875rem] text-ink-100"
                 value={gate.maxDistance}
                 onChange={(e) =>
                   onChange({
@@ -465,7 +465,7 @@ function ClueEditor({
               hexes
             </label>
             <select
-              className="bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[11px] text-ink-100 cursor-pointer"
+              className="bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[0.6875rem] text-ink-100 cursor-pointer"
               value={gate.mode}
               onChange={(e) =>
                 onChange({ ...clue, gate: { ...gate, mode: e.target.value as 'passive' | 'active' } })
@@ -480,7 +480,7 @@ function ClueEditor({
         <button
           onClick={() => onChange({ ...clue, indicatesDirection: !clue.indicatesDirection })}
           className={cx(
-            'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border',
+            'px-2 py-0.5 rounded-full text-[0.6875rem] cursor-pointer border',
             clue.indicatesDirection
               ? 'border-brass-500 bg-brass-500/15 text-brass-300'
               : 'border-ink-700 text-ink-300 hover:bg-ink-700',
@@ -492,7 +492,7 @@ function ClueEditor({
         <button
           onClick={() => onChange({ ...clue, revealsLocation: !clue.revealsLocation })}
           className={cx(
-            'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border',
+            'px-2 py-0.5 rounded-full text-[0.6875rem] cursor-pointer border',
             clue.revealsLocation
               ? 'border-brass-500 bg-brass-500/15 text-brass-300'
               : 'border-ink-700 text-ink-300 hover:bg-ink-700',
@@ -504,7 +504,7 @@ function ClueEditor({
         <button
           onClick={onPaintVantage}
           className={cx(
-            'px-2 py-0.5 rounded-full text-[11px] cursor-pointer border',
+            'px-2 py-0.5 rounded-full text-[0.6875rem] cursor-pointer border',
             clue.observeFrom.length > 0
               ? 'border-brass-500 bg-brass-500/15 text-brass-300'
               : 'border-ink-700 text-ink-300 hover:bg-ink-700',
@@ -522,7 +522,7 @@ function ClueEditor({
         {clue.observeFrom.length > 0 && (
           <button
             onClick={() => onChange({ ...clue, observeFrom: [] })}
-            className="text-[11px] text-ink-400 hover:text-ember-500 cursor-pointer"
+            className="text-[0.6875rem] text-ink-400 hover:text-ember-500 cursor-pointer"
             title="Back to the distance rule"
           >
             clear

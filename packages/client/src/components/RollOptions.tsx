@@ -27,11 +27,11 @@ export function RollOptionsBar({ group = false }: { group?: boolean }) {
   return (
     <div className="rounded-md border border-ink-700 bg-ink-900/60 p-1.5 space-y-1.5">
       <div className="flex items-center gap-1 flex-wrap">
-        <span className="text-[10px] uppercase tracking-wider text-ink-400 mr-0.5">Add</span>
+        <span className="text-[0.625rem] uppercase tracking-wider text-ink-400 mr-0.5">Add</span>
         {EXTRA_DICE.map((sides) => (
           <button
             key={sides}
-            className="px-1.5 py-0.5 rounded border border-ink-600 text-[11px] text-ink-200 hover:bg-ink-700 cursor-pointer"
+            className="px-1.5 py-0.5 rounded border border-ink-600 text-[0.6875rem] text-ink-200 hover:bg-ink-700 cursor-pointer"
             title={`Add +1d${sides}${chosenLabel ? ` (${chosenLabel})` : ''} to the next roll`}
             onClick={() => addExtra({ sides, amount: 1, sign: 1, label: chosenLabel })}
           >
@@ -45,11 +45,11 @@ export function RollOptionsBar({ group = false }: { group?: boolean }) {
             max={20}
             value={flat}
             onChange={(e) => setFlat(e.target.value)}
-            className="w-10 rounded bg-ink-900 border border-ink-600 px-1 py-0.5 text-[11px] text-ink-100"
+            className="w-10 rounded bg-ink-900 border border-ink-600 px-1 py-0.5 text-[0.6875rem] text-ink-100"
             title="Flat bonus"
           />
           <button
-            className="px-1.5 py-0.5 rounded border border-ink-600 text-[11px] text-ink-200 hover:bg-ink-700 cursor-pointer"
+            className="px-1.5 py-0.5 rounded border border-ink-600 text-[0.6875rem] text-ink-200 hover:bg-ink-700 cursor-pointer"
             title={`Add a flat +${flat || 0}${chosenLabel ? ` (${chosenLabel})` : ''}`}
             onClick={() => {
               const n = Math.round(Number(flat));
@@ -60,7 +60,7 @@ export function RollOptionsBar({ group = false }: { group?: boolean }) {
           </button>
         </span>
         <select
-          className="ml-1 bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[11px] text-ink-200 cursor-pointer"
+          className="ml-1 bg-ink-900 border border-ink-600 rounded px-1 py-0.5 text-[0.6875rem] text-ink-200 cursor-pointer"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           title="What the die is for — shown in the log"
@@ -77,13 +77,13 @@ export function RollOptionsBar({ group = false }: { group?: boolean }) {
             onChange={(e) => setCustom(e.target.value)}
             maxLength={40}
             placeholder="reason"
-            className="w-24 rounded bg-ink-900 border border-ink-600 px-1 py-0.5 text-[11px] text-ink-100"
+            className="w-24 rounded bg-ink-900 border border-ink-600 px-1 py-0.5 text-[0.6875rem] text-ink-100"
           />
         )}
       </div>
 
       <div className="flex items-center gap-1 flex-wrap">
-        <div className="flex items-center rounded-md border border-ink-600 overflow-hidden text-[11px]">
+        <div className="flex items-center rounded-md border border-ink-600 overflow-hidden text-[0.6875rem]">
           {(
             [
               ['disadvantage', 'Dis'],
@@ -111,13 +111,13 @@ export function RollOptionsBar({ group = false }: { group?: boolean }) {
           ))}
         </div>
         {role === 'player' && (
-          <label className="flex items-center gap-1 text-[11px] text-ink-300 cursor-pointer ml-1" title="Only you and the DM see this roll">
+          <label className="flex items-center gap-1 text-[0.6875rem] text-ink-300 cursor-pointer ml-1" title="Only you and the DM see this roll">
             <input type="checkbox" checked={secret} onChange={(e) => set('secret', e.target.checked)} />
             DM only
           </label>
         )}
         {role === 'dm' && group && (
-          <label className="flex items-center gap-1 text-[11px] text-ink-300 cursor-pointer ml-1" title="Skip characters who are not proficient in the skill">
+          <label className="flex items-center gap-1 text-[0.6875rem] text-ink-300 cursor-pointer ml-1" title="Skip characters who are not proficient in the skill">
             <input
               type="checkbox"
               checked={proficientOnly}
@@ -127,7 +127,7 @@ export function RollOptionsBar({ group = false }: { group?: boolean }) {
           </label>
         )}
         {pending && (
-          <span className="text-[10px] text-brass-300 ml-auto" title="Applies to the next roll, then clears">
+          <span className="text-[0.625rem] text-brass-300 ml-auto" title="Applies to the next roll, then clears">
             on next roll
           </span>
         )}
@@ -138,7 +138,7 @@ export function RollOptionsBar({ group = false }: { group?: boolean }) {
           {extras.map((x, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 rounded-full border border-brass-500/60 bg-brass-500/10 px-1.5 py-0.5 text-[11px] text-brass-300"
+              className="inline-flex items-center gap-1 rounded-full border border-brass-500/60 bg-brass-500/10 px-1.5 py-0.5 text-[0.6875rem] text-brass-300"
             >
               <button
                 className="cursor-pointer font-bold"

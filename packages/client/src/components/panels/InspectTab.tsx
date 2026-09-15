@@ -157,7 +157,7 @@ export function InspectTab() {
                   <MarkerIcon icon={m.icon} glyph={m.glyph} />
                   <MarkerLabel markerId={m.id} label={m.label} editable={isDm || mine} />
                   {owner && !mine && (
-                    <span className="text-[11px] text-ink-400 shrink-0" title="Party note">
+                    <span className="text-[0.6875rem] text-ink-400 shrink-0" title="Party note">
                       — {owner}
                     </span>
                   )}
@@ -291,7 +291,7 @@ function TrailInfo({ hex, isDm }: { hex: { q: number; r: number }; isDm: boolean
                   {s.backward && (
                     <span className="text-ink-400"> · back-trail {s.backward}</span>
                   )}
-                  {active && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+                  {active && <span className="block text-[0.6875rem] text-brass-300 mt-0.5">highlighted on map</span>}
                 </button>
               </li>
             );
@@ -341,7 +341,7 @@ function TrailInfo({ hex, isDm }: { hex: { q: number; r: number }; isDm: boolean
                     ? `${trail.gate.skill} DC ${trail.gate.dc}`
                     : 'obvious'}
                 </span>
-                {active && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+                {active && <span className="block text-[0.6875rem] text-brass-300 mt-0.5">highlighted on map</span>}
               </button>
             </li>
           );
@@ -428,7 +428,7 @@ function SearchHex({
         </Button>
       </div>
       {!isDm && spent.size > 0 && (
-        <p className="text-[11px] text-ink-400 mt-1">
+        <p className="text-[0.6875rem] text-ink-400 mt-1">
           Counted here: {[...spent].join(', ')}. Further rolls of those skills are for the table.
         </p>
       )}
@@ -510,13 +510,13 @@ function InvestigationSection({ hex }: { hex: { q: number; r: number } }) {
             </p>
             <div className="flex gap-1.5">
               <button
-                className="text-[11px] text-brass-400 hover:text-brass-300 cursor-pointer"
+                className="text-[0.6875rem] text-brass-400 hover:text-brass-300 cursor-pointer"
                 onClick={() => resolve(pendings.map((p) => p.id), true)}
               >
                 Share all
               </button>
               <button
-                className="text-[11px] text-ink-400 hover:text-ember-500 cursor-pointer"
+                className="text-[0.6875rem] text-ink-400 hover:text-ember-500 cursor-pointer"
                 onClick={() => resolve(pendings.map((p) => p.id), false)}
               >
                 Withhold all
@@ -665,7 +665,7 @@ function AddPartyNote({ mapId, hex }: { mapId: string; hex: { q: number; r: numb
           Pin
         </Button>
       </div>
-      <p className="text-[11px] text-ink-400 mt-1">
+      <p className="text-[0.6875rem] text-ink-400 mt-1">
         Party notes are visible to everyone at the table.
       </p>
     </div>
@@ -761,7 +761,7 @@ function ContentTitle({ content }: { content: Content | ContentPlayerView }) {
       }
     >
       {content.title}
-      <span className="ml-1.5 text-[10px] text-ink-400 font-normal">{cells.length} hexes</span>
+      <span className="ml-1.5 text-[0.625rem] text-ink-400 font-normal">{cells.length} hexes</span>
     </button>
   );
 }
@@ -846,7 +846,7 @@ function CluePills({ clue }: { clue: Clue }) {
         return (
           <span
             key={d.id}
-            className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-ink-950 cursor-pointer"
+            className="px-1.5 py-0.5 rounded-full text-[0.625rem] font-medium text-ink-950 cursor-pointer"
             style={{ background: ch?.color ?? '#888' }}
             title="Knows this — click to revoke"
             onClick={() => send({ kind: 'discovery.revoke', discoveryId: d.id })}
@@ -860,7 +860,7 @@ function CluePills({ clue }: { clue: Clue }) {
         .map((ch) => (
           <span
             key={ch.id}
-            className="px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-dashed cursor-pointer text-ink-300 hover:text-ink-100"
+            className="px-1.5 py-0.5 rounded-full text-[0.625rem] font-medium border border-dashed cursor-pointer text-ink-300 hover:text-ink-100"
             style={{ borderColor: ch.color }}
             title={`Doesn't know yet — click to reveal to ${ch.name}`}
             onClick={() => send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [ch.id] })}
@@ -869,7 +869,7 @@ function CluePills({ clue }: { clue: Clue }) {
           </span>
         ))}
       <button
-        className="text-[10px] text-brass-400 hover:text-brass-300 cursor-pointer px-1"
+        className="text-[0.625rem] text-brass-400 hover:text-brass-300 cursor-pointer px-1"
         onClick={() => send({ kind: 'clue.reveal', clueId: clue.id, characterIds: [] })}
         title="Reveal to everyone"
       >
@@ -941,17 +941,17 @@ function PerceivableSection({ hex }: { hex: { q: number; r: number } }) {
               <div className="flex items-center gap-2">
                 <span>{content.glyph || CONTENT_TYPE_GLYPHS[content.type]}</span>
                 <span className="font-medium text-sm text-ink-100 truncate flex-1">{content.title}</span>
-                <span className="text-[11px] text-ink-400 shrink-0">
+                <span className="text-[0.6875rem] text-ink-400 shrink-0">
                   {distance} hex{distance === 1 ? '' : 'es'} away
                 </span>
                 {!content.enabled && (
-                  <span className="text-[10px] text-ember-500 shrink-0" title="Disabled — players can't perceive it yet">
+                  <span className="text-[0.625rem] text-ember-500 shrink-0" title="Disabled — players can't perceive it yet">
                     disabled
                   </span>
                 )}
                 <button
                   className={cx(
-                    'text-[11px] cursor-pointer shrink-0',
+                    'text-[0.6875rem] cursor-pointer shrink-0',
                     groupActive ? 'text-brass-300' : 'text-ink-400 hover:text-brass-300',
                   )}
                   title={groupActive ? 'Hide the sensing area' : 'Show every hex these clues can be perceived from'}
@@ -1099,8 +1099,8 @@ function RollsHereSection({ mapId, hex }: { mapId: string; hex: { q: number; r: 
               {r.success !== null && r.success !== undefined && (
                 <span className={r.success ? 'text-moss-500' : 'text-ember-500'}>{r.success ? '✓' : '✗'}</span>
               )}
-              {d.search && <span className="text-[10px] text-ink-500" title="A search of this hex">🔎</span>}
-              {r.counts === false && <span className="text-[10px] text-ink-500">re-roll</span>}
+              {d.search && <span className="text-[0.625rem] text-ink-500" title="A search of this hex">🔎</span>}
+              {r.counts === false && <span className="text-[0.625rem] text-ink-500">re-roll</span>}
               <span className="ml-auto text-ink-400">{timeAgo(e.at, now)}</span>
             </li>
           ));
@@ -1137,7 +1137,7 @@ function PlayerContentCard({ content }: { content: ContentPlayerView }) {
             {/* The label spells out what sharing does — a phone never shows
                 the `title` this used to hide it in (#75). */}
             <button
-              className="shrink-0 text-[11px] px-1.5 py-1 text-brass-400 hover:text-brass-300 cursor-pointer"
+              className="shrink-0 text-[0.6875rem] px-1.5 py-1 text-brass-400 hover:text-brass-300 cursor-pointer"
               title="Tell the party — everyone learns this clue"
               onClick={() => send({ kind: 'clue.share', clueId: c.clueId })}
             >

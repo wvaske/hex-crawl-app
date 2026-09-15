@@ -79,7 +79,7 @@ export function JournalTab() {
                     {n.q},{n.r}
                   </span>
                 </div>
-                {owner && <span className="text-[11px] text-ink-400">— {owner}</span>}
+                {owner && <span className="text-[0.6875rem] text-ink-400">— {owner}</span>}
               </button>
             );
           })}
@@ -153,7 +153,7 @@ function DiscoveryRow({ content }: { content: ContentPlayerView }) {
           </li>
         ))}
       </ul>
-      {active && <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>}
+      {active && <span className="block text-[0.6875rem] text-brass-300 mt-0.5">highlighted on map</span>}
     </button>
   );
 }
@@ -185,7 +185,7 @@ function PreviouslyOnCard() {
 
   return (
     <div className="mb-4 bg-brass-500/10 border border-brass-500/30 rounded-lg p-2.5">
-      <div className="text-[11px] uppercase tracking-wider text-brass-300 font-semibold mb-1.5">
+      <div className="text-[0.6875rem] uppercase tracking-wider text-brass-300 font-semibold mb-1.5">
         Previously on…
       </div>
       <ul className="space-y-1">
@@ -236,7 +236,7 @@ function TrackRow({
         </span>
       </div>
       {highlighted && (
-        <span className="block text-[11px] text-brass-300 mt-0.5">highlighted on map</span>
+        <span className="block text-[0.6875rem] text-brass-300 mt-0.5">highlighted on map</span>
       )}
     </button>
   );

@@ -48,7 +48,7 @@ export function MapsTab({ campaignId }: { campaignId: string }) {
               onClick={() => send({ kind: 'map.setActive', mapId: m.id })}
             >
               <span className="flex-1 truncate">{m.name}</span>
-              {m.id === state.campaign.activeMapId && <span className="text-[10px]">ACTIVE</span>}
+              {m.id === state.campaign.activeMapId && <span className="text-[0.625rem]">ACTIVE</span>}
               {state.maps.length > 1 && (
                 <button
                   className="text-ink-400 hover:text-ember-500 text-xs cursor-pointer"
@@ -202,7 +202,7 @@ function SliderField({
 }) {
   return (
     <div>
-      <span className="block text-[11px] uppercase tracking-wider text-ink-400 mb-1">{label}</span>
+      <span className="block text-[0.6875rem] uppercase tracking-wider text-ink-400 mb-1">{label}</span>
       <input
         type="range"
         min={0}
@@ -329,7 +329,7 @@ function MiniNum({
 }) {
   return (
     <label className="block">
-      <span className="block text-[10px] text-ink-400">{label}</span>
+      <span className="block text-[0.625rem] text-ink-400">{label}</span>
       <input
         type="number"
         step={step}

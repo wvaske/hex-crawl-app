@@ -22,7 +22,7 @@ export function Toasts() {
     // instead of clearing the side rail (issue #75).
     <div className="absolute bottom-20 right-2 md:bottom-2 md:right-16 z-40 flex flex-col gap-1.5 w-[19rem] max-w-[calc(100%-1rem)] pointer-events-none">
       {hidden > 0 && (
-        <p className="text-[10px] text-ink-400 text-right pr-1">+{hidden} more…</p>
+        <p className="text-[0.625rem] text-ink-400 text-right pr-1">+{hidden} more…</p>
       )}
       {visible.map((t) => {
         const style = KIND_STYLE[t.kind] ?? KIND_STYLE.info!;
@@ -39,7 +39,7 @@ export function Toasts() {
             <div className="flex items-start gap-2">
               <span className="text-sm leading-none mt-0.5">{style.icon}</span>
               <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold truncate">
+                <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold truncate">
                   {t.title}
                 </p>
                 <p className="text-xs text-ink-100 mt-0.5 line-clamp-2">{t.text}</p>

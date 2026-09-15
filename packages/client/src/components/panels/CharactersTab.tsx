@@ -397,7 +397,7 @@ export function CharacterEditor({
       )}
       {!readOnly && <DdbSync character={character} />}
       <div>
-        <p className="text-[11px] uppercase tracking-wider text-ink-400 mb-1.5">
+        <p className="text-[0.6875rem] uppercase tracking-wider text-ink-400 mb-1.5">
           Skill modifiers <span className="normal-case">(passive = 10 + mod · ★ proficient)</span>
         </p>
         {canRoll && (

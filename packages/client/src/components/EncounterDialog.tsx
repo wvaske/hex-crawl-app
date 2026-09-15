@@ -77,7 +77,7 @@ export function EncounterDialog() {
         </div>
 
         <div className="px-4 py-3 space-y-3 overflow-y-auto">
-          <div className="flex items-center gap-2 flex-wrap text-[11px] text-ink-400">
+          <div className="flex items-center gap-2 flex-wrap text-[0.6875rem] text-ink-400">
             {table && (
               <span className="px-2 py-0.5 rounded-full border border-ink-600 text-ink-200">
                 🎲 {table.name}
@@ -102,14 +102,14 @@ export function EncounterDialog() {
             )}
           </p>
 
-          <div className="text-[11px] text-ink-400 space-y-0.5">
+          <div className="text-[0.6875rem] text-ink-400 space-y-0.5">
             {data.checkRoll && <p>Trigger — {formatRoll(data.checkRoll)}</p>}
             {data.tableRoll && <p>Table — {formatRoll(data.tableRoll)}</p>}
             {quantity && <p>Quantity — {formatRoll(quantity)}</p>}
           </div>
 
           <div>
-            <label className="block text-[11px] uppercase tracking-wider text-ink-400 mb-1">
+            <label className="block text-[0.6875rem] uppercase tracking-wider text-ink-400 mb-1">
               Narrate it (players see this word for word)
             </label>
             <textarea
@@ -132,7 +132,7 @@ export function EncounterDialog() {
           >
             📜 Narrate to the table
           </Button>
-          {narrated && <span className="text-[11px] text-brass-300">Sent ✓</span>}
+          {narrated && <span className="text-[0.6875rem] text-brass-300">Sent ✓</span>}
           <span className="ml-auto flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={rollAgain} title="Roll this table again">
               🎲 Reroll
