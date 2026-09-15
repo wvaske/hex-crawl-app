@@ -5,6 +5,7 @@ import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Field, Input, Section, Toggle } from '../../ui/kit.js';
 import { SendTokenButton } from '../SendTokenButton.js';
+import { TravelToButton } from '../TravelToDialog.js';
 
 export function TokensTab() {
   const state = useSession((s) => s.state);
@@ -136,6 +137,7 @@ function TokenRow({ token }: { token: Token }) {
         </span>
       </button>
       <SendTokenButton tokenId={token.id} name={token.label || 'token'} />
+      {token.kind === 'pc' && <TravelToButton tokenId={token.id} name={token.label || 'token'} />}
       <button
         className={`text-xs cursor-pointer ${token.partyId ? '' : 'opacity-35 grayscale'}`}
         title={

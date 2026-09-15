@@ -93,6 +93,7 @@ function fullState(): CampaignState {
         description: '',
         wikiBaseUrl: 'https://wiki.example/wiki/',
         pausePlayerMapSync: false,
+        stopTravelAtNight: false,
         customTravelModes: [],
         sunriseHour: 6,
         sunsetHour: 20,

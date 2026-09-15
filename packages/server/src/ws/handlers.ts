@@ -16,6 +16,8 @@ import {
   contentCells,
   contentCoversHex,
   distanceToContent,
+  exploredPassable,
+  findRoute,
   formatCalendarClock,
   formatDuration,
   GridStyleSchema,
@@ -23,6 +25,7 @@ import {
   INHERITABLE_MAP_FIELDS,
   hexKey,
   hexLine,
+  isNight,
   minutesPerHex,
   parseHexKey,
   resolveTravelMode,
@@ -333,17 +336,24 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       if (token.kind !== 'pc' || !token.characterId || token.characterId !== ctx.seat.characterId) {
         throw new Error('You can only move your own character');
       }
-      if (map.moveMode === 'step') {
-        const dist = hexDistance({ q: token.q, r: token.r }, { q: cmd.q, r: cmd.r });
-        if (dist > 1) throw new Error('You can only move one hex at a time');
-      }
     }
     if (ctx.seat.role !== 'dm' && map.moveApproval) {
       throw new Error('This map uses DM-approved movement — your move was sent as a request');
     }
     const teleport = cmd.teleport && ctx.seat.role === 'dm';
-    const path = travelPath(ctx, map, { q: token.q, r: token.r }, { q: cmd.q, r: cmd.r }, teleport);
-    performTravel(ctx, map, token, path, { teleport });
+    const travel = travelPath(ctx, map, { q: token.q, r: token.r }, { q: cmd.q, r: cmd.r }, teleport);
+    if (ctx.seat.role !== 'dm' && map.moveMode === 'step' && !travel.routed) {
+      // One hex into the unknown; any distance across known ground (#130).
+      const dist = hexDistance({ q: token.q, r: token.r }, { q: cmd.q, r: cmd.r });
+      if (dist > 1) {
+        throw new Error(
+          map.routeExplored
+            ? 'No explored route there — you can step one hex at a time into unexplored land'
+            : 'You can only move one hex at a time',
+        );
+      }
+    }
+    performTravel(ctx, map, token, travel.path, { teleport, routed: travel.routed });
   }) as Handler,
 
   'move.request': ((cmd: Extract<ClientCommand, { kind: 'move.request' }>, ctx: Ctx) => {
@@ -356,6 +366,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       throw new Error('You can only move your own character');
     }
     const rt = ctx.runtime.requireMap(token.mapId);
+    const map = ctx.runtime.maps.get(token.mapId);
+    const travel = map
+      ? travelPath(ctx, map, { q: token.q, r: token.r }, { q: cmd.q, r: cmd.r }, false)
+      : null;
     rt.pendingMoves.set(token.id, {
       tokenId: token.id,
       fromQ: token.q,
@@ -366,6 +380,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       label: token.label || 'token',
       color: token.color,
       at: Date.now(),
+      routeHexes: travel?.routed ? travel.path.length - 1 : null,
     });
     ctx.hub.sendTo(
       ctx.runtime,
@@ -386,8 +401,12 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       const map = ctx.runtime.maps.get(token.mapId);
       if (!map) throw new Error('Map not found');
       const to = { q: pending.toQ, r: pending.toR };
-      const path = travelPath(ctx, map, { q: token.q, r: token.r }, to, cmd.teleport);
-      performTravel(ctx, map, token, path, { teleport: cmd.teleport, approved: true });
+      const travel = travelPath(ctx, map, { q: token.q, r: token.r }, to, cmd.teleport);
+      performTravel(ctx, map, token, travel.path, {
+        teleport: cmd.teleport,
+        approved: true,
+        routed: travel.routed,
+      });
     }
     ctx.hub.sendTo(
       ctx.runtime,
@@ -1478,27 +1497,46 @@ function partyMembers(ctx: Ctx, token: Token): Token[] {
 export type TravelPath = HexCoord[];
 
 /**
- * The hexes a move crosses. A straight line for now; issue #130 substitutes a
- * route through explored hexes when one exists. A teleport has no path — it
- * lands on the destination and nothing in between is walked.
+ * The hexes a move crosses (issue #130). When the map routes through known
+ * ground and the destination is more than a step away, the shortest route
+ * whose every hex is explored (or visible) wins — the road the party already
+ * walked, not a straight line across the fog. Without such a route the move
+ * is the straight line it always was. A teleport has no path: it lands on the
+ * destination and nothing in between is walked.
  */
-function travelPath(
-  _ctx: Ctx,
-  _map: MapInfo,
+export function travelPath(
+  ctx: Ctx,
+  map: MapInfo,
   from: HexCoord,
   to: HexCoord,
   teleport: boolean,
-): TravelPath {
-  if (teleport) return [from, to];
-  return hexLine(from, to);
+): { path: TravelPath; routed: boolean } {
+  if (teleport) return { path: [from, to], routed: false };
+  if (map.routeExplored && hexDistance(from, to) > 1) {
+    const route = exploredRoute(ctx.runtime, map.id, from, to);
+    if (route) return { path: route, routed: true };
+  }
+  return { path: hexLine(from, to), routed: false };
+}
+
+/** Shortest route from `from` to `to` through explored/visible fog, or null. */
+export function exploredRoute(
+  runtime: CampaignRuntime,
+  mapId: string,
+  from: HexCoord,
+  to: HexCoord,
+): HexCoord[] | null {
+  const rt = runtime.mapStates.get(mapId);
+  if (!rt) return null;
+  return findRoute(from, to, exploredPassable((h) => rt.fog.get(hexKey(h.q, h.r))));
 }
 
 export interface TravelOutcome {
-  /** Where the party actually stopped (an encounter can halt it short). */
+  /** Where the party actually stopped (an encounter or nightfall can halt it short). */
   to: HexCoord;
   hexes: number;
   minutes: number;
-  stoppedBy: 'encounter' | null;
+  stoppedBy: 'encounter' | 'night' | null;
 }
 
 /**
@@ -1524,7 +1562,7 @@ function performTravel(
   map: MapInfo,
   token: Token,
   path: TravelPath,
-  opts: { teleport: boolean; approved?: boolean },
+  opts: { teleport: boolean; approved?: boolean; routed?: boolean },
 ): TravelOutcome {
   const runtime = ctx.runtime;
   const from = path[0] ?? { q: token.q, r: token.r };
@@ -1543,9 +1581,33 @@ function performTravel(
   const parkedVisit =
     parked ? structuredClone(runtime.hexVisit(parked.mapId, parked.q, parked.r)) : null;
 
-  // -- 1. encounter checks along the way ------------------------------------
+  // -- 0. nightfall (issue #130) ---------------------------------------------
+  // Routed travel is "auto" travel: with the campaign set to halt at night,
+  // the party walks until the hex where dusk catches them and camps there,
+  // to be sent on again next day. A party that set out after dark chose
+  // night travel and is not stopped. Decided before the dice come out so an
+  // encounter never rolls for a hex that would not have been walked.
   let steps = opts.teleport ? [] : path.slice(1);
   let stoppedBy: TravelOutcome['stoppedBy'] = null;
+  const settings = runtime.campaign.settings;
+  if (isParty && opts.routed && settings.stopTravelAtNight && steps.length > 1) {
+    const time = runtime.campaign.time;
+    if (!isNight(time.minutes, settings)) {
+      const mode = resolveTravelMode(time.travelMode, settings.customTravelModes);
+      const perHex = minutesPerHex(map.milesPerHex, mode, time.pace);
+      let clock = time.minutes;
+      for (let i = 0; i < steps.length; i++) {
+        clock += perHex;
+        if (isNight(clock, settings) && i < steps.length - 1) {
+          steps = steps.slice(0, i + 1);
+          stoppedBy = 'night';
+          break;
+        }
+      }
+    }
+  }
+
+  // -- 1. encounter checks along the way ------------------------------------
   if (isParty && steps.length) {
     const halt = autoEncounterChecks(ctx, map, steps);
     if (halt !== null) {
@@ -1603,8 +1665,11 @@ function performTravel(
     text = `${label} travelled ${hexes} hex${hexes === 1 ? '' : 'es'} to ${where}`;
     if (minutes > 0) text += ` — ${formatDuration(minutes)}`;
     if (isParty) text += ` — ${campaignClock(ctx, runtime.campaign.time.minutes)}`;
+    const goal = path[path.length - 1]!;
     if (stoppedBy === 'encounter') {
-      text += ` — halted by an encounter, ${shortfall} hex${shortfall === 1 ? '' : 'es'} short of ${path[path.length - 1]!.q},${path[path.length - 1]!.r}`;
+      text += ` — halted by an encounter, ${shortfall} hex${shortfall === 1 ? '' : 'es'} short of ${goal.q},${goal.r}`;
+    } else if (stoppedBy === 'night') {
+      text += ` — halts for the night, ${shortfall} hex${shortfall === 1 ? '' : 'es'} short of ${goal.q},${goal.r}`;
     }
   }
   const entry = runtime.appendLog('travel', text, opts.teleport || !isParty ? 'dm' : 'all', {
@@ -1618,6 +1683,7 @@ function performTravel(
     minutes,
     teleport: opts.teleport,
     approved: opts.approved ?? false,
+    routed: opts.routed ?? false,
     stoppedBy,
     party: prior.length,
   });

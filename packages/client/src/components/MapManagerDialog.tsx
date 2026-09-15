@@ -385,6 +385,21 @@ function MapSettingsForm({ map, canDelete }: { map: MapInfo; canDelete: boolean 
           />
         )}
       </Row>
+      <Row
+        label="Explored routes"
+        field="routeExplored"
+        map={map}
+        hint="Long moves follow the shortest route through explored hexes; in step mode that is how players cover distance"
+      >
+        {(disabled) => (
+          <CheckLine
+            disabled={disabled}
+            checked={map.routeExplored}
+            label="Route long moves through explored hexes"
+            onChange={(v) => patch({ routeExplored: v })}
+          />
+        )}
+      </Row>
       <Row label="Encounter check" field="encounterCheck" map={map} hint="Die, threshold, and auto-check cadence">
         {(disabled) => (
           <EncounterFields
@@ -546,6 +561,14 @@ function CampaignDefaults() {
             checked={defaults.moveApproval}
             label="DM approves player movement"
             onChange={(v) => set({ moveApproval: v })}
+          />
+        </DefaultRow>
+        <DefaultRow label="Explored routes" {...row('routeExplored')}>
+          <CheckLine
+            disabled={false}
+            checked={defaults.routeExplored}
+            label="Route long moves through explored hexes"
+            onChange={(v) => set({ routeExplored: v })}
           />
         </DefaultRow>
         <DefaultRow label="Encounter check" {...row('encounterCheck')}>

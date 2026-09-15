@@ -148,6 +148,7 @@ export class Store {
       fogDecay: false,
       moveMode: 'free',
       moveApproval: false,
+      routeExplored: true,
       milesPerHex: 6,
       encounterCheck: EncounterCheckConfigSchema.parse({}),
       sortOrder: 0,

@@ -16,6 +16,7 @@ import { LocationDialog } from '../components/LocationDialog.js';
 import { EncounterDialog } from '../components/EncounterDialog.js';
 import { MapManagerDialog } from '../components/MapManagerDialog.js';
 import { RegionManagerDialog } from '../components/RegionManagerDialog.js';
+import { TravelToDialog } from '../components/TravelToDialog.js';
 
 export function TableView({ campaignId }: { campaignId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -28,6 +29,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
   const encounterDialogEntry = useUi((s) => s.encounterDialogEntry);
   const mapManagerOpen = useUi((s) => s.mapManagerOpen);
   const regionManagerOpen = useUi((s) => s.regionManagerOpen);
+  const travelToTokenId = useUi((s) => s.travelToTokenId);
 
   useEffect(() => {
     connectWs(campaignId);
@@ -80,6 +82,8 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.selectHex(null);
         ui.set('measureStart', null);
         ui.set('movingTokenId', null);
+        ui.set('travelToTokenId', null);
+        ui.set('routePreview', null);
         ui.set('senseHighlight', null);
         ui.set('trailHighlight', null);
         ui.set('trailDraft', []);
@@ -169,6 +173,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
       {locationDialogContentId && <LocationDialog campaignId={campaignId} />}
       {encounterDialogEntry && role === 'dm' && <EncounterDialog />}
       {regionManagerOpen && role === 'dm' && <RegionManagerDialog />}
+      {travelToTokenId && <TravelToDialog />}
       {mapManagerOpen && role === 'dm' && (
         <MapManagerDialog
           campaignId={campaignId}

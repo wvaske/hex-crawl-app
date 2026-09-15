@@ -4,6 +4,7 @@ import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Field, Input, Section, cx } from '../../ui/kit.js';
 import { SendTokenButton } from '../SendTokenButton.js';
+import { TravelToButton } from '../TravelToDialog.js';
 import { CharacterDialog } from '../CharacterDialog.js';
 
 const CHARACTER_COLORS = [
@@ -72,6 +73,7 @@ export function CharactersTab() {
                   </button>
                   {canEdit && <RollSkillButton characterId={ch.id} skill="perception" />}
                   {canCommand && <SendTokenButton tokenId={token.id} name={ch.name} />}
+                  {canCommand && <TravelToButton tokenId={token.id} name={ch.name} />}
                   <Button
                     variant="ghost"
                     size="sm"

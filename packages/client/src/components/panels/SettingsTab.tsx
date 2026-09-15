@@ -8,7 +8,7 @@ import {
 import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { fetchInviteKeys, type InviteKeys } from '../../api.js';
-import { Button, Field, Input, Section, Select, TextArea } from '../../ui/kit.js';
+import { Button, Field, Input, Section, Select, TextArea, Toggle } from '../../ui/kit.js';
 
 export function SettingsTab({ campaignId }: { campaignId: string }) {
   const state = useSession((s) => s.state);
@@ -54,6 +54,19 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
       </Section>
 
       <CalendarSettings />
+
+      <Section title="Travel">
+        <Toggle
+          checked={state.campaign.settings.stopTravelAtNight}
+          onChange={(v) => send({ kind: 'campaign.update', settings: { stopTravelAtNight: v } })}
+          label="Halt routed travel at nightfall"
+        />
+        <p className="text-xs text-ink-400 mt-1.5">
+          A journey along explored hexes stops at the hex where dusk catches the party; camp, then
+          send them on again next day. A party that sets out after dark is not stopped. Per-map
+          routing is in the map manager ("Explored routes").
+        </p>
+      </Section>
 
       <ShareLinks campaignId={campaignId} />
 

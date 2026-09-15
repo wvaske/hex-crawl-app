@@ -111,6 +111,12 @@ export const MapDefaultsSchema = z.object({
   fogDecay: z.boolean().default(false),
   moveMode: z.enum(['step', 'free']).default('free'),
   moveApproval: z.boolean().default(false),
+  /**
+   * Multi-hex travel across known ground (issue #130): a move of more than
+   * one hex follows the shortest route through explored hexes when one
+   * exists; in step mode that is the only way to cover distance.
+   */
+  routeExplored: z.boolean().default(true),
   milesPerHex: z.number().min(0).max(1000).default(6),
   encounterCheck: MapEncounterDefaultsSchema.default(() => MapEncounterDefaultsSchema.parse({})),
 });
@@ -123,6 +129,7 @@ export const INHERITABLE_MAP_FIELDS = [
   'fogDecay',
   'moveMode',
   'moveApproval',
+  'routeExplored',
   'milesPerHex',
   'encounterCheck',
 ] as const;
@@ -213,6 +220,13 @@ export const CampaignSettingsSchema = z.object({
   pausePlayerMapSync: z.boolean().default(false),
   /** Campaign-wide map settings; maps opt in per field via inheritedFields. */
   mapDefaults: MapDefaultsSchema.default(() => MapDefaultsSchema.parse({})),
+  /**
+   * Routed travel halts at nightfall (issue #130): a journey through explored
+   * hexes that would still be under way after sunset stops at the last hex
+   * reached in daylight, and the DM sets out again the next day. A party that
+   * departs after dark has chosen night travel and is not stopped.
+   */
+  stopTravelAtNight: z.boolean().default(false),
   /** Fantasy calendar naming for the clock; null renders plain "Day N". */
   calendar: CalendarConfigSchema.nullable().default(null),
   /** Weather table rolled at dawn; null uses DEFAULT_WEATHER_TABLE. */
@@ -350,6 +364,8 @@ export const MapInfoSchema = z.object({
   moveMode: MoveModeSchema.default('free'),
   /** Player moves become requests the DM approves (turn-based travel). */
   moveApproval: z.boolean().default(false),
+  /** Long moves follow the shortest route through explored hexes (#130). */
+  routeExplored: z.boolean().default(true),
   /** Real-world miles per hex, for display. */
   milesPerHex: z.number().min(0).max(1000).default(6),
   encounterCheck: EncounterCheckConfigSchema,
@@ -400,6 +416,8 @@ export const PendingMoveSchema = z.object({
   label: z.string(),
   color: z.string(),
   at: z.number(),
+  /** Hexes along the explored route the move would take; null = straight line (#130). */
+  routeHexes: z.number().int().nullable().default(null),
 });
 export type PendingMove = z.infer<typeof PendingMoveSchema>;
 

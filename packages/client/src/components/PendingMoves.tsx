@@ -30,8 +30,19 @@ export function PendingMoves() {
               <span className="text-brass-300">
                 {pm.toQ}, {pm.toR}
               </span>
-              {map && (
-                <span className="text-ink-400"> ({dist} hexes ≈ {Math.round(dist * map.milesPerHex)} mi)</span>
+              {map && pm.routeHexes !== null && pm.routeHexes !== dist ? (
+                <span className="text-ink-400">
+                  {' '}
+                  (explored route, {pm.routeHexes} hexes ≈ {Math.round(pm.routeHexes * map.milesPerHex)} mi)
+                </span>
+              ) : (
+                map && (
+                  <span className="text-ink-400">
+                    {' '}
+                    ({pm.routeHexes !== null ? 'explored route, ' : ''}
+                    {dist} hexes ≈ {Math.round(dist * map.milesPerHex)} mi)
+                  </span>
+                )
               )}
             </span>
             <button

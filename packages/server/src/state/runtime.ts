@@ -218,6 +218,7 @@ export class CampaignRuntime {
         fogDecay: Boolean(m.fog_decay),
         moveMode: m.move_mode as MapInfo['moveMode'],
         moveApproval: Boolean(m.move_approval),
+        routeExplored: Boolean(m.route_explored ?? 1),
         milesPerHex: m.miles_per_hex as number,
         encounterCheck: EncounterCheckConfigSchema.parse(safeJson(m.encounter_check as string)),
         sortOrder: m.sort_order as number,
@@ -784,8 +785,8 @@ export class CampaignRuntime {
       .prepare(
         `INSERT INTO map (id, campaign_id, name, orientation, hex_size, origin_x, origin_y, grid_style,
           sight_radius, fog_mode, fog_decay, move_mode, miles_per_hex, encounter_check, sort_order, move_approval,
-          inherited_fields)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          inherited_fields, route_explored)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         info.id,
@@ -805,6 +806,7 @@ export class CampaignRuntime {
         info.sortOrder,
         info.moveApproval ? 1 : 0,
         JSON.stringify(info.inheritedFields),
+        info.routeExplored ? 1 : 0,
       );
   }
 
@@ -823,7 +825,7 @@ export class CampaignRuntime {
       .prepare(
         `UPDATE map SET name=?, orientation=?, hex_size=?, origin_x=?, origin_y=?, grid_style=?,
           sight_radius=?, fog_mode=?, fog_decay=?, move_mode=?, miles_per_hex=?, encounter_check=?, sort_order=?, move_approval=?,
-          inherited_fields=?
+          inherited_fields=?, route_explored=?
          WHERE id=?`,
       )
       .run(
@@ -842,6 +844,7 @@ export class CampaignRuntime {
         updated.sortOrder,
         updated.moveApproval ? 1 : 0,
         JSON.stringify(updated.inheritedFields),
+        updated.routeExplored ? 1 : 0,
         mapId,
       );
     return updated;
@@ -903,6 +906,7 @@ export class CampaignRuntime {
       fogDecay: d.fogDecay,
       moveMode: d.moveMode,
       moveApproval: d.moveApproval,
+      routeExplored: d.routeExplored,
       milesPerHex: d.milesPerHex,
       encounterCheck: EncounterCheckConfigSchema.parse({ ...d.encounterCheck }),
     };

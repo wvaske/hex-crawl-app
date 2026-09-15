@@ -53,6 +53,7 @@ const MapDefaultsPatchSchema = z
     fogDecay: z.boolean(),
     moveMode: z.enum(['step', 'free']),
     moveApproval: z.boolean(),
+    routeExplored: z.boolean(),
     milesPerHex: z.number().min(0).max(1000),
     encounterCheck: EncounterCheckPatchSchema,
   })
@@ -63,6 +64,7 @@ const CampaignSettingsPatchSchema = z
     description: z.string().max(2000),
     wikiBaseUrl: z.string().max(300),
     pausePlayerMapSync: z.boolean(),
+    stopTravelAtNight: z.boolean(),
     customTravelModes: z.array(CustomTravelModeSchema),
     sunriseHour: z.number().min(0).max(23),
     sunsetHour: z.number().min(0).max(24),
@@ -152,6 +154,7 @@ export const MapUpdateCommand = z.object({
       fogDecay: z.boolean(),
       moveMode: z.enum(['step', 'free']),
       moveApproval: z.boolean(),
+      routeExplored: z.boolean(),
       milesPerHex: z.number().min(0).max(1000),
       encounterCheck: EncounterCheckPatchSchema,
       sortOrder: z.number().int(),

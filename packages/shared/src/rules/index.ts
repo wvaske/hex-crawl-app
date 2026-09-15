@@ -6,3 +6,4 @@ export * from './filter.js';
 export * from './time.js';
 export * from './calendar.js';
 export * from './recap.js';
+export * from './route.js';

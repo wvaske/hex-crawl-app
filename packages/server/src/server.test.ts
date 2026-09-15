@@ -1694,6 +1694,7 @@ describe('campaign map defaults + per-map inheritance (issue #60)', () => {
       'fogDecay',
       'moveMode',
       'moveApproval',
+      'routeExplored',
       'milesPerHex',
       'encounterCheck',
     ]);

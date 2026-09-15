@@ -61,6 +61,15 @@ interface UiStore {
   movingContentId: string | null;
   /** Armed "click a destination hex to send this token there" mode. */
   movingTokenId: string | null;
+  /** Token the "Travel to…" settlement picker is open for (issue #130). */
+  travelToTokenId: string | null;
+  /**
+   * Route preview while a token is being dragged or sent (issue #130): the
+   * explored route the server would walk, or `null` cells when the map has
+   * no such route and the move would be a straight line. Written by the
+   * engine, read by the hex readout.
+   */
+  routePreview: { cells: HexCoord[] | null; target: HexCoord } | null;
   /** Sense triangulation: visited hexes a clicked clue is observable from. */
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
   /** DM: the encounter log entry shown in the run-this-encounter popup. */
@@ -167,6 +176,8 @@ export const useUi = create<UiStore>((set) => ({
   currentScale: 0,
   movingContentId: null,
   movingTokenId: null,
+  travelToTokenId: null,
+  routePreview: null,
   senseHighlight: null,
   encounterDialogEntry: null,
   trailHighlight: null,

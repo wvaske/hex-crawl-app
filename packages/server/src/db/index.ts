@@ -315,6 +315,8 @@ export function migrate(d: DB): void {
   // Multi-hex region footprints (issue #69): JSON array of {q,r} members
   // beside the anchor. Existing content stays single-hex.
   ensureColumn(d, 'content', 'area', "TEXT NOT NULL DEFAULT '[]'");
+  // Routed travel through explored hexes (issue #130): on for every map.
+  ensureColumn(d, 'map', 'route_explored', 'INTEGER NOT NULL DEFAULT 1');
 }
 
 /**
