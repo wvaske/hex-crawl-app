@@ -13,6 +13,60 @@ const CHARACTER_COLORS = [
   '#e05555', '#e08f3c', '#c9a24b', '#6fa06b', '#4a9d9c', '#5b8dd9', '#8b7fd4', '#c56bb8',
 ];
 
+/**
+ * Pull skills + proficiencies from a PUBLIC D&D Beyond sheet into a
+ * character. Returns the sync summary, or throws with a readable message.
+ */
+export async function syncFromDdb(
+  campaignId: string,
+  characterId: string,
+  ddbId?: string,
+): Promise<{ name: string; classes: string; proficiencies: string[] }> {
+  const res = await fetch(`/api/campaigns/${campaignId}/characters/${characterId}/sync-ddb`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ddbId ? { ddbId } : {}),
+  });
+  const data = (await res.json()) as {
+    error?: string;
+    name?: string;
+    classes?: string;
+    proficiencies?: string[];
+  };
+  if (!res.ok) throw new Error(data.error ?? 'Sync failed');
+  return { name: data.name ?? '', classes: data.classes ?? '', proficiencies: data.proficiencies ?? [] };
+}
+
+/** Characters already refreshed from D&D Beyond this page load (one pull each). */
+const autoSynced = new Set<string>();
+
+/**
+ * Refresh a character from D&D Beyond once per page load when it has a linked
+ * sheet — opening the sheet is the moment the numbers should be current.
+ */
+export function useAutoDdbSync(character: Character, allowed: boolean): void {
+  const campaignId = useSession((s) => s.state?.campaign.id);
+  React.useEffect(() => {
+    if (!allowed || !character.ddbId || !campaignId || autoSynced.has(character.id)) return;
+    autoSynced.add(character.id);
+    void syncFromDdb(campaignId, character.id)
+      .then((r) =>
+        useSession.getState().pushToast({
+          kind: 'info',
+          title: 'Refreshed from D&D Beyond',
+          text: `${r.name} — skills and ${r.proficiencies.length} proficiencies updated.`,
+        }),
+      )
+      .catch((err: unknown) =>
+        useSession.getState().pushToast({
+          kind: 'error',
+          title: 'D&D Beyond refresh failed',
+          text: err instanceof Error ? err.message : 'Unknown error',
+        }),
+      );
+  }, [allowed, campaignId, character.ddbId, character.id]);
+}
+
 export function CharactersTab() {
   const state = useSession((s) => s.state);
   const role = useSession((s) => s.role);
@@ -20,20 +74,56 @@ export function CharactersTab() {
   const [creating, setCreating] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [sheetCharacterId, setSheetCharacterId] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
 
   if (!state) return null;
   const mySeat = state.seats.find((s) => s.id === seatId);
   const isDm = role === 'dm';
   const mapTokens = state.mapState?.tokens ?? [];
+  const linked = state.characters.filter((c) => c.ddbId);
+
+  const syncAll = async () => {
+    if (syncingAll || !linked.length) return;
+    setSyncingAll(true);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const ch of linked) {
+      try {
+        await syncFromDdb(state.campaign.id, ch.id);
+        ok++;
+      } catch {
+        failed.push(ch.name);
+      }
+    }
+    setSyncingAll(false);
+    useSession.getState().pushToast({
+      kind: failed.length ? 'error' : 'info',
+      title: 'D&D Beyond sync',
+      text: `${ok} character${ok === 1 ? '' : 's'} refreshed${failed.length ? ` · failed: ${failed.join(', ')}` : ''}.`,
+    });
+  };
 
   return (
     <div>
       <Section
         title="Party"
         actions={
-          <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
-            + New character
-          </Button>
+          <span className="flex items-center gap-1">
+            {isDm && linked.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={syncingAll}
+                onClick={() => void syncAll()}
+                title={`Pull skills and proficiencies from D&D Beyond for the ${linked.length} linked character(s)`}
+              >
+                {syncingAll ? '…' : '⟳ Sync all'}
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
+              + New character
+            </Button>
+          </span>
         }
       >
         {state.characters.length === 0 && (
@@ -51,11 +141,12 @@ export function CharactersTab() {
             const canCommand = token && (isDm || isMine);
             return (
               <div key={ch.id} className="bg-ink-850 border border-ink-700 rounded-lg">
-                <div className="flex items-center">
-                  <button
-                    className="min-w-0 flex-1 flex items-center gap-2.5 p-2.5 cursor-pointer text-left"
-                    onClick={() => setExpanded(open ? null : ch.id)}
-                  >
+                {/* Row 1: who they are. Row 2: what you can do — kept apart
+                    so the name and player stay readable at any panel width. */}
+                <button
+                  className="w-full min-w-0 flex items-center gap-2.5 p-2.5 cursor-pointer text-left"
+                  onClick={() => setExpanded(open ? null : ch.id)}
+                >
                     <span
                       className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 border border-white/20"
                       style={{ background: ch.color }}
@@ -77,8 +168,9 @@ export function CharactersTab() {
                         )}
                       </span>
                     </span>
-                    <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
-                  </button>
+                  <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
+                </button>
+                <div className="flex items-center flex-wrap gap-1 px-2 pb-2 -mt-1">
                   {canEdit && <RollSkillButton characterId={ch.id} skill="perception" />}
                   {canCommand && <PartyToggle token={token} name={ch.name} />}
                   {canCommand && <SendTokenButton tokenId={token.id} name={ch.name} />}
@@ -86,7 +178,7 @@ export function CharactersTab() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="!px-1.5 !py-0.5 shrink-0 mr-1"
+                    className="!px-1.5 !py-0.5 shrink-0"
                     title="Open character sheet"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -313,20 +405,11 @@ export function DdbSync({ character }: { character: Character }) {
     if (!value.trim() || !campaignId || busy) return;
     setBusy(true);
     try {
-      const res = await fetch(
-        `/api/campaigns/${campaignId}/characters/${character.id}/sync-ddb`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ddbId: value.trim() }),
-        },
-      );
-      const data = (await res.json()) as { error?: string; name?: string; classes?: string };
-      if (!res.ok) throw new Error(data.error ?? 'Sync failed');
+      const data = await syncFromDdb(campaignId, character.id, value.trim());
       useSession.getState().pushToast({
         kind: 'info',
         title: 'Synced from D&D Beyond',
-        text: `${data.name} (${data.classes}) — skill modifiers updated.`,
+        text: `${data.name} (${data.classes}) — skill modifiers and ${data.proficiencies.length} proficiencies updated.`,
       });
     } catch (err) {
       useSession.getState().pushToast({
@@ -340,7 +423,7 @@ export function DdbSync({ character }: { character: Character }) {
   };
 
   return (
-    <Field label="D&D Beyond (public sheet URL or id)">
+    <Field label="D&D Beyond (public sheet URL or id) — sync pulls skill modifiers and proficiencies">
       <div className="flex gap-1.5">
         <Input
           value={value}
