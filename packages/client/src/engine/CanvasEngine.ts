@@ -65,6 +65,20 @@ const TOKEN_MIN_SCREEN = 26;
 /** Zoom range expressed as an on-screen hex circumradius (px). */
 const HEX_MAX_SCREEN = 240;
 const HEX_MIN_SCREEN = 0.6;
+
+/**
+ * Text raster resolution for a glyph drawn at PIN_BASE_FONT that will show
+ * `screenPx` tall on screen. Bucketed to powers of two so a zoom sweep
+ * re-rasterizes every label a couple of times, not continuously; capped so a
+ * fully zoomed-in map does not allocate giant textures per pin.
+ */
+function rasterResolution(screenPx: number): number {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const needed = (screenPx * dpr) / PIN_BASE_FONT;
+  let res = 2;
+  while (res < needed && res < 16) res *= 2;
+  return res;
+}
 /**
  * How far the pointer must travel before a token grab becomes a drag (issue
  * #75). A mouse is precise; a fingertip is ~10mm wide and never lands still,
@@ -811,12 +825,21 @@ export class CanvasEngine {
         }
       }
       child.scale.set(effectiveWorld / PIN_BASE_FONT);
+      // Re-rasterize when the zoom outgrows the bitmap (see rasterResolution).
+      const res = rasterResolution(effectiveWorld * zoom);
+      for (const part of (child as Container).children) {
+        if (part instanceof Text && part.resolution !== res) part.resolution = res;
+      }
     }
     // Party/NPC tokens: same guarantee — never smaller than a thumbprint.
     const tokenWorldDiameter = this.layout.size * 1.1;
     const tokenScale = Math.max(1, TOKEN_MIN_SCREEN / (tokenWorldDiameter * zoom));
+    const tokenFont = this.layout.size * 0.55 * tokenScale * zoom;
+    const tokenRes = rasterResolution(tokenFont);
     for (const view of this.tokens.values()) {
       view.root.scale.set(tokenScale * view.crowdScale);
+      if (view.glyph.resolution !== tokenRes) view.glyph.resolution = tokenRes;
+      if (view.label.resolution !== tokenRes) view.label.resolution = tokenRes;
     }
   }
 
@@ -1581,11 +1604,17 @@ export class CanvasEngine {
   private createTokenView(token: Token): TokenView {
     const root = new Container();
     const body = new Graphics();
-    const glyph = new Text({ text: '', style: { fontSize: 10 }, resolution: 3 });
+    // Rasterized at PIN_BASE_FONT and scaled down to the hex, like pins:
+    // a 2px world font rendered at 3x is a 6px bitmap, useless at high zoom.
+    const glyph = new Text({ text: '', style: { fontSize: PIN_BASE_FONT }, resolution: 3 });
     glyph.anchor.set(0.5);
     const label = new Text({
       text: '',
-      style: { fontSize: 10, fill: 0xffffff, stroke: { color: 0x000000, width: 3 } },
+      style: {
+        fontSize: PIN_BASE_FONT,
+        fill: 0xffffff,
+        stroke: { color: 0x000000, width: PIN_BASE_FONT * 0.28 },
+      },
       resolution: 3,
     });
     label.anchor.set(0.5, 0);
@@ -1614,10 +1643,10 @@ export class CanvasEngine {
     }
     const text = token.glyph || initials(token.label);
     view.glyph.text = text;
-    view.glyph.style.fontSize = size * (token.glyph ? 1.0 : 0.75);
+    view.glyph.scale.set((size * (token.glyph ? 1.0 : 0.75)) / PIN_BASE_FONT);
     view.glyph.style.fill = 0xffffff;
     view.label.text = token.label;
-    view.label.style.fontSize = size * 0.42;
+    view.label.scale.set((size * 0.42) / PIN_BASE_FONT);
     view.label.position.set(0, size * 1.12);
     view.root.alpha = token.kind === 'npc' && !token.playerVisible ? 0.75 : 1;
     // Explicit grab target: hit-testing a bare Container depends on child
