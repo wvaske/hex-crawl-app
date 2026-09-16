@@ -62,6 +62,9 @@ const STROKE_FLUSH_MS = 180;
 const PIN_BASE_FONT = 32;
 /** Minimum on-screen token diameter in px. */
 const TOKEN_MIN_SCREEN = 26;
+/** Zoom range expressed as an on-screen hex circumradius (px). */
+const HEX_MAX_SCREEN = 240;
+const HEX_MIN_SCREEN = 0.6;
 /**
  * How far the pointer must travel before a token grab becomes a drag (issue
  * #75). A mouse is precise; a fingertip is ~10mm wide and never lands still,
@@ -212,6 +215,7 @@ export class CanvasEngine {
       .pinch()
       .decelerate({ friction: 0.9 })
       .clampZoom({ minScale: 0.05, maxScale: 6 });
+    // The real limits follow the map's hex size (see `applyZoomLimits`).
     this.app.stage.addChild(this.viewport);
 
     this.fogEraseG.blendMode = 'erase';
@@ -384,6 +388,7 @@ export class CanvasEngine {
         size: map.hexSize,
         origin: { x: map.originX, y: map.originY },
       };
+      this.applyZoomLimits(map.hexSize);
       if (isNewMap) {
         this.tokensReset();
       }
@@ -459,6 +464,21 @@ export class CanvasEngine {
   }
 
   private lastMapIdForCenter = '';
+
+  /**
+   * Zoom limits in terms of how big a hex may get on screen, not a fixed
+   * scale factor. A fixed `maxScale: 6` was fine at 12px hexes (72px on
+   * screen) and useless once the live maps moved to ~5px hexes (31px):
+   * players could no longer zoom in on a hex. Now any map zooms in until a
+   * hex is about HEX_MAX_SCREEN wide and out until it is HEX_MIN_SCREEN.
+   */
+  private applyZoomLimits(hexSize: number): void {
+    const size = Math.max(1, hexSize);
+    const maxScale = Math.max(6, HEX_MAX_SCREEN / size);
+    const minScale = Math.min(0.05, HEX_MIN_SCREEN / size);
+    this.viewport.plugins.remove('clamp-zoom');
+    this.viewport.clampZoom({ minScale, maxScale });
+  }
 
   private clearAll(): void {
     this.pendingC.removeChildren().forEach((c) => c.destroy({ children: true }));
