@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import type { InheritableMapField, MapInfo } from '@hexcrawl/shared';
+import { HEX_SCALE_PRESETS, type InheritableMapField, type MapInfo } from '@hexcrawl/shared';
 import { fetchMapThumbs, type MapThumb } from '../api.js';
 import { useSession } from '../stores/session.js';
+import { useUi } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { Button, EmptyNote, Input, Select, cx, Lbl } from '../ui/kit.js';
 
@@ -155,7 +156,10 @@ function MapCard({
       <Thumbnail map={map} thumb={thumb} />
       <div className="flex items-center gap-1 px-2 py-1.5">
         <span
-          className={cx('flex-1 min-w-0 truncate text-sm', selected ? 'text-brass-300' : 'text-ink-200')}
+          className={cx(
+            'flex-1 min-w-0 truncate text-sm',
+            selected ? 'text-brass-300' : 'text-ink-200',
+          )}
         >
           {map.name}
         </span>
@@ -240,7 +244,10 @@ function Row({
   const inherited = field !== null && map.inheritedFields.includes(field);
   return (
     <div className="flex items-center gap-2 py-1">
-      <span className="w-40 shrink-0 text-[0.6875rem] uppercase tracking-wider text-ink-400" title={hint}>
+      <span
+        className="w-40 shrink-0 text-[0.6875rem] uppercase tracking-wider text-ink-400"
+        title={hint}
+      >
         {label}
       </span>
       <div className={cx('flex-1 min-w-0', inherited && 'opacity-60')}>{children(inherited)}</div>
@@ -255,9 +262,12 @@ function Row({
               ? 'Linked to the campaign default — click to make it map-specific'
               : 'Map-specific — click to link it to the campaign default'
           }
-          onClick={() => send({ kind: 'map.setInherit', mapId: map.id, field, inherit: !inherited })}
+          onClick={() =>
+            send({ kind: 'map.setInherit', mapId: map.id, field, inherit: !inherited })
+          }
         >
-          {inherited ? '🔗' : '✎'}<Lbl>{inherited ? 'Linked' : 'Custom'}</Lbl>
+          {inherited ? '🔗' : '✎'}
+          <Lbl>{inherited ? 'Linked' : 'Custom'}</Lbl>
         </button>
       )}
       {!field && <span className="w-7 shrink-0" />}
@@ -277,7 +287,9 @@ function MapSettingsForm({ map, canDelete }: { map: MapInfo; canDelete: boolean 
           key={`name-${map.name}`}
           defaultValue={map.name}
           onBlur={(e) =>
-            e.target.value.trim() && e.target.value !== map.name && patch({ name: e.target.value.trim() })
+            e.target.value.trim() &&
+            e.target.value !== map.name &&
+            patch({ name: e.target.value.trim() })
           }
         />
         <Button
@@ -311,26 +323,48 @@ function MapSettingsForm({ map, canDelete }: { map: MapInfo; canDelete: boolean 
           </Select>
         )}
       </Row>
-      <Row label="Hex size (px)" field={null} map={map}>
+      <Row label="Hex size (px)" field={null} map={map} hint="Circumradius in world pixels">
         {() => (
-          <Input
-            type="number"
-            min={4}
-            max={512}
-            key={`hs-${map.hexSize}`}
-            defaultValue={map.hexSize}
-            onBlur={(e) => patch({ hexSize: Math.min(512, Math.max(4, num(e.target.value, map.hexSize))) })}
-          />
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="number"
+              min={4}
+              max={512}
+              step="any"
+              key={`hs-${map.hexSize}`}
+              defaultValue={map.hexSize}
+              onBlur={(e) =>
+                patch({ hexSize: Math.min(512, Math.max(4, num(e.target.value, map.hexSize))) })
+              }
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              className="whitespace-nowrap"
+              title="Close this dialog and click both ends of the map image's scale bar; the hex size is solved from the distance it shows"
+              onClick={() => {
+                if (!active) send({ kind: 'map.setActive', mapId: map.id });
+                useUi.getState().set('mapManagerOpen', false);
+                useUi.getState().setTool('calibrate');
+              }}
+            >
+              📐 Fit to scale bar
+            </Button>
+          </div>
         )}
       </Row>
-      <Row label="Miles per hex" field="milesPerHex" map={map}>
+      <Row
+        label="Miles per hex"
+        field="milesPerHex"
+        map={map}
+        hint="Distance across a hex's flats — what one step of travel crosses"
+      >
         {(disabled) => (
-          <Input
-            type="number"
+          <MilesPerHexControl
+            value={map.milesPerHex}
             disabled={disabled}
-            key={`mph-${map.milesPerHex}`}
-            defaultValue={map.milesPerHex}
-            onBlur={(e) => patch({ milesPerHex: Math.max(0, num(e.target.value, map.milesPerHex)) })}
+            keyPrefix="mph"
+            onChange={(v) => patch({ milesPerHex: v })}
           />
         )}
       </Row>
@@ -344,14 +378,23 @@ function MapSettingsForm({ map, canDelete }: { map: MapInfo; canDelete: boolean 
             key={`sr-${map.sightRadius}`}
             defaultValue={map.sightRadius}
             onBlur={(e) =>
-              patch({ sightRadius: Math.min(10, Math.max(0, Math.round(num(e.target.value, map.sightRadius)))) })
+              patch({
+                sightRadius: Math.min(
+                  10,
+                  Math.max(0, Math.round(num(e.target.value, map.sightRadius))),
+                ),
+              })
             }
           />
         )}
       </Row>
       <Row label="Fog mode" field="fogMode" map={map}>
         {(disabled) => (
-          <Select disabled={disabled} value={map.fogMode} onChange={(e) => patch({ fogMode: e.target.value })}>
+          <Select
+            disabled={disabled}
+            value={map.fogMode}
+            onChange={(e) => patch({ fogMode: e.target.value })}
+          >
             <option value="auto">Auto-reveal</option>
             <option value="manual">Manual only</option>
           </Select>
@@ -369,7 +412,11 @@ function MapSettingsForm({ map, canDelete }: { map: MapInfo; canDelete: boolean 
       </Row>
       <Row label="Movement" field="moveMode" map={map}>
         {(disabled) => (
-          <Select disabled={disabled} value={map.moveMode} onChange={(e) => patch({ moveMode: e.target.value })}>
+          <Select
+            disabled={disabled}
+            value={map.moveMode}
+            onChange={(e) => patch({ moveMode: e.target.value })}
+          >
             <option value="free">Free drag</option>
             <option value="step">One hex/step</option>
           </Select>
@@ -400,7 +447,12 @@ function MapSettingsForm({ map, canDelete }: { map: MapInfo; canDelete: boolean 
           />
         )}
       </Row>
-      <Row label="Encounter check" field="encounterCheck" map={map} hint="Die, threshold, and auto-check cadence">
+      <Row
+        label="Encounter check"
+        field="encounterCheck"
+        map={map}
+        hint="Die, threshold, and auto-check cadence"
+      >
         {(disabled) => (
           <EncounterFields
             disabled={disabled}
@@ -409,6 +461,67 @@ function MapSettingsForm({ map, canDelete }: { map: MapInfo; canDelete: boolean 
           />
         )}
       </Row>
+    </div>
+  );
+}
+
+/**
+ * Miles-per-hex picker: the three presets (3 mi local area, 6 mi classic,
+ * 24 mi world map) plus a free number. A value that isn't a preset shows as
+ * "Custom" with its field open.
+ */
+function MilesPerHexControl({
+  value,
+  disabled,
+  keyPrefix,
+  onChange,
+}: {
+  value: number;
+  disabled: boolean;
+  keyPrefix: string;
+  onChange: (miles: number) => void;
+}) {
+  const [custom, setCustom] = useState(false);
+  const isPreset = HEX_SCALE_PRESETS.some((p) => p.miles === value);
+  const showCustom = custom || !isPreset;
+  const hint = HEX_SCALE_PRESETS.find((p) => p.miles === value)?.hint;
+  return (
+    <div className="flex items-center gap-1.5">
+      <Select
+        disabled={disabled}
+        value={showCustom ? 'custom' : String(value)}
+        title={hint}
+        onChange={(e) => {
+          if (e.target.value === 'custom') {
+            setCustom(true);
+          } else {
+            setCustom(false);
+            onChange(Number(e.target.value));
+          }
+        }}
+      >
+        {HEX_SCALE_PRESETS.map((p) => (
+          <option key={p.miles} value={p.miles} title={p.hint}>
+            {p.label}
+          </option>
+        ))}
+        <option value="custom">Custom…</option>
+      </Select>
+      {showCustom && (
+        <Input
+          type="number"
+          min={0}
+          step="any"
+          className="w-24 shrink-0"
+          disabled={disabled}
+          key={`${keyPrefix}-${value}`}
+          defaultValue={value}
+          onBlur={(e) => {
+            const n = Math.max(0, num(e.target.value, value));
+            if (n !== value) onChange(n);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -425,7 +538,12 @@ function CheckLine({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className={cx('flex items-center gap-2 text-sm', disabled ? 'text-ink-400' : 'text-ink-200 cursor-pointer')}>
+    <label
+      className={cx(
+        'flex items-center gap-2 text-sm',
+        disabled ? 'text-ink-400' : 'text-ink-200 cursor-pointer',
+      )}
+    >
       <input
         type="checkbox"
         disabled={disabled}
@@ -453,7 +571,11 @@ function EncounterFields({
         key={`die-${value.die}`}
         defaultValue={value.die}
         title="Die rolled for the encounter check"
-        onBlur={(e) => e.target.value.trim() && e.target.value !== value.die && onChange({ die: e.target.value.trim() })}
+        onBlur={(e) =>
+          e.target.value.trim() &&
+          e.target.value !== value.die &&
+          onChange({ die: e.target.value.trim() })
+        }
       />
       <Input
         type="number"
@@ -472,7 +594,9 @@ function EncounterFields({
         defaultValue={value.autoEvery}
         title="Auto-roll a check every N hexes travelled (0 = off)"
         onBlur={(e) =>
-          onChange({ autoEvery: Math.min(99, Math.max(0, Math.round(num(e.target.value, value.autoEvery)))) })
+          onChange({
+            autoEvery: Math.min(99, Math.max(0, Math.round(num(e.target.value, value.autoEvery)))),
+          })
         }
       />
     </div>
@@ -516,11 +640,11 @@ function CampaignDefaults() {
       </p>
       <div className="space-y-1">
         <DefaultRow label="Miles per hex" {...row('milesPerHex')}>
-          <Input
-            type="number"
-            key={`d-mph-${defaults.milesPerHex}`}
-            defaultValue={defaults.milesPerHex}
-            onBlur={(e) => set({ milesPerHex: Math.max(0, num(e.target.value, defaults.milesPerHex)) })}
+          <MilesPerHexControl
+            value={defaults.milesPerHex}
+            disabled={false}
+            keyPrefix="d-mph"
+            onChange={(v) => set({ milesPerHex: v })}
           />
         </DefaultRow>
         <DefaultRow label="Sight radius" {...row('sightRadius')}>
@@ -531,7 +655,12 @@ function CampaignDefaults() {
             key={`d-sr-${defaults.sightRadius}`}
             defaultValue={defaults.sightRadius}
             onBlur={(e) =>
-              set({ sightRadius: Math.min(10, Math.max(0, Math.round(num(e.target.value, defaults.sightRadius)))) })
+              set({
+                sightRadius: Math.min(
+                  10,
+                  Math.max(0, Math.round(num(e.target.value, defaults.sightRadius))),
+                ),
+              })
             }
           />
         </DefaultRow>
@@ -599,9 +728,14 @@ function DefaultRow({
   const allLinked = total > 0 && count === total;
   return (
     <div className="flex items-center gap-2 py-1">
-      <span className="w-40 shrink-0 text-[0.6875rem] uppercase tracking-wider text-ink-400">{label}</span>
+      <span className="w-40 shrink-0 text-[0.6875rem] uppercase tracking-wider text-ink-400">
+        {label}
+      </span>
       <div className="flex-1 min-w-0">{children}</div>
-      <span className="w-16 shrink-0 text-right text-[0.625rem] text-ink-500" title="Maps following this default">
+      <span
+        className="w-16 shrink-0 text-right text-[0.625rem] text-ink-500"
+        title="Maps following this default"
+      >
         🔗 {count}/{total}
       </span>
       <Button

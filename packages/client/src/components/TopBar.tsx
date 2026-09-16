@@ -1,7 +1,8 @@
 import React from 'react';
 import {
   MINUTES_PER_DAY,
-  SUPER_SCALE,
+  formatMiles,
+  scaleLadderMiles,
   TRAVEL_PACES,
   formatCalendarClock,
   formatCalendarDate,
@@ -43,7 +44,12 @@ function Overflow({ children, extra }: { children: React.ReactNode; extra?: Reac
   if (!mobile) return <>{children}</>;
   return (
     <div className="relative" ref={ref}>
-      <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} aria-label="More controls">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="More controls"
+      >
         ⋯<Lbl>Menu</Lbl>
       </Button>
       {open && (
@@ -63,7 +69,7 @@ function ScaleControl({ baseMiles }: { baseMiles: number }) {
   const scaleLock = useUi((s) => s.scaleLock);
   const currentScale = useUi((s) => s.currentScale);
   const setUi = useUi((s) => s.set);
-  const labels = [0, 1, 2].map((l) => `${Math.round(baseMiles * Math.pow(SUPER_SCALE, l))}mi`);
+  const labels = scaleLadderMiles(baseMiles).map((miles) => `${formatMiles(miles)}mi`);
   return (
     <div
       className="hidden md:flex items-center rounded-md border border-ink-600 overflow-hidden text-[0.6875rem]"
@@ -135,9 +141,7 @@ function TimeControl() {
           role === 'dm' ? 'cursor-pointer hover:bg-ink-700' : 'cursor-default',
         )}
         title={
-          role === 'dm'
-            ? 'Campaign clock — travel mode, pace, and time advance'
-            : 'Campaign clock'
+          role === 'dm' ? 'Campaign clock — travel mode, pace, and time advance' : 'Campaign clock'
         }
       >
         <span>{night ? '🌙' : '☀️'}</span>
@@ -390,9 +394,7 @@ function UndoMenu() {
         disabled={history.length === 0}
         onClick={() => send({ kind: 'undo' })}
         title={
-          history[0]
-            ? `Undo: ${history[0].description} — or press Ctrl/Cmd+Z`
-            : 'Nothing to undo'
+          history[0] ? `Undo: ${history[0].description} — or press Ctrl/Cmd+Z` : 'Nothing to undo'
         }
       >
         ↶<Lbl>Undo</Lbl>
@@ -418,7 +420,11 @@ function UndoMenu() {
               <li key={`${h.at}-${i}`}>
                 <button
                   className="w-full text-left px-1.5 py-1 rounded text-[0.6875rem] text-ink-200 hover:bg-ink-700 cursor-pointer"
-                  title={i === 0 ? 'Undo this change' : `Undo this and the ${i} change${i === 1 ? '' : 's'} after it`}
+                  title={
+                    i === 0
+                      ? 'Undo this change'
+                      : `Undo this and the ${i} change${i === 1 ? '' : 's'} after it`
+                  }
                   onClick={() => {
                     send({ kind: 'undo', count: i + 1 });
                     setOpen(false);
@@ -562,6 +568,35 @@ function DayNightToggle() {
   );
 }
 
+/**
+ * ❔ overlay, both roles: hexes where a clue was sensed toward a source that
+ * has not been located yet — "we noticed something here and never found it".
+ * Lives beside the map picker because it is about THIS map's loose ends.
+ */
+function UnresolvedCluesToggle() {
+  const on = useUi((s) => s.unresolvedClues);
+  const role = useSession((s) => s.role);
+  const setUi = useUi((s) => s.set);
+  const who = role === 'dm' ? 'the party has' : 'you have';
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setUi('unresolvedClues', !on)}
+      className={on ? '!text-brass-300' : ''}
+      aria-pressed={on}
+      aria-label="Unresolved clues overlay"
+      title={
+        on
+          ? `Unresolved clues overlay is on — hexes where ${who} sensed a clue whose source is still unfound. Click to hide.`
+          : `Show hexes where ${who} sensed a clue whose source is still unfound`
+      }
+    >
+      ❔<Lbl>Clues</Lbl>
+    </Button>
+  );
+}
+
 function DimToggle() {
   const dim = useUi((s) => s.dimUnexplored);
   const setUi = useUi((s) => s.set);
@@ -574,10 +609,11 @@ function DimToggle() {
       title={
         dim
           ? "Dimming what players can't see — full-strength pins are the party's knowledge. Click to disable."
-          : "See what the players see: dim undiscovered locations and hidden markers"
+          : 'See what the players see: dim undiscovered locations and hidden markers'
       }
     >
-      {dim ? '◐' : '○'}<Lbl>Dim</Lbl>
+      {dim ? '◐' : '○'}
+      <Lbl>Dim</Lbl>
     </Button>
   );
 }
@@ -597,7 +633,8 @@ function PauseSyncToggle() {
           : 'Players see map edits live — click to pause updates while you prep'
       }
     >
-      {paused ? '▶' : '⏸'}<Lbl>{paused ? 'Resume' : 'Prep'}</Lbl>
+      {paused ? '▶' : '⏸'}
+      <Lbl>{paused ? 'Resume' : 'Prep'}</Lbl>
     </Button>
   );
 }
@@ -671,6 +708,7 @@ export function TopBar({
       </div>
 
       {!mobile && mapPicker}
+      {!mobile && <UnresolvedCluesToggle />}
 
       {map && <ScaleControl baseMiles={map.milesPerHex} />}
       <TimeControl />
@@ -678,14 +716,19 @@ export function TopBar({
 
       <div className="hidden md:block flex-1" />
 
-      <div className="hidden sm:flex items-center -space-x-1.5" title={online.map((s) => s.name).join(', ')}>
+      <div
+        className="hidden sm:flex items-center -space-x-1.5"
+        title={online.map((s) => s.name).join(', ')}
+      >
         {online.slice(0, 6).map((seat) => {
           const character = state?.characters.find((c) => c.id === seat.characterId);
           return (
             <span
               key={seat.id}
               className="w-6 h-6 rounded-full border-2 border-ink-900 flex items-center justify-center text-[0.625rem] font-bold text-ink-950"
-              style={{ background: character?.color ?? (seat.role === 'dm' ? '#c9a24b' : '#7b86a5') }}
+              style={{
+                background: character?.color ?? (seat.role === 'dm' ? '#c9a24b' : '#7b86a5'),
+              }}
               title={`${seat.name}${seat.role === 'dm' ? ' (DM)' : character ? ` — ${character.name}` : ''}`}
             >
               {seat.role === 'dm' ? '★' : (character?.name ?? seat.name).slice(0, 1).toUpperCase()}
@@ -697,7 +740,11 @@ export function TopBar({
       <span
         className={cx(
           'w-2 h-2 rounded-full',
-          status === 'open' ? 'bg-moss-500' : status === 'connecting' ? 'bg-brass-500 animate-pulse' : 'bg-ember-500',
+          status === 'open'
+            ? 'bg-moss-500'
+            : status === 'connecting'
+              ? 'bg-brass-500 animate-pulse'
+              : 'bg-ember-500',
         )}
         title={status === 'open' ? 'Connected' : status}
         role="status"
@@ -720,7 +767,16 @@ export function TopBar({
         live on the rail down the right edge, and clicking the open one closes
         it — one affordance instead of two competing ones.
       */}
-      <Overflow extra={mapPicker}>
+      <Overflow
+        extra={
+          <>
+            {mapPicker}
+            <MenuRow label="Unresolved clues">
+              <UnresolvedCluesToggle />
+            </MenuRow>
+          </>
+        }
+      >
         <MenuRow label="Text size">
           <TextSizeControl />
         </MenuRow>

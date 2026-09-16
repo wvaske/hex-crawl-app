@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { Content, ImageLayer } from '@hexcrawl/shared';
 import { ContentTypeSchema, GateSchema, pixelToHex } from '@hexcrawl/shared';
 import { evaluateKnowledge } from '../engine/knowledge.js';
+import { deliverDiscoveries } from '../engine/deliver.js';
 import { evaluateTrails } from '../engine/trails.js';
 import { discoverCampaigns, mintToken, stopConnector } from '../engine/ddbGameLog.js';
 import { fetchDdbCharacter, parseDdbId } from '../engine/ddb.js';
@@ -22,13 +23,13 @@ import {
   RATE_LIMIT_IMPORT,
   RATE_LIMIT_JOIN,
   RATE_LIMIT_WINDOW_MS,
+  MAX_IMPORT_BYTES,
   TRUST_PROXY,
   UPLOAD_QUOTA_BYTES,
   UPLOADS_DIR,
   DDB_GAMELOG,
 } from '../config.js';
 import {
-  MAX_IMPORT_BYTES,
   exportCampaignChunks,
   exportFileName,
   exportReadPlan,
@@ -72,6 +73,8 @@ export interface SecurityOptions {
   /** Non-empty = campaign creation and restore require this password. */
   createPassword?: string;
   uploadQuotaBytes?: number;
+  /** Largest backup archive the import endpoint accepts. Defaults to MAX_IMPORT_MB. */
+  maxImportBytes?: number;
   /** Where uploaded images live. Defaults to config's UPLOADS_DIR. */
   uploadsDir?: string;
   trustProxy?: boolean;
@@ -89,6 +92,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
 
   const createPassword = security.createPassword ?? CREATE_PASSWORD;
   const uploadQuotaBytes = security.uploadQuotaBytes ?? UPLOAD_QUOTA_BYTES;
+  const maxImportBytes = security.maxImportBytes ?? MAX_IMPORT_BYTES;
   const uploadsDir = security.uploadsDir ?? UPLOADS_DIR;
   const trustProxy = security.trustProxy ?? TRUST_PROXY;
   const now = security.now ?? Date.now;
@@ -206,9 +210,12 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     '/api/campaigns/import',
     rateLimit('import'),
     bodyLimit({
-      maxSize: MAX_IMPORT_BYTES,
+      maxSize: maxImportBytes,
       onError: (c) =>
-        c.json({ error: `Backup too large (max ${MAX_IMPORT_BYTES / 1024 / 1024}MB)` }, 413),
+        c.json(
+          { error: `Backup too large (max ${Math.round(maxImportBytes / 1024 / 1024)}MB)` },
+          413,
+        ),
     }),
     async (c) => {
       const contentType = c.req.header('Content-Type') ?? '';
@@ -722,7 +729,9 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
         : (existing?.clues ?? []),
     };
     runtime.upsertContent(content);
-    evaluateKnowledge(runtime, input.mapId);
+    // Deliver, don't just evaluate: an undelivered discovery never reaches the
+    // player's journal or the DM feed.
+    deliverDiscoveries(runtime, hub, evaluateKnowledge(runtime, input.mapId));
     hub.scheduleSync(runtime);
     return c.json({ contentId: id, q, r, updated: Boolean(existing) });
   });
@@ -763,7 +772,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     const mapId = body.mapId;
     if (!mapId || !runtime.maps.has(mapId)) return c.json({ error: 'Map not found' }, 404);
     const touched = generateSettlementClues(runtime, mapId);
-    evaluateKnowledge(runtime, mapId);
+    deliverDiscoveries(runtime, hub, evaluateKnowledge(runtime, mapId));
     hub.scheduleSync(runtime);
     return c.json({ settlements: touched.length, titles: touched.map((t) => t.content.title) });
   });

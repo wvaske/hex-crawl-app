@@ -12,12 +12,12 @@ pick a character, and play.
 
 ![A player's-eye demo: the party crosses the Wyrmfang Marches, senses a town's chimney smoke at range, then follows sulphur, wingbeats, and a drag-trail to a dragon's lair](docs/screenshots/demo.gif)
 
-*A player's view of the whole loop: fog lifts as the party travels, a town
+_A player's view of the whole loop: fog lifts as the party travels, a town
 announces itself by chimney smoke ("— to the west"), a drag-trail crosses the
 foothills, and the hints sharpen — sulphur, wingbeats, clawed pines — until the
 party walks into the dragon's lair. Every reveal was computed server-side from
 that character's passive skills, the distance, and the clue's DC; nothing a
-player hasn't earned ever reaches their browser.*
+player hasn't earned ever reaches their browser._
 
 ## What it does
 
@@ -25,9 +25,9 @@ player hasn't earned ever reaches their browser.*
   radius; hexes optionally fade to "explored" once left behind. Fog is a dark
   sheet with per-hex holes cut out, so players physically cannot see under it.
 - **Knowledge / clue engine** — attach clues to any hex, each with a gate:
-  *auto* (on entry), *skill* (e.g. "DC 14 Perception within 2 hexes", evaluated
+  _auto_ (on entry), _skill_ (e.g. "DC 14 Perception within 2 hexes", evaluated
   continuously against each character's passive score as tokens move), or
-  *manual*. Qualifying players get a private discovery and journal entry; the DM
+  _manual_. Qualifying players get a private discovery and journal entry; the DM
   gets the full derivation in the log.
 - **Trails** — tracks and spoor left behind, discoverable by the same gating.
 - **Encounters** — DMG-style wandering-encounter tables (dice range → result,
@@ -37,8 +37,14 @@ player hasn't earned ever reaches their browser.*
 - **Multi-scale hexes** — three hex scales built from 7-hex superclusters
   (H3-style): base (e.g. 6 mi), ×√7 (≈16 mi), ×7 (42 mi). The scale follows your
   zoom, or lock one (travel at 16, search at 6).
+- **Hex scale presets** — 3 mi (local area: an hour's walk and about the
+  distance to the horizon, so the party can see into neighbouring hexes), 6 mi
+  (classic) or 24 mi (a day's travel, for a world map), or any custom value,
+  per map or as a campaign default.
 - **Maps** — paint 12 terrain types with brushes, or upload a map image and
-  align the grid over it. Multiple maps per campaign.
+  align the grid over it. Multiple maps per campaign. The **Scale** tool fits
+  the grid to an image's own scale bar: click both ends of the bar, type the
+  distance it shows, and the hex size is solved for you.
 - **Party** — characters with skill modifiers (Perception, Survival, Nature,
   Arcana, Religion, plus custom skills). Players can create and edit their own.
 - **Group skill checks, markers, measurement** — d20-per-character checks with
@@ -57,7 +63,7 @@ content is dimmed for the DM — and simply absent for players.
 ![DM view mid-crawl](docs/screenshots/dm-view.png)
 
 **The same moment from a player's browser** — only explored hexes exist. The
-*Your senses* panel lists what this character has perceived, each clue with an
+_Your senses_ panel lists what this character has perceived, each clue with an
 auto-computed compass bearing; clicking one highlights every visited hex it
 can be sensed from, so the party can triangulate a source it hasn't found.
 
@@ -78,7 +84,7 @@ every discovery in the DM-only log.
 ![Encounter roll in the DM log](docs/screenshots/encounter-log.png)
 
 **Real map art instead of painted terrain** — upload a map image (or a pair:
-the *player* version as a visible layer, the *labeled* DM version as a
+the _player_ version as a visible layer, the _labeled_ DM version as a
 DM-only layer) and align the hex grid over it. Players crawl the clean map
 with fog lifting hex by hex; the DM works on the labeled one — here the party
 travels the River Chionthar east of Baldur's Gate into the night, and the
@@ -133,29 +139,30 @@ with none of them set. Copy [`.env.example`](.env.example) to `.env` and edit;
 the server reads it at startup, and real environment variables always take
 precedence over the file. **Never commit `.env`.**
 
-| Variable | Default | What it is |
-|---|---|---|
-| `PORT` | `3000` | TCP port for HTTP + WebSocket. |
-| `HOST` | `0.0.0.0` | Bind interface. `0.0.0.0` inside Docker; `127.0.0.1` to accept only local connections behind a host reverse proxy. |
-| `DATA_DIR` | `./data` (`/data` in the image) | All persistent state: SQLite db and uploaded images. Back up this directory. |
+| Variable      | Default                                 | What it is                                                                                                                                        |
+| ------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`        | `3000`                                  | TCP port for HTTP + WebSocket.                                                                                                                    |
+| `HOST`        | `0.0.0.0`                               | Bind interface. `0.0.0.0` inside Docker; `127.0.0.1` to accept only local connections behind a host reverse proxy.                                |
+| `DATA_DIR`    | `./data` (`/data` in the image)         | All persistent state: SQLite db and uploaded images. Back up this directory.                                                                      |
 | `CLIENT_DIST` | unset (`/app/client-dist` in the image) | Path to the built client. When set, the server serves the web UI too; unset means API/WebSocket only (development, where Vite serves the client). |
 
 Optional hardening, worth setting if strangers can reach your instance:
 
-| Variable | Default | What it is |
-|---|---|---|
-| `CREATE_PASSWORD` | unset | **Secret.** When set, creating *or* restoring a campaign requires this password (the landing page grows a password field). Unset means anyone who can load the page can create a campaign. |
-| `UPLOAD_QUOTA_MB` | `200` | Per-campaign cap on total uploaded image bytes. `0` disables. |
-| `RATE_LIMIT_WINDOW_SEC` | `60` | Window for the per-IP rate limits below. |
-| `RATE_LIMIT_CREATE` / `RATE_LIMIT_IMPORT` | `3` / `3` | Campaign creations / restores per IP per window. `0` disables. |
-| `RATE_LIMIT_JOIN` / `RATE_LIMIT_EXPORT` | `10` / `10` | Join attempts / archive downloads per IP per window. `0` disables. |
-| `TRUST_PROXY` | `1` | Take the client IP from the first `X-Forwarded-For` hop. Correct behind a reverse proxy; set `0` when the server is exposed directly, or the limits can be spoofed away. |
+| Variable                                  | Default     | What it is                                                                                                                                                                                 |
+| ----------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CREATE_PASSWORD`                         | unset       | **Secret.** When set, creating _or_ restoring a campaign requires this password (the landing page grows a password field). Unset means anyone who can load the page can create a campaign. |
+| `UPLOAD_QUOTA_MB`                         | `200`       | Per-campaign cap on total uploaded image bytes. `0` disables.                                                                                                                              |
+| `MAX_IMPORT_MB`                           | `100`       | Largest backup archive the restore endpoint accepts. Archives embed every uploaded image as base64, so raise this if a restore fails with "Backup too large".                              |
+| `RATE_LIMIT_WINDOW_SEC`                   | `60`        | Window for the per-IP rate limits below.                                                                                                                                                   |
+| `RATE_LIMIT_CREATE` / `RATE_LIMIT_IMPORT` | `3` / `3`   | Campaign creations / restores per IP per window. `0` disables.                                                                                                                             |
+| `RATE_LIMIT_JOIN` / `RATE_LIMIT_EXPORT`   | `10` / `10` | Join attempts / archive downloads per IP per window. `0` disables.                                                                                                                         |
+| `TRUST_PROXY`                             | `1`         | Take the client IP from the first `X-Forwarded-For` hop. Correct behind a reverse proxy; set `0` when the server is exposed directly, or the limits can be spoofed away.                   |
 
 **Threat model in short.** There are no accounts: a campaign's player key and DM
-key *are* the authorization, exchanged at join time for an HttpOnly seat cookie.
+key _are_ the authorization, exchanged at join time for an HttpOnly seat cookie.
 The DM key is also the integration API's Bearer token and the export endpoint's
 `?key=`, so it grants everything — treat it like a password, and regenerate
-either key from *Settings → Invite links* when a link leaks (old links stop
+either key from _Settings → Invite links_ when a link leaks (old links stop
 working immediately; already-seated players stay connected). Player clients only
 ever receive server-filtered state, so DM notes and fogged terrain are not
 hiding in the browser. Uploaded images, however, are served from unguessable but
@@ -166,17 +173,17 @@ what is still missing (seat expiry, kick/ban, seat caps).
 Optional, for the AI integration bridge (`mcp/hexcrawl-mcp.mjs`) rather than the
 app server:
 
-| Variable | Default | What it is |
-|---|---|---|
-| `HEXCRAWL_URL` | `http://localhost:3000` | Base URL of your instance. |
-| `HEXCRAWL_CAMPAIGN` | — | Campaign id, from the DM link. |
-| `HEXCRAWL_TOKEN` | — | **Secret.** The campaign DM key — full DM access to that campaign. |
+| Variable            | Default                 | What it is                                                         |
+| ------------------- | ----------------------- | ------------------------------------------------------------------ |
+| `HEXCRAWL_URL`      | `http://localhost:3000` | Base URL of your instance.                                         |
+| `HEXCRAWL_CAMPAIGN` | —                       | Campaign id, from the DM link.                                     |
+| `HEXCRAWL_TOKEN`    | —                       | **Secret.** The campaign DM key — full DM access to that campaign. |
 
 `DATABASE_URL` switches storage from the embedded SQLite file to Postgres
 (the export/import archive is the migration path between them).
 `.env.example` also reserves names for planned integrations (`WIKI_API_URL`,
 `WIKI_BOT_USER`, `WIKI_BOT_PASSWORD`, `PUBLIC_URL`); nothing reads those yet.
-Letting players read your campaign wiki is *not* one of them — that works
+Letting players read your campaign wiki is _not_ one of them — that works
 today and is configured in the app, not the environment: see
 [Linking a wiki](#linking-a-wiki).
 
@@ -188,16 +195,16 @@ database under `DATA_DIR` — they are never configuration.
 **Prep (DM):**
 
 1. **Map** — paint terrain with the 🖌️ tool (12 terrain types, brush sizes
-   1/7/19), and/or upload a map image in the *Maps* tab, then nudge the grid
+   1/7/19), and/or upload a map image in the _Maps_ tab, then nudge the grid
    origin and hex size until the grid lines up.
-2. **Party** — create characters in the *Party* tab and enter their skill
+2. **Party** — create characters in the _Party_ tab and enter their skill
    modifiers.
 3. **Content** — with the 📖 tool, click a hex to add content (lair, dungeon,
    settlement, ruin, lore…) and give it clues with gates.
-4. **Encounters** — build encounter tables in the *Encounters* tab, bound to
+4. **Encounters** — build encounter tables in the _Encounters_ tab, bound to
    terrain types.
 
-**Play:** drop PC tokens from the *Tokens* tab; players drag their own token and
+**Play:** drop PC tokens from the _Tokens_ tab; players drag their own token and
 fog auto-reveals around it. As tokens move, the knowledge engine checks every
 clue gate. Roll wandering encounters with one button. Trigger group skill checks,
 then reveal clues per character, narrate to everyone, or whisper to one player.
@@ -211,6 +218,24 @@ Each location's "Visible at hex scales" setting controls the coarsest scale its
 pin appears at: cities and major regions show everywhere, hidden sites only when
 searching fine hexes.
 
+## Choosing a hex scale
+
+The fine hex is the unit everything is tracked in — terrain, fog, tokens, sight
+radius, travel time — so pick its size per map rather than trying to subdivide
+one grid: the √7 superhex ladder can't split a 6-mile hex into 3-mile ones, and
+a display-only sub-grid could hold no fog or tokens anyway. A common setup is a
+**world map at 24 mi/hex** (one hex per day of travel between regions) and a
+**local map per region at 3 mi/hex**, where a hex is about an hour on foot and
+roughly the distance to the horizon, so players can see what's in the
+neighbouring hexes and choose where to go next instead of walking in blind.
+With 3-mile hexes a sight radius of 1 reveals the ring the party can see, and
+the scale control's other two levels land at ≈8 and 21 mi.
+
+To fit the grid to a sourcebook map, upload the image, pick the **Scale** tool
+(K), click both ends of the map's scale bar, enter the distance the bar shows,
+and apply. Do this before painting: hexes keep their coordinates when the hex
+size changes, so anything already on the grid shifts against the image.
+
 ## Linking a wiki
 
 Players who discover a place can read more about it without leaving the
@@ -219,12 +244,12 @@ table. Setup takes two fields:
 1. **Setup tab → Campaign → "Wiki base URL"** — where your wiki's pages live.
    Any of these shapes work (page titles are appended):
 
-   | Your wiki style | Base URL to enter |
-   |---|---|
-   | MediaWiki, short URLs | `https://wiki.example.com/wiki/` |
-   | MediaWiki, plain | `https://wiki.example.com/index.php/` |
-   | MediaWiki under `/w/` | `https://wiki.example.com/w/index.php/` |
-   | Direct API endpoint | `https://wiki.example.com/api.php` |
+   | Your wiki style                       | Base URL to enter                         |
+   | ------------------------------------- | ----------------------------------------- |
+   | MediaWiki, short URLs                 | `https://wiki.example.com/wiki/`          |
+   | MediaWiki, plain                      | `https://wiki.example.com/index.php/`     |
+   | MediaWiki under `/w/`                 | `https://wiki.example.com/w/index.php/`   |
+   | Direct API endpoint                   | `https://wiki.example.com/api.php`        |
    | Anything else (Notion, WorldAnvil, …) | the URL prefix your page titles append to |
 
 2. **On any content pin → "Wiki page"** — the page title (`Emberwick`). A full
@@ -235,13 +260,13 @@ What players get:
 - A **wiki ↗** link on every discovered pin that has a page. This works with
   any wiki or site — it's just a link.
 - For **MediaWiki** wikis, an inline **"From the wiki"** reader in the
-  location's *More…* dialog: the page is fetched server-side, sanitized, and
-  split by headings, with *Overview* and *What the party knows* shown first
+  location's _More…_ dialog: the page is fetched server-side, sanitized, and
+  split by headings, with _Overview_ and _What the party knows_ shown first
   and the rest behind a "Show full page" toggle.
 
 How it stays safe: players never talk to your wiki directly. The server
 proxies read-only page fetches through `GET /api/campaigns/:id/wiki-page`,
-takes only a page *title* from the client (the endpoint always derives from
+takes only a page _title_ from the client (the endpoint always derives from
 the DM-configured base URL), strips scripts/frames/handlers from the HTML,
 and caches pages for five minutes. Leaving the base URL empty disables the
 feature entirely.
@@ -253,16 +278,16 @@ your wiki, wire it to the map too: see [Integration API + MCP](#integration-api-
 
 ### DM keyboard shortcuts
 
-| Key | Tool |
-|---|---|
-| `V` | Select / pan |
-| `B` | Paint terrain |
-| `F` | Fog brush |
-| `M` | Marker |
-| `C` | Content |
-| `R` | Measure |
+| Key          | Tool                           |
+| ------------ | ------------------------------ |
+| `V`          | Select / pan                   |
+| `B`          | Paint terrain                  |
+| `F`          | Fog brush                      |
+| `M`          | Marker                         |
+| `C`          | Content                        |
+| `R`          | Measure                        |
 | hold `Space` | Pan with left-drag in any tool |
-| `Esc` | Clear selection / close dialog |
+| `Esc`        | Clear selection / close dialog |
 
 ## Development
 
@@ -292,11 +317,11 @@ screenshots above — see [docs/demo/README.md](docs/demo/README.md).
 
 ### Workspace
 
-| Package | Purpose |
-|---|---|
-| `packages/shared` | Hex math, domain schemas (zod), WS protocol, dice, game rules, player filter |
+| Package           | Purpose                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `packages/shared` | Hex math, domain schemas (zod), WS protocol, dice, game rules, player filter                                      |
 | `packages/server` | Hono + `ws`, SQLite (better-sqlite3) write-through state, command pipeline, knowledge/fog/trail/encounter engines |
-| `packages/client` | React 19 + PixiJS 8 canvas engine, Zustand stores, DM and player UI |
+| `packages/client` | React 19 + PixiJS 8 canvas engine, Zustand stores, DM and player UI                                               |
 
 ### Architecture
 
@@ -348,7 +373,7 @@ assistant needs to avoid leaking DM-only information to players.
 
 **Bootstrap a whole campaign from a sourcebook map.** Many published
 sourcebooks — on D&D Beyond and elsewhere — include each map twice: an
-unlabeled *player* version and a labeled *DM* version. Upload the pair
+unlabeled _player_ version and a labeled _DM_ version. Upload the pair
 (player map visible, labeled map as a DM-only layer), align the grid, then
 hand the labeled image to a vision-capable assistant wired up over MCP: it
 reads every named settlement, ruin, and region off the art and creates them

@@ -50,9 +50,10 @@ import {
   superCornerOffsets,
   superIndexRange,
   superMembers,
+  unresolvedClueCells,
 } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../stores/session.js';
-import { useUi } from '../stores/ui.js';
+import { useUi, type Tool } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { stickerUrl } from '../stickers.js';
 import { isCoarsePointer } from '../ui/responsive.js';
@@ -137,6 +138,8 @@ export class CanvasEngine {
   private tokensC = new Container();
   private pendingC = new Container();
   private senseG = new Graphics();
+  // ❔ overlay: wash + glyphs over hexes with sensed-but-unlocated clues.
+  private unresolvedC = new Container();
   private trailHighlightG = new Graphics();
   private areaHighlightG = new Graphics();
   private highlightG = new Graphics();
@@ -162,6 +165,8 @@ export class CanvasEngine {
   private viewDirty = true;
   /** Current hex scale level (0=fine, 1=x sqrt7, 2=x7), derived from zoom. */
   private scaleLevel = 0;
+  /** Last pointer position in world px; the calibration line previews to it. */
+  private pointerWorld: { x: number; y: number } | null = null;
   private destroyed = false;
   private needsRecenter = false;
   private resizeObserver: ResizeObserver | null = null;
@@ -248,6 +253,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.exploredC);
     this.viewport.addChild(this.fogC);
     this.viewport.addChild(this.senseG);
+    this.viewport.addChild(this.unresolvedC);
     this.viewport.addChild(this.trailHighlightG);
     this.viewport.addChild(this.areaHighlightG);
     this.viewport.addChild(this.highlightG);
@@ -266,6 +272,7 @@ export class CanvasEngine {
       this.exploredC,
       this.fogC,
       this.senseG,
+      this.unresolvedC,
       this.trailHighlightG,
       this.areaHighlightG,
       this.highlightG,
@@ -322,6 +329,9 @@ export class CanvasEngine {
       if (u.senseHighlight !== prev.senseHighlight) {
         this.drawSenseHighlight();
       }
+      if (u.unresolvedClues !== prev.unresolvedClues) {
+        this.drawUnresolvedClues();
+      }
       if (u.trailHighlight !== prev.trailHighlight) {
         this.drawTrailHighlight();
       }
@@ -339,8 +349,9 @@ export class CanvasEngine {
       }
       if (u.tool !== prev.tool || u.regionTargetId !== prev.regionTargetId) {
         this.syncRegionHighlight();
-        if ((u.tool === 'region') !== (prev.tool === 'region')) {
-          this.viewport.cursor = u.tool === 'region' ? 'crosshair' : 'default';
+        const crosshair = (t: Tool) => t === 'region' || t === 'calibrate';
+        if (crosshair(u.tool) !== crosshair(prev.tool)) {
+          this.viewport.cursor = crosshair(u.tool) ? 'crosshair' : 'default';
         }
       }
       if (u.selectedHex !== prev.selectedHex) {
@@ -352,6 +363,7 @@ export class CanvasEngine {
         u.hoverHex !== prev.hoverHex ||
         u.brushRadius !== prev.brushRadius ||
         u.measureStart !== prev.measureStart ||
+        u.calibrateLine !== prev.calibrateLine ||
         u.selectedTokenId !== prev.selectedTokenId ||
         u.trailDraft !== prev.trailDraft
       ) {
@@ -461,6 +473,8 @@ export class CanvasEngine {
       if (useUi.getState().tool === 'region') this.syncRegionHighlight();
     }
 
+    // Cheap when the toggle is off; when on, fog/discoveries/tokens all feed it.
+    this.drawUnresolvedClues();
     this.drawHighlight();
     this.updatePinPopupPos();
 
@@ -502,6 +516,7 @@ export class CanvasEngine {
     this.fogEraseG.clear();
     this.exploredG.clear();
     this.senseG.clear();
+    this.unresolvedC.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.trailHighlightG.clear();
     this.areaHighlightG.clear();
     this.highlightG.clear();
@@ -555,11 +570,7 @@ export class CanvasEngine {
       const cy = (minY + maxY) / 2;
       const w = maxX - minX + this.layout.size * 4;
       const h = maxY - minY + this.layout.size * 4;
-      const scale = Math.min(
-        this.viewport.screenWidth / w,
-        this.viewport.screenHeight / h,
-        1.5,
-      );
+      const scale = Math.min(this.viewport.screenWidth / w, this.viewport.screenHeight / h, 1.5);
       this.viewport.setZoom(Math.max(scale, 0.05), true);
       this.viewport.moveCenter(cx, cy);
     } else if (this.images.size > 0) {
@@ -578,7 +589,10 @@ export class CanvasEngine {
     return hexCornerOffsets(this.layout!);
   }
 
-  private polyPoints(center: { x: number; y: number }, corners: { x: number; y: number }[]): number[] {
+  private polyPoints(
+    center: { x: number; y: number },
+    corners: { x: number; y: number }[],
+  ): number[] {
     const pts: number[] = [];
     for (const c of corners) {
       pts.push(center.x + c.x, center.y + c.y);
@@ -655,12 +669,17 @@ export class CanvasEngine {
       { x: minX, y: maxY },
       { x: maxX, y: maxY },
     ];
-    let iMin = Infinity, iMax = -Infinity, jMin = Infinity, jMax = -Infinity;
+    let iMin = Infinity,
+      iMax = -Infinity,
+      jMin = Infinity,
+      jMax = -Infinity;
     for (const pnt of cornersPx) {
       const fine = pixelToHex(layout, pnt);
       const f = fractionalIndex(fine.q, fine.r, level);
-      iMin = Math.min(iMin, f.i); iMax = Math.max(iMax, f.i);
-      jMin = Math.min(jMin, f.j); jMax = Math.max(jMax, f.j);
+      iMin = Math.min(iMin, f.i);
+      iMax = Math.max(iMax, f.i);
+      jMin = Math.min(jMin, f.j);
+      jMax = Math.max(jMax, f.j);
     }
     const out: { q: number; r: number }[] = [];
     for (let i = Math.floor(iMin) - 1; i <= Math.ceil(iMax) + 1; i++) {
@@ -843,7 +862,12 @@ export class CanvasEngine {
     }
   }
 
-  /** Brass wash over the visited hexes a clicked sense can be observed from. */
+  /**
+   * The visited hexes a clicked sense can be observed from. Deliberately loud
+   * — a strong gold fill, a dark halo and a thick bright rim — because it sits
+   * over a busy painted map and dim fog, and a player clicking an old
+   * observation needs to spot the cells at a glance, not hunt for a tint.
+   */
   private drawSenseHighlight(): void {
     const g = this.senseG;
     g.clear();
@@ -851,16 +875,57 @@ export class CanvasEngine {
     const highlight = useUi.getState().senseHighlight;
     if (!highlight) return;
     const corners = this.corners();
-    for (const cell of highlight.cells) {
-      const center = hexToPixel(this.layout, cell);
-      g.poly(this.polyPoints(center, corners));
+    const px = 1 / this.viewport.scale.x;
+    const cellPolys = () => {
+      for (const cell of highlight.cells) {
+        g.poly(this.polyPoints(hexToPixel(this.layout!, cell), corners));
+      }
+    };
+    cellPolys();
+    g.fill({ color: 0xffd23f, alpha: 0.5 });
+    // Dark halo under the rim so the gold reads on light terrain too.
+    cellPolys();
+    g.stroke({ width: 6 * px, color: 0x1a1200, alpha: 0.6 });
+    cellPolys();
+    g.stroke({ width: 3 * px, color: 0xffe680, alpha: 1 });
+  }
+
+  /**
+   * ❔ overlay (top-bar toggle, both roles): a teal wash plus a glyph over the
+   * visited hexes a clue was sensed from whose source nobody has located yet.
+   * Players get their own senses, the DM the party-wide picture — the
+   * knowledge boundary lives in `unresolvedClueCells`, this just draws it.
+   */
+  private drawUnresolvedClues(): void {
+    this.unresolvedC.removeChildren().forEach((c) => c.destroy({ children: true }));
+    if (!this.layout || !useUi.getState().unresolvedClues) return;
+    const state = useSession.getState().state;
+    if (!state) return;
+    const cells = unresolvedClueCells(state, this.role);
+    if (cells.length === 0) return;
+    const corners = this.corners();
+    const g = new Graphics();
+    for (const cell of cells) g.poly(this.polyPoints(hexToPixel(this.layout, cell), corners));
+    g.fill({ color: 0x4fc3d9, alpha: 0.22 });
+    for (const cell of cells) g.poly(this.polyPoints(hexToPixel(this.layout, cell), corners));
+    g.stroke({ width: 1.5 / this.viewport.scale.x, color: 0x4fc3d9, alpha: 0.7 });
+    this.unresolvedC.addChild(g);
+    // Rasterize the glyph at a comfortable size and scale it into the hex so
+    // it stays crisp at any zoom (a 5px font would be a smudge).
+    const GLYPH_FONT = 24;
+    const scale = (this.layout.size * 0.95) / GLYPH_FONT;
+    for (const cell of cells) {
+      const glyph = new Text({
+        text: '❔',
+        style: { fontSize: GLYPH_FONT, align: 'center' },
+        resolution: 3,
+      });
+      glyph.anchor.set(0.5);
+      glyph.scale.set(scale);
+      const p = hexToPixel(this.layout, cell);
+      glyph.position.set(p.x, p.y);
+      this.unresolvedC.addChild(glyph);
     }
-    g.fill({ color: 0xd9b44f, alpha: 0.22 });
-    for (const cell of highlight.cells) {
-      const center = hexToPixel(this.layout, cell);
-      g.poly(this.polyPoints(center, corners));
-    }
-    g.stroke({ width: 1.5 / this.viewport.scale.x, color: 0xd9b44f, alpha: 0.55 });
   }
 
   /**
@@ -996,9 +1061,12 @@ export class CanvasEngine {
       g.poly(this.polyPoints(center, activeCorners));
       g.stroke({ width: lineW * 1.5, color: 0xc9a24b, alpha: 1 });
     }
-    if (ui.hoverHex) {
+    if (ui.hoverHex && ui.tool !== 'calibrate') {
       const isBrush =
-        (ui.tool === 'paint' || ui.tool === 'fog' || ui.tool === 'region' || ui.areaPaint !== null) &&
+        (ui.tool === 'paint' ||
+          ui.tool === 'fog' ||
+          ui.tool === 'region' ||
+          ui.areaPaint !== null) &&
         this.role === 'dm';
       let centers: { x: number; y: number }[];
       if (lvl === 0) {
@@ -1047,6 +1115,37 @@ export class CanvasEngine {
         g.poly(this.polyPoints(center, activeCorners));
         g.stroke({ width: lineW * 2, color: 0xd96c4f, alpha: 0.9 });
       }
+    }
+
+    // Scale calibration: the line matched to a map image's scale bar. Free
+    // world points, not hex-snapped — the bar has nothing to do with the grid
+    // yet. Before the second click the line follows the pointer.
+    if (ui.tool === 'calibrate' && ui.calibrateLine) {
+      const a = ui.calibrateLine.a;
+      const b = ui.calibrateLine.b ?? this.pointerWorld;
+      const knob = 5 / this.viewport.scale.x;
+      const tick = 9 / this.viewport.scale.x;
+      if (b) {
+        // End ticks perpendicular to the line make the endpoints easy to
+        // line up against the bar's own ticks.
+        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const nx = (-(b.y - a.y) / len) * tick;
+        const ny = ((b.x - a.x) / len) * tick;
+        g.moveTo(a.x, a.y);
+        g.lineTo(b.x, b.y);
+        g.moveTo(a.x - nx, a.y - ny);
+        g.lineTo(a.x + nx, a.y + ny);
+        g.moveTo(b.x - nx, b.y - ny);
+        g.lineTo(b.x + nx, b.y + ny);
+        g.stroke({
+          width: lineW * 1.5,
+          color: 0xd9b44f,
+          alpha: ui.calibrateLine.b ? 0.95 : 0.6,
+        });
+      }
+      g.circle(a.x, a.y, knob);
+      if (ui.calibrateLine.b) g.circle(b!.x, b!.y, knob);
+      g.fill({ color: 0xd9b44f, alpha: 0.95 });
     }
 
     // Shift+drag rubber band for content selection.
@@ -1148,7 +1247,11 @@ export class CanvasEngine {
       pin.addChild(tag);
       // Owner-coloured dog-ear so a note reads as a note even at a glance.
       const corner = new Graphics();
-      corner.circle(w / 2 - PIN_BASE_FONT * 0.12, -h / 2 + PIN_BASE_FONT * 0.12, PIN_BASE_FONT * 0.2);
+      corner.circle(
+        w / 2 - PIN_BASE_FONT * 0.12,
+        -h / 2 + PIN_BASE_FONT * 0.12,
+        PIN_BASE_FONT * 0.2,
+      );
       corner.fill({ color: tint, alpha: 0.95 });
       pin.addChild(corner);
     }
@@ -1301,7 +1404,10 @@ export class CanvasEngine {
         const base = size * (content.scaleVisibility === 2 ? 2.6 : 1.8);
         const worldSize =
           content.area.length > 0
-            ? Math.min(base * 1.8, Math.max(base, this.footprintWidth(contentCells(content)) * 0.35))
+            ? Math.min(
+                base * 1.8,
+                Math.max(base, this.footprintWidth(contentCells(content)) * 0.35),
+              )
             : base;
         pin.position.set(center.x, center.y);
         if (discoveredClues) {
@@ -1326,7 +1432,11 @@ export class CanvasEngine {
       const isCity = content.type === 'settlement' && content.glyph === '🏰';
       // Cities cover at least a full hex; labeled places sit between; the rest
       // still get a solid footprint.
-      const worldSize = isCity ? hexWidth * 1.15 : content.showLabel ? hexWidth * 0.85 : hexWidth * 0.6;
+      const worldSize = isCity
+        ? hexWidth * 1.15
+        : content.showLabel
+          ? hexWidth * 0.85
+          : hexWidth * 0.6;
       const minScreen = isCity ? 36 : content.showLabel ? 28 : 21;
       const pin = this.buildPin({
         glyph,
@@ -1337,8 +1447,7 @@ export class CanvasEngine {
       });
       pin.position.set(center.x, center.y);
       if (discoveredClues) {
-        const known =
-          'clues' in content && content.clues.some((cl) => discoveredClues.has(cl.id));
+        const known = 'clues' in content && content.clues.some((cl) => discoveredClues.has(cl.id));
         pin.alpha *= known ? 1 : 0.25;
       }
       if ('enabled' in content && content.enabled === false) this.markDisabled(pin);
@@ -1395,7 +1504,13 @@ export class CanvasEngine {
   private drawTrails(): void {
     if (!this.layout) return;
     const size = this.layout.size;
-    const signs: { q: number; r: number; glyph: string; forwardAngle: number | null; backwardAngle: number | null }[] = [];
+    const signs: {
+      q: number;
+      r: number;
+      glyph: string;
+      forwardAngle: number | null;
+      backwardAngle: number | null;
+    }[] = [];
     if (this.role === 'dm') {
       for (const trail of this.lastTrails) {
         // Connecting line for the DM only.
@@ -1559,7 +1674,16 @@ export class CanvasEngine {
   }
 
   /** Dashed declared-travel paths with a ghost token at the destination. */
-  private drawPendingMoves(pending: { fromQ: number; fromR: number; toQ: number; toR: number; color: string; label: string }[]): void {
+  private drawPendingMoves(
+    pending: {
+      fromQ: number;
+      fromR: number;
+      toQ: number;
+      toR: number;
+      color: string;
+      label: string;
+    }[],
+  ): void {
     this.pendingC.removeChildren().forEach((c) => c.destroy({ children: true }));
     if (!this.layout || !pending.length) return;
     const size = this.layout.size;
@@ -1568,7 +1692,8 @@ export class CanvasEngine {
       const b = hexToPixel(this.layout, { q: pm.toQ, r: pm.toR });
       const g = new Graphics();
       // dashed line
-      const dx = b.x - a.x, dy = b.y - a.y;
+      const dx = b.x - a.x,
+        dy = b.y - a.y;
       const dist = Math.hypot(dx, dy) || 1;
       const dash = Math.max(6, size * 0.6);
       const n = Math.floor(dist / (dash * 1.6));
@@ -1620,7 +1745,17 @@ export class CanvasEngine {
     label.anchor.set(0.5, 0);
     root.addChild(body, glyph, label);
     this.tokensC.addChild(root);
-    const view: TokenView = { root, body, glyph, label, token, targetX: 0, targetY: 0, dragging: false, crowdScale: 1 };
+    const view: TokenView = {
+      root,
+      body,
+      glyph,
+      label,
+      token,
+      targetX: 0,
+      targetY: 0,
+      dragging: false,
+      crowdScale: 1,
+    };
     this.styleTokenView(view, token);
     this.wireTokenDrag(view);
     return view;
@@ -1641,10 +1776,15 @@ export class CanvasEngine {
       view.body.circle(0, 0, size * 1.18);
       view.body.stroke({ width: size * 0.07, color: 0xd9b44f, alpha: 0.75 });
     }
+    // Text is rasterized at a fixed comfortable size and scaled down into the
+    // token, not rendered at its world-unit size: a 3-mile hex makes the label
+    // ~1px tall in world units, and a 1px raster blown up 30x at max zoom is
+    // a smudge. `updatePinScales` bumps the raster resolution with the zoom
+    // so the text stays crisp all the way to the zoom cap.
     const text = token.glyph || initials(token.label);
     view.glyph.text = text;
-    view.glyph.scale.set((size * (token.glyph ? 1.0 : 0.75)) / PIN_BASE_FONT);
     view.glyph.style.fill = 0xffffff;
+    view.glyph.scale.set((size * (token.glyph ? 1.0 : 0.75)) / PIN_BASE_FONT);
     view.label.text = token.label;
     view.label.scale.set((size * 0.42) / PIN_BASE_FONT);
     view.label.position.set(0, size * 1.12);
@@ -1748,7 +1888,9 @@ export class CanvasEngine {
         send({ kind: 'content.move', contentId: ui.movingContentId, q: hex.q, r: hex.r });
         useUi.getState().set('movingContentId', null);
         this.viewport.cursor = 'default';
-        useSession.getState().pushToast({ kind: 'info', title: 'Moved', text: 'Location updated.' });
+        useSession
+          .getState()
+          .pushToast({ kind: 'info', title: 'Moved', text: 'Location updated.' });
         return;
       }
 
@@ -1810,7 +1952,10 @@ export class CanvasEngine {
           const idx = draft.findIndex((c) => c.q === hex.q && c.r === hex.r);
           if (idx >= 0) {
             // Clicking an existing node removes it (neighbors reconnect).
-            useUi.getState().set('trailDraft', draft.filter((_, i) => i !== idx));
+            useUi.getState().set(
+              'trailDraft',
+              draft.filter((_, i) => i !== idx),
+            );
           } else if (draft.length < 2) {
             useUi.getState().set('trailDraft', [...draft, hex]);
           } else {
@@ -1856,6 +2001,21 @@ export class CanvasEngine {
             useUi.getState().set('measureStart', hex);
           }
           break;
+        case 'calibrate': {
+          // First click anchors the line, second finishes it, a third starts
+          // over. Free pixels rather than hex centres: the scale bar is on
+          // the image, and the grid is what we're about to fit to it.
+          if (!isDm) return;
+          const world = this.viewport.toWorld(e.global.x, e.global.y);
+          const p = { x: world.x, y: world.y };
+          const line = ui.calibrateLine;
+          if (!line || line.b) {
+            useUi.getState().set('calibrateLine', { a: p, b: null });
+          } else {
+            useUi.getState().set('calibrateLine', { a: line.a, b: p });
+          }
+          break;
+        }
       }
     });
 
@@ -1865,12 +2025,17 @@ export class CanvasEngine {
         this.boxSelect.end = { x: world.x, y: world.y };
         this.drawHighlight();
       }
+      {
+        const world = this.viewport.toWorld(e.global.x, e.global.y);
+        this.pointerWorld = { x: world.x, y: world.y };
+        const ui0 = useUi.getState();
+        if (ui0.tool === 'calibrate' && ui0.calibrateLine && !ui0.calibrateLine.b) {
+          this.drawHighlight();
+        }
+      }
       const hex = this.worldHex(e);
       const ui = useUi.getState();
-      if (
-        hex &&
-        (!ui.hoverHex || ui.hoverHex.q !== hex.q || ui.hoverHex.r !== hex.r)
-      ) {
+      if (hex && (!ui.hoverHex || ui.hoverHex.q !== hex.q || ui.hoverHex.r !== hex.r)) {
         useUi.getState().set('hoverHex', hex);
         if (this.stroke && hex) this.strokeApply(hex);
         // A token in flight previews the route the drop would walk.
@@ -1884,8 +2049,7 @@ export class CanvasEngine {
       }
       if (this.drag) {
         if (!this.drag.active) {
-          const threshold =
-            e.pointerType === 'mouse' ? DRAG_THRESHOLD_MOUSE : DRAG_THRESHOLD_TOUCH;
+          const threshold = e.pointerType === 'mouse' ? DRAG_THRESHOLD_MOUSE : DRAG_THRESHOLD_TOUCH;
           const travelled = Math.hypot(
             e.global.x - this.drag.startX,
             e.global.y - this.drag.startY,
@@ -2076,9 +2240,7 @@ export class CanvasEngine {
     });
     const token = drag.view.token;
     const outcome =
-      dropHex.q === token.q && dropHex.r === token.r
-        ? 'denied'
-        : this.dispatchMove(token, dropHex);
+      dropHex.q === token.q && dropHex.r === token.r ? 'denied' : this.dispatchMove(token, dropHex);
     if (outcome !== 'moved') {
       // Snap home: the move became a request (ghost shows the destination)
       // or didn't happen at all.
@@ -2137,7 +2299,11 @@ export class CanvasEngine {
     }
     send({ kind: 'token.move', tokenId: token.id, q: dropHex.q, r: dropHex.r, teleport });
     if (teleport) {
-      useSession.getState().pushToast({ kind: 'info', title: 'Teleported', text: `${token.label || 'Token'} moved without leaving a trail.` });
+      useSession.getState().pushToast({
+        kind: 'info',
+        title: 'Teleported',
+        text: `${token.label || 'Token'} moved without leaving a trail.`,
+      });
     }
     // Landing selects the destination, so the inspect tab shows the new hex.
     if (token.kind === 'pc') useUi.getState().selectHex(dropHex);
@@ -2157,7 +2323,11 @@ export class CanvasEngine {
       this.fogIndex = { source: this.lastFog, states };
     }
     const states = this.fogIndex.states;
-    return findRoute(from, to, exploredPassable((h) => states.get(hexKey(h.q, h.r))));
+    return findRoute(
+      from,
+      to,
+      exploredPassable((h) => states.get(hexKey(h.q, h.r))),
+    );
   }
 
   /** Publish the route a drop on `hex` would walk (or that there is none). */
@@ -2224,10 +2394,7 @@ export class CanvasEngine {
       if (Math.abs(dx) + Math.abs(dy) < 0.5) {
         view.root.position.set(view.targetX, view.targetY);
       } else {
-        view.root.position.set(
-          view.root.position.x + dx * 0.25,
-          view.root.position.y + dy * 0.25,
-        );
+        view.root.position.set(view.root.position.x + dx * 0.25, view.root.position.y + dy * 0.25);
       }
     }
   }
