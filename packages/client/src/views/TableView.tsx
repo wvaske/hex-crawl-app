@@ -53,7 +53,11 @@ export function TableView({ campaignId }: { campaignId: string }) {
         }
       }
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT'
+      ) {
         return;
       }
       const ui = useUi.getState();
@@ -79,6 +83,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.set('locationDialogContentId', null);
         ui.selectHex(null);
         ui.set('measureStart', null);
+        ui.set('calibrateLine', null);
         ui.set('movingTokenId', null);
         ui.set('senseHighlight', null);
         ui.set('trailHighlight', null);
@@ -96,7 +101,17 @@ export function TableView({ campaignId }: { campaignId: string }) {
         send({ kind: 'undo' });
         return;
       }
-      const tools = { v: 'select', b: 'paint', f: 'fog', m: 'marker', c: 'content', t: 'trail', g: 'region', r: 'measure' } as const;
+      const tools = {
+        v: 'select',
+        b: 'paint',
+        f: 'fog',
+        m: 'marker',
+        c: 'content',
+        t: 'trail',
+        g: 'region',
+        r: 'measure',
+        k: 'calibrate',
+      } as const;
       const tool = tools[e.key.toLowerCase() as keyof typeof tools];
       if (tool && !e.metaKey && !e.ctrlKey && !e.altKey) ui.setTool(tool);
     };

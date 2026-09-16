@@ -29,6 +29,7 @@ import type { DB } from '../db/driver.js';
 export const EXPORT_FORMAT_VERSION = 1;
 
 /** Hard ceiling on an uploaded archive (images are embedded base64). */
+/** Default import cap; the live value is `MAX_IMPORT_BYTES` in config.ts (MAX_IMPORT_MB). */
 export const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
 
 type Row = Record<string, unknown>;

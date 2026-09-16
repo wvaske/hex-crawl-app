@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import {
   CONTENT_TYPE_GLYPHS,
+  HEX_SCALE_PRESETS,
   TERRAINS,
   TERRAIN_IDS,
+  clampHexSize,
   contentCells,
   hexKey,
+  hexSizeFromScaleBar,
+  hexWidthAcrossFlats,
   hexesInPixelRect,
   isFullContent,
   type Content,
@@ -14,7 +18,7 @@ import {
 import { activeMap, useSession } from '../stores/session.js';
 import { useUi, type Tool } from '../stores/ui.js';
 import { send } from '../ws.js';
-import { cx } from '../ui/kit.js';
+import { Button, Input, Select, cx } from '../ui/kit.js';
 import { STICKER_CATEGORIES, stickerUrl } from '../stickers.js';
 
 const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
@@ -26,6 +30,12 @@ const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
   { tool: 'trail', icon: '👣', name: 'Trail (T)', hint: 'Draw a footstep trail cell by cell' },
   { tool: 'region', icon: '🗺️', name: 'Region (G)', hint: 'Paint area footprints' },
   { tool: 'measure', icon: '📏', name: 'Measure (R)', hint: 'Measure distances' },
+  {
+    tool: 'calibrate',
+    icon: '📐',
+    name: 'Scale (K)',
+    hint: "Fit the hex size to a map image's scale bar",
+  },
 ];
 
 export function Toolbar() {
@@ -95,8 +105,16 @@ export function Toolbar() {
               <div className="flex flex-col gap-1 mb-2">
                 {(
                   [
-                    ['visible', '☀️ Visible', 'Players see everything here (light tint; creatures shown)'],
-                    ['explored', '🌘 Explored', 'Where the party has been — renders brightest, no creatures shown'],
+                    [
+                      'visible',
+                      '☀️ Visible',
+                      'Players see everything here (light tint; creatures shown)',
+                    ],
+                    [
+                      'explored',
+                      '🌘 Explored',
+                      'Where the party has been — renders brightest, no creatures shown',
+                    ],
                     ['hidden', '⬛ Hidden', 'Players see nothing'],
                   ] as [FogState, string, string][]
                 ).map(([state, label, hint]) => (
@@ -151,6 +169,167 @@ export function Toolbar() {
           Click a hex to set the start point, then hover. Click again to clear.
         </div>
       )}
+
+      {ui.tool === 'calibrate' && <CalibrateOptions />}
+    </div>
+  );
+}
+
+/**
+ * Scale calibration: size the hex grid from a map image's own scale bar.
+ * The DM clicks both ends of the bar on the canvas, types the distance the
+ * bar is labelled with, and the panel solves for the hex size that puts the
+ * map's miles-per-hex across each hex's flats. Nothing is sent until Apply.
+ */
+function CalibrateOptions() {
+  const line = useUi((s) => s.calibrateLine);
+  const setUi = useUi((s) => s.set);
+  const state = useSession((s) => s.state);
+  const pushToast = useSession((s) => s.pushToast);
+  const map = activeMap(state);
+  const [barMiles, setBarMiles] = useState('');
+  // null = keep the map's current miles per hex.
+  const [milesOverride, setMilesOverride] = useState<number | null>(null);
+  const [customMiles, setCustomMiles] = useState(false);
+  if (!map || !state?.mapState) return null;
+
+  const milesPerHex = milesOverride ?? map.milesPerHex;
+  const barPx = line?.b ? Math.hypot(line.b.x - line.a.x, line.b.y - line.a.y) : null;
+  const barMilesNum = Number(barMiles);
+  const raw = barPx !== null ? hexSizeFromScaleBar(barPx, barMilesNum, milesPerHex) : null;
+  const size = raw !== null ? Math.round(clampHexSize(raw) * 100) / 100 : null;
+  const clamped = raw !== null && size !== null && Math.abs(size - raw) > 0.5;
+  const hexesAlongBar = barMilesNum > 0 && milesPerHex > 0 ? barMilesNum / milesPerHex : null;
+  const ms = state.mapState;
+  const hasGridData =
+    ms.hexes.length + ms.fog.length + ms.contents.length + ms.tokens.length + ms.markers.length > 0;
+  const isPreset = HEX_SCALE_PRESETS.some((p) => p.miles === milesPerHex);
+  const showCustom = customMiles || !isPreset;
+
+  const apply = () => {
+    if (size === null) return;
+    const patch: Record<string, unknown> = { hexSize: size };
+    if (milesOverride !== null && milesOverride !== map.milesPerHex)
+      patch.milesPerHex = milesOverride;
+    send({ kind: 'map.update', mapId: map.id, patch });
+    pushToast({
+      kind: 'info',
+      title: 'Grid fitted to the map',
+      text: `Hex size ${size} px — ${milesPerHex} mi across each hex.`,
+    });
+    setUi('calibrateLine', null);
+  };
+
+  return (
+    <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-56 text-xs text-ink-300 space-y-2 overflow-y-auto">
+      <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">
+        Fit grid to scale bar
+      </p>
+      <ol className="list-decimal list-inside space-y-0.5 text-ink-300">
+        <li className={cx(line && 'text-ink-500')}>Click one end of the map's scale bar.</li>
+        <li className={cx((!line || line.b) && 'text-ink-500')}>Click the other end.</li>
+        <li>Enter the distance the bar shows.</li>
+      </ol>
+      <div className="flex items-center justify-between">
+        <span className="text-ink-400">Line</span>
+        <span className="text-ink-100 font-medium">
+          {barPx !== null ? `${Math.round(barPx)} px` : line ? 'drawing…' : '—'}
+        </span>
+      </div>
+      <label className="block">
+        <span className="block text-[10px] text-ink-400">Bar distance (miles)</span>
+        <Input
+          type="number"
+          min={0}
+          step="any"
+          value={barMiles}
+          placeholder="e.g. 50"
+          onChange={(e) => setBarMiles(e.target.value)}
+        />
+      </label>
+      <label className="block">
+        <span className="block text-[10px] text-ink-400">Miles per hex</span>
+        <Select
+          value={showCustom ? 'custom' : String(milesPerHex)}
+          onChange={(e) => {
+            if (e.target.value === 'custom') {
+              setCustomMiles(true);
+            } else {
+              setCustomMiles(false);
+              setMilesOverride(Number(e.target.value));
+            }
+          }}
+        >
+          {HEX_SCALE_PRESETS.map((p) => (
+            <option key={p.miles} value={p.miles} title={p.hint}>
+              {p.label}
+            </option>
+          ))}
+          <option value="custom">Custom…</option>
+        </Select>
+        {showCustom && (
+          <Input
+            type="number"
+            min={0}
+            step="any"
+            className="mt-1"
+            key={`cm-${milesPerHex}`}
+            defaultValue={milesPerHex}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n) && n > 0) setMilesOverride(n);
+            }}
+          />
+        )}
+      </label>
+      {size !== null && (
+        <div className="rounded-md border border-ink-700 bg-ink-850 px-2 py-1.5 space-y-0.5">
+          <div className="flex items-center justify-between">
+            <span className="text-ink-400">Hex size</span>
+            <span className="text-brass-300 font-medium">{size} px</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-ink-400">Across flats</span>
+            <span className="text-ink-100">{Math.round(hexWidthAcrossFlats(size))} px</span>
+          </div>
+          {hexesAlongBar !== null && (
+            <div className="flex items-center justify-between">
+              <span className="text-ink-400">Hexes along bar</span>
+              <span className="text-ink-100">{Math.round(hexesAlongBar * 10) / 10}</span>
+            </div>
+          )}
+          {clamped && (
+            <p className="text-ember-500">
+              Out of range (4–512 px), so it was clamped. Change the image layer's scale first.
+            </p>
+          )}
+        </div>
+      )}
+      {hasGridData && (
+        <p className="text-ember-500/90">
+          This map already has painted hexes, fog, tokens or content. They keep their hex
+          coordinates, so they'll shift against the image — calibrate before you paint.
+        </p>
+      )}
+      <div className="flex gap-1.5">
+        <Button
+          size="sm"
+          variant="primary"
+          className="flex-1"
+          disabled={size === null}
+          onClick={apply}
+        >
+          Apply
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!line}
+          onClick={() => setUi('calibrateLine', null)}
+        >
+          Redraw
+        </Button>
+      </div>
     </div>
   );
 }
@@ -455,7 +634,11 @@ function TrailOptions() {
     useUi.getState().set('trailDraft', [...t.cells]);
     setName(t.name);
     if (t.gate.kind === 'skill') {
-      setSkill((TRAIL_SKILLS as readonly string[]).includes(t.gate.skill) ? (t.gate.skill as (typeof TRAIL_SKILLS)[number]) : 'survival');
+      setSkill(
+        (TRAIL_SKILLS as readonly string[]).includes(t.gate.skill)
+          ? (t.gate.skill as (typeof TRAIL_SKILLS)[number])
+          : 'survival',
+      );
       setDc(String(t.gate.dc));
     } else {
       setSkill('auto');

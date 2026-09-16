@@ -105,6 +105,13 @@ export const CREATE_PASSWORD = process.env.CREATE_PASSWORD ?? '';
 export const UPLOAD_QUOTA_BYTES = num('UPLOAD_QUOTA_MB', 200) * 1024 * 1024;
 
 /**
+ * Largest backup archive `POST /api/campaigns/import` accepts. Archives carry
+ * every uploaded image as base64, so an image-heavy campaign can exceed the
+ * 100MB default — raise it rather than trimming the backup.
+ */
+export const MAX_IMPORT_BYTES = num('MAX_IMPORT_MB', 100) * 1024 * 1024;
+
+/**
  * Trust `X-Forwarded-For` for the rate-limiter's client identity. True by
  * default because the documented deployment sits behind a reverse proxy; set
  * TRUST_PROXY=0 when the server is exposed directly, or clients can spoof

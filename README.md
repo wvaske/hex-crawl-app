@@ -37,8 +37,14 @@ player hasn't earned ever reaches their browser.*
 - **Multi-scale hexes** — three hex scales built from 7-hex superclusters
   (H3-style): base (e.g. 6 mi), ×√7 (≈16 mi), ×7 (42 mi). The scale follows your
   zoom, or lock one (travel at 16, search at 6).
+- **Hex scale presets** — 3 mi (local area: an hour's walk and about the
+  distance to the horizon, so the party can see into neighbouring hexes), 6 mi
+  (classic) or 24 mi (a day's travel, for a world map), or any custom value,
+  per map or as a campaign default.
 - **Maps** — paint 12 terrain types with brushes, or upload a map image and
-  align the grid over it. Multiple maps per campaign.
+  align the grid over it. Multiple maps per campaign. The **Scale** tool fits
+  the grid to an image's own scale bar: click both ends of the bar, type the
+  distance it shows, and the hex size is solved for you.
 - **Party** — characters with skill modifiers (Perception, Survival, Nature,
   Arcana, Religion, plus custom skills). Players can create and edit their own.
 - **Group skill checks, markers, measurement** — d20-per-character checks with
@@ -146,6 +152,7 @@ Optional hardening, worth setting if strangers can reach your instance:
 |---|---|---|
 | `CREATE_PASSWORD` | unset | **Secret.** When set, creating *or* restoring a campaign requires this password (the landing page grows a password field). Unset means anyone who can load the page can create a campaign. |
 | `UPLOAD_QUOTA_MB` | `200` | Per-campaign cap on total uploaded image bytes. `0` disables. |
+| `MAX_IMPORT_MB` | `100` | Largest backup archive the restore endpoint accepts. Archives embed every uploaded image as base64, so raise this if a restore fails with "Backup too large". |
 | `RATE_LIMIT_WINDOW_SEC` | `60` | Window for the per-IP rate limits below. |
 | `RATE_LIMIT_CREATE` / `RATE_LIMIT_IMPORT` | `3` / `3` | Campaign creations / restores per IP per window. `0` disables. |
 | `RATE_LIMIT_JOIN` / `RATE_LIMIT_EXPORT` | `10` / `10` | Join attempts / archive downloads per IP per window. `0` disables. |
@@ -210,6 +217,24 @@ content never crosses the wire.
 Each location's "Visible at hex scales" setting controls the coarsest scale its
 pin appears at: cities and major regions show everywhere, hidden sites only when
 searching fine hexes.
+
+## Choosing a hex scale
+
+The fine hex is the unit everything is tracked in — terrain, fog, tokens, sight
+radius, travel time — so pick its size per map rather than trying to subdivide
+one grid: the √7 superhex ladder can't split a 6-mile hex into 3-mile ones, and
+a display-only sub-grid could hold no fog or tokens anyway. A common setup is a
+**world map at 24 mi/hex** (one hex per day of travel between regions) and a
+**local map per region at 3 mi/hex**, where a hex is about an hour on foot and
+roughly the distance to the horizon, so players can see what's in the
+neighbouring hexes and choose where to go next instead of walking in blind.
+With 3-mile hexes a sight radius of 1 reveals the ring the party can see, and
+the scale control's other two levels land at ≈8 and 21 mi.
+
+To fit the grid to a sourcebook map, upload the image, pick the **Scale** tool
+(K), click both ends of the map's scale bar, enter the distance the bar shows,
+and apply. Do this before painting: hexes keep their coordinates when the hex
+size changes, so anything already on the grid shifts against the image.
 
 ## Linking a wiki
 

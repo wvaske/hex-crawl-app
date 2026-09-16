@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { diceBounds, parseDice, rollDice, seededRng } from './dice.js';
 import { gateOpensPassively } from './gates.js';
-import { filterStateForViewer } from './filter.js';
+import { filterStateForViewer, unresolvedClueCells } from './filter.js';
 import {
   TRAVEL_MODES,
   formatClock,
@@ -347,5 +347,46 @@ describe('campaign clock', () => {
     expect(minutesUntilSunrise(3 * 60, { sunriseHour: 9 })).toBe(6 * 60);
     // Works past day 1 the same way.
     expect(minutesUntilSunrise(1440 + 20 * 60)).toBe(10 * 60);
+  });
+});
+
+describe('unresolvedClueCells', () => {
+  it('is empty when every sensed source has been located', () => {
+    expect(unresolvedClueCells(fullState(), 'dm')).toEqual([]);
+  });
+
+  it('DM: visited hexes within range of a sensed-but-unlocated source, party-wide', () => {
+    const full = fullState();
+    // Buried gold (2,0) sensed from afar by char2 via a 2-hex skill clue.
+    const gold = full.mapState!.contents[1] as { clues: { gate: unknown }[] };
+    gold.clues[0]!.gate = { kind: 'skill', skill: 'perception', dc: 12, maxDistance: 2 };
+    full.discoveries = [
+      { id: 'd2', clueId: 'cl3', characterId: 'char2', at: 1001, how: { kind: 'auto' }, direction: 'E', locates: false },
+    ];
+    // Ground = explored (1,0) + the PC token's hex (0,0); visible-only (0,0)
+    // fog alone would not count, the token does.
+    const cells = unresolvedClueCells(full, 'dm').sort((a, b) => a.q - b.q);
+    expect(cells).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+    // Once anyone locates it the overlay drops the source.
+    full.discoveries.push({ id: 'd3', clueId: 'cl3', characterId: 'char1', at: 1002, how: { kind: 'auto' }, direction: null, locates: true });
+    expect(unresolvedClueCells(full, 'dm')).toEqual([]);
+  });
+
+  it('player: union of observableFrom over their unlocated senses only', () => {
+    const full = fullState();
+    full.senses = [
+      { clueId: 'cl3', text: 'x', direction: null, inRange: false, at: 1, observableFrom: [{ q: 1, r: 0 }, { q: 1, r: 1 }], located: false, contentTitle: null, sensedBy: [] },
+      { clueId: 'cl9', text: 'y', direction: null, inRange: false, at: 1, observableFrom: [{ q: 1, r: 1 }, { q: 3, r: 3 }], located: false, contentTitle: null, sensedBy: [] },
+      { clueId: 'cl1', text: 'z', direction: null, inRange: true, at: 1, observableFrom: [{ q: 9, r: 9 }], located: true, contentTitle: 'Dragon Lair', sensedBy: [] },
+    ];
+    const cells = unresolvedClueCells(full, 'player').sort((a, b) => a.q - b.q || a.r - b.r);
+    expect(cells).toEqual([
+      { q: 1, r: 0 },
+      { q: 1, r: 1 },
+      { q: 3, r: 3 },
+    ]);
   });
 });
