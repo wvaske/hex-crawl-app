@@ -6,6 +6,22 @@ Architecture background: [DESIGN.md](./DESIGN.md).
 
 ## Workflow
 
+- **Start by looking at what else is in flight.** Before writing code, run
+  `git fetch --all --prune`, `git branch -a --no-merged main`, and
+  `git worktree list`, then `git -C <worktree> status --short` for each
+  worktree. Read the diff of any branch or dirty worktree that touches the
+  files you are about to change (`git diff main...<branch> --stat`). This is
+  how you avoid re-implementing, colliding with, or silently dropping
+  someone else's work: on 2026-09-12 production was built from a worktree
+  whose features were never committed, and deploying `main` three days later
+  removed them (restored in PR #152).
+- **Commit AND push after every change set.** Uncommitted work in a worktree
+  is invisible to every other session and to every deploy. As soon as
+  typecheck and tests pass, commit on the branch and push it
+  (`git push -u origin <branch>`); do not leave work sitting in a working
+  tree at the end of a task, a turn, or before a deploy. If pushing over SSH
+  hangs, push over HTTPS:
+  `git -c credential.helper='!gh auth git-credential' push https://github.com/wvaske/hex-crawl-app.git HEAD:<branch>`.
 - Work on a feature branch, one GitHub issue per branch/PR where possible.
   Branch names: `issue-<n>-<slug>` (or the session's worktree branch).
 - Before opening a PR: `pnpm typecheck && pnpm test` must pass from the repo
@@ -361,3 +377,10 @@ RUNBOOK). Operators keep instance specifics (hostnames, volumes, secrets)
 outside this repo — see issue #71 for the config contract. Schema migrations
 run automatically at boot; deploys are: rsync source → build image →
 `docker compose up -d` → check `/api/health`.
+
+**Deploy only a commit that is merged to `main` and pushed.** Never build the
+image from a working tree with uncommitted changes, and before deploying
+check `git worktree list` plus each worktree's `git status --short`: a dirty
+worktree means someone's work is about to be dropped from production (or is
+already only in production). Tag the previous image and back up `/data`
+before every deploy (see `deploy/RUNBOOK.md`).
