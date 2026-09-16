@@ -2,14 +2,7 @@ import { create } from 'zustand';
 import type { FogState, HexCoord, LogEntry, TerrainId } from '@hexcrawl/shared';
 
 export type Tool =
-  | 'select'
-  | 'paint'
-  | 'fog'
-  | 'marker'
-  | 'content'
-  | 'trail'
-  | 'region'
-  | 'measure';
+  'select' | 'paint' | 'fog' | 'marker' | 'content' | 'trail' | 'region' | 'measure' | 'calibrate';
 
 /**
  * Side pop-out panels (issue #61). Three player-facing headings plus two
@@ -28,9 +21,7 @@ export type PanelId = 'information' | 'character' | 'history' | 'build' | 'setup
 
 /** What a content-dialog paint session is painting (issue #123). */
 export type AreaPaintTarget =
-  | { kind: 'area' }
-  | { kind: 'observe' }
-  | { kind: 'clue'; index: number };
+  { kind: 'area' } | { kind: 'observe' } | { kind: 'clue'; index: number };
 
 interface UiStore {
   tool: Tool;
@@ -76,6 +67,11 @@ interface UiStore {
    */
   uiDensity: 'verbose' | 'compact';
   measureStart: HexCoord | null;
+  /**
+   * DM scale calibration: the line drawn over a map image's scale bar, in
+   * world pixels. `b` is null between the first click and the second.
+   */
+  calibrateLine: { a: { x: number; y: number }; b: { x: number; y: number } | null } | null;
   /** Held spacebar: pan with left-drag regardless of the active tool. */
   spacePan: boolean;
   /** Hex scale: 'auto' derives from zoom; 0/1/2 locks fine/mid/coarse. */
@@ -147,6 +143,8 @@ interface UiStore {
   dimUnexplored: boolean;
   /** Tint the map to match the campaign clock's time of day. */
   dayNightTint: boolean;
+  /** ❔ overlay: hexes where clues were sensed toward sources not yet located. */
+  unresolvedClues: boolean;
   /** Held Alt/Option: a DM token drop teleports (no explored trail). */
   altTeleport: boolean;
 
@@ -289,6 +287,7 @@ export const useUi = create<UiStore>((set) => ({
   uiScale: initialUiScale(),
   uiDensity: initialUiDensity(),
   measureStart: null,
+  calibrateLine: null,
   spacePan: false,
   scaleLock: 'auto',
   currentScale: 0,
@@ -312,10 +311,11 @@ export const useUi = create<UiStore>((set) => ({
   viewedMapId: null,
   dimUnexplored: true,
   dayNightTint: true,
+  unresolvedClues: false,
   altTeleport: false,
 
   set: (key, value) => set({ [key]: value } as Partial<UiStore>),
-  setTool: (tool) => set({ tool, measureStart: null }),
+  setTool: (tool) => set({ tool, measureStart: null, calibrateLine: null }),
   // Selecting a hex is the deep link into the Information panel: a map click
   // (or a journal row) pops it open. Clearing the selection — Escape, mostly —
   // deliberately leaves the panels as they were, so Escape never opens one.

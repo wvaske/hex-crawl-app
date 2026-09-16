@@ -40,6 +40,7 @@ import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
 import type { Hub } from './hub.js';
 import { applyAutoReveal } from '../engine/fog.js';
 import { evaluateKnowledge, type NewDiscovery } from '../engine/knowledge.js';
+import { deliverDiscoveries as deliver } from '../engine/deliver.js';
 import { evaluateTrails, trailBearings, type TrailFind } from '../engine/trails.js';
 import { generateSettlementClues } from '../engine/settlements.js';
 import { rollEncounter } from '../engine/encounters.js';
@@ -130,48 +131,9 @@ function requireMarkerAccess(ctx: Ctx, markerId: string): Marker | null {
   return marker;
 }
 
-/** Deliver freshly-created discoveries: toast to the owning player, entry in the DM feed. */
+/** Handler-side shim over the shared delivery routine (engine/deliver.ts). */
 function deliverDiscoveries(ctx: Ctx, discoveries: NewDiscovery[]): void {
-  for (const d of discoveries) {
-    const character = ctx.runtime.characters.get(d.discovery.characterId);
-    const ownerSeats = [...ctx.runtime.seats.values()]
-      .filter((s) => s.characterId === d.discovery.characterId)
-      .map((s) => s.id);
-    const how = d.discovery.how;
-    const howText =
-      how.kind === 'passive'
-        ? `passive ${how.skill} ${how.passive} vs DC ${how.dc} at ${how.distance} hex${how.distance === 1 ? '' : 'es'}`
-        : how.kind === 'roll'
-          ? `rolled ${how.skill} ${how.total} (d20 ${how.roll}${how.modifier >= 0 ? '+' : ''}${how.modifier}) vs DC ${how.dc}`
-          : how.kind;
-    ctx.runtime.appendLog(
-      'discovery',
-      `${d.characterName} discovered "${d.contentTitle}": ${d.clueText} (${howText})`,
-      'dm',
-      { contentId: d.contentId, clueId: d.discovery.clueId, characterId: d.discovery.characterId },
-    );
-    for (const seatId of ownerSeats) {
-      ctx.runtime.appendLog(
-        'discovery',
-        `${character?.name ?? 'You'} noticed: ${d.clueText}`,
-        seatId,
-        { contentId: d.contentId },
-      );
-    }
-    ctx.hub.sendTo(
-      ctx.runtime,
-      {
-        type: 'event',
-        kind: 'discovery.new',
-        discovery: d.discovery,
-        contentId: d.contentId,
-        contentTitle: d.contentTitle,
-        clueText: d.clueText,
-        characterName: d.characterName,
-      },
-      { dm: true, seatIds: ownerSeats },
-    );
-  }
+  deliver(ctx.runtime, ctx.hub, discoveries);
 }
 
 function notifyLog(ctx: Ctx, entry: LogEntry): void {

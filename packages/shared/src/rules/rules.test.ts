@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { diceBounds, parseDice, rollDice, seededRng } from './dice.js';
 import { gateOpensPassively } from './gates.js';
-import { filterStateForViewer } from './filter.js';
+import { filterStateForViewer, unresolvedClueCells } from './filter.js';
 import {
   TRAVEL_MODES,
   formatClock,
@@ -65,7 +65,13 @@ describe('gates', () => {
   });
 
   it('passive skill gate honors dc and distance', () => {
-    const gate = { kind: 'skill', skill: 'perception', dc: 14, maxDistance: 2, mode: 'passive' } as const;
+    const gate = {
+      kind: 'skill',
+      skill: 'perception',
+      dc: 14,
+      maxDistance: 2,
+      mode: 'passive',
+    } as const;
     expect(gateOpensPassively(gate, scout, 2)).toEqual({ opens: true, passive: 14 });
     expect(gateOpensPassively(gate, scout, 3).opens).toBe(false);
     const highDc = { ...gate, dc: 15 };
@@ -73,7 +79,13 @@ describe('gates', () => {
   });
 
   it('an explicit in-range verdict replaces the distance rule (vantage hexes, #123)', () => {
-    const gate = { kind: 'skill', skill: 'perception', dc: 14, maxDistance: 2, mode: 'passive' } as const;
+    const gate = {
+      kind: 'skill',
+      skill: 'perception',
+      dc: 14,
+      maxDistance: 2,
+      mode: 'passive',
+    } as const;
     expect(gateOpensPassively(gate, scout, 9, true).opens).toBe(true);
     expect(gateOpensPassively(gate, scout, 0, false).opens).toBe(false);
     expect(gateOpensPassively({ kind: 'auto' }, scout, 3, true).opens).toBe(true);
@@ -112,7 +124,13 @@ function fullState(): CampaignState {
         mapDefaults: MapDefaultsSchema.parse({}),
         calendar: null,
         weatherTable: null,
-        ddbGameLog: { enabled: false, campaignId: '', campaignName: '', userId: '', countAsSearch: false },
+        ddbGameLog: {
+          enabled: false,
+          campaignId: '',
+          campaignName: '',
+          userId: '',
+          countAsSearch: false,
+        },
       },
       time: { minutes: 8 * 60, travelMode: 'foot', pace: 'normal', partyHex: null, weather: null },
     },
@@ -124,8 +142,32 @@ function fullState(): CampaignState {
     maps: [],
     mapState: {
       imageLayers: [
-        { id: 'il1', mapId: 'm1', path: '/uploads/a.png', name: 'a', x: 0, y: 0, scale: 1, opacity: 1, z: 0, dmOnly: false, visible: true },
-        { id: 'il2', mapId: 'm1', path: '/uploads/b.png', name: 'b', x: 0, y: 0, scale: 1, opacity: 1, z: 1, dmOnly: true, visible: true },
+        {
+          id: 'il1',
+          mapId: 'm1',
+          path: '/uploads/a.png',
+          name: 'a',
+          x: 0,
+          y: 0,
+          scale: 1,
+          opacity: 1,
+          z: 0,
+          dmOnly: false,
+          visible: true,
+        },
+        {
+          id: 'il2',
+          mapId: 'm1',
+          path: '/uploads/b.png',
+          name: 'b',
+          x: 0,
+          y: 0,
+          scale: 1,
+          opacity: 1,
+          z: 1,
+          dmOnly: true,
+          visible: true,
+        },
       ],
       hexes: [
         { q: 0, r: 0, terrain: 'forest' },
@@ -137,29 +179,184 @@ function fullState(): CampaignState {
         { q: 1, r: 0, state: 'explored' },
       ],
       tokens: [
-        { id: 't1', mapId: 'm1', q: 0, r: 0, kind: 'pc', characterId: 'char1', label: 'Scout', color: '#00ff00', glyph: '', playerVisible: true, partyId: null },
-        { id: 't2', mapId: 'm1', q: 0, r: 0, kind: 'npc', characterId: null, label: 'Ogre', color: '#ff0000', glyph: '', playerVisible: true, partyId: null },
-        { id: 't3', mapId: 'm1', q: 1, r: 0, kind: 'npc', characterId: null, label: 'Ghost', color: '#ffffff', glyph: '', playerVisible: true, partyId: null },
-        { id: 't4', mapId: 'm1', q: 0, r: 0, kind: 'npc', characterId: null, label: 'Hidden', color: '#000000', glyph: '', playerVisible: false, partyId: null },
+        {
+          id: 't1',
+          mapId: 'm1',
+          q: 0,
+          r: 0,
+          kind: 'pc',
+          characterId: 'char1',
+          label: 'Scout',
+          color: '#00ff00',
+          glyph: '',
+          playerVisible: true,
+          partyId: null,
+        },
+        {
+          id: 't2',
+          mapId: 'm1',
+          q: 0,
+          r: 0,
+          kind: 'npc',
+          characterId: null,
+          label: 'Ogre',
+          color: '#ff0000',
+          glyph: '',
+          playerVisible: true,
+          partyId: null,
+        },
+        {
+          id: 't3',
+          mapId: 'm1',
+          q: 1,
+          r: 0,
+          kind: 'npc',
+          characterId: null,
+          label: 'Ghost',
+          color: '#ffffff',
+          glyph: '',
+          playerVisible: true,
+          partyId: null,
+        },
+        {
+          id: 't4',
+          mapId: 'm1',
+          q: 0,
+          r: 0,
+          kind: 'npc',
+          characterId: null,
+          label: 'Hidden',
+          color: '#000000',
+          glyph: '',
+          playerVisible: false,
+          partyId: null,
+        },
       ],
       markers: [
-        { id: 'mk1', mapId: 'm1', q: 0, r: 0, glyph: '🔥', icon: '', scale: 1, label: 'Fire', dmOnly: false, playerPlaced: false, ownerSeatId: null },
-        { id: 'mk2', mapId: 'm1', q: 0, r: 0, glyph: '💀', icon: '', scale: 1, label: 'Secret', dmOnly: true, playerPlaced: false, ownerSeatId: null },
-        { id: 'mk3', mapId: 'm1', q: 2, r: 0, glyph: '⛺', icon: '', scale: 1, label: 'FoggedCamp', dmOnly: false, playerPlaced: false, ownerSeatId: null },
+        {
+          id: 'mk1',
+          mapId: 'm1',
+          q: 0,
+          r: 0,
+          glyph: '🔥',
+          icon: '',
+          scale: 1,
+          label: 'Fire',
+          dmOnly: false,
+          playerPlaced: false,
+          ownerSeatId: null,
+        },
+        {
+          id: 'mk2',
+          mapId: 'm1',
+          q: 0,
+          r: 0,
+          glyph: '💀',
+          icon: '',
+          scale: 1,
+          label: 'Secret',
+          dmOnly: true,
+          playerPlaced: false,
+          ownerSeatId: null,
+        },
+        {
+          id: 'mk3',
+          mapId: 'm1',
+          q: 2,
+          r: 0,
+          glyph: '⛺',
+          icon: '',
+          scale: 1,
+          label: 'FoggedCamp',
+          dmOnly: false,
+          playerPlaced: false,
+          ownerSeatId: null,
+        },
         // Party note dropped by another player's seat: party-wide (issue #74).
-        { id: 'mk4', mapId: 'm1', q: 1, r: 0, glyph: '📌', icon: '', scale: 1, label: 'We camped here', dmOnly: false, playerPlaced: true, ownerSeatId: 's2' },
+        {
+          id: 'mk4',
+          mapId: 'm1',
+          q: 1,
+          r: 0,
+          glyph: '📌',
+          icon: '',
+          scale: 1,
+          label: 'We camped here',
+          dmOnly: false,
+          playerPlaced: true,
+          ownerSeatId: 's2',
+        },
       ],
       contents: [
         {
-          id: 'ct1', mapId: 'm1', q: 1, r: 0, area: [], type: 'lair', title: 'Dragon Lair', dmNotes: 'secret', glyph: '🐉', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '', observeFrom: [],
+          id: 'ct1',
+          mapId: 'm1',
+          q: 1,
+          r: 0,
+          area: [],
+          type: 'lair',
+          title: 'Dragon Lair',
+          dmNotes: 'secret',
+          glyph: '🐉',
+          showLabel: false,
+          scaleVisibility: 1,
+          wikiPage: '',
+          enabled: true,
+          knownLocation: false,
+          quest: '',
+          observeFrom: [],
           clues: [
-            { id: 'cl1', contentId: 'ct1', text: 'Dead vegetation', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false, revealsLocation: true, observeFrom: [] },
-            { id: 'cl2', contentId: 'ct1', text: 'Acid scars', gate: { kind: 'manual' }, sortOrder: 1, indicatesDirection: false, revealsLocation: true, observeFrom: [] },
+            {
+              id: 'cl1',
+              contentId: 'ct1',
+              text: 'Dead vegetation',
+              gate: { kind: 'auto' },
+              sortOrder: 0,
+              indicatesDirection: false,
+              revealsLocation: true,
+              observeFrom: [],
+            },
+            {
+              id: 'cl2',
+              contentId: 'ct1',
+              text: 'Acid scars',
+              gate: { kind: 'manual' },
+              sortOrder: 1,
+              indicatesDirection: false,
+              revealsLocation: true,
+              observeFrom: [],
+            },
           ],
         },
         {
-          id: 'ct2', mapId: 'm1', q: 2, r: 0, area: [], type: 'cache', title: 'Buried gold', dmNotes: '', glyph: '', showLabel: false, scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '', observeFrom: [],
-          clues: [{ id: 'cl3', contentId: 'ct2', text: 'Disturbed earth', gate: { kind: 'auto' }, sortOrder: 0, indicatesDirection: false, revealsLocation: true, observeFrom: [] }],
+          id: 'ct2',
+          mapId: 'm1',
+          q: 2,
+          r: 0,
+          area: [],
+          type: 'cache',
+          title: 'Buried gold',
+          dmNotes: '',
+          glyph: '',
+          showLabel: false,
+          scaleVisibility: 1,
+          wikiPage: '',
+          enabled: true,
+          knownLocation: false,
+          quest: '',
+          observeFrom: [],
+          clues: [
+            {
+              id: 'cl3',
+              contentId: 'ct2',
+              text: 'Disturbed earth',
+              gate: { kind: 'auto' },
+              sortOrder: 0,
+              indicatesDirection: false,
+              revealsLocation: true,
+              observeFrom: [],
+            },
+          ],
         },
       ],
       pendingMoves: [],
@@ -172,23 +369,83 @@ function fullState(): CampaignState {
       ],
       // Issue #107: one attempt from the viewer's character, one from another.
       searchAttempts: [
-        { id: 'sa1', mapId: 'm1', q: 1, r: 0, characterId: 'char1', skill: 'perception', roll: 14, modifier: 4, total: 18, at: 2000, detail: null },
-        { id: 'sa2', mapId: 'm1', q: 1, r: 0, characterId: 'char2', skill: 'survival', roll: 9, modifier: 1, total: 10, at: 2001, detail: null },
+        {
+          id: 'sa1',
+          mapId: 'm1',
+          q: 1,
+          r: 0,
+          characterId: 'char1',
+          skill: 'perception',
+          roll: 14,
+          modifier: 4,
+          total: 18,
+          at: 2000,
+          detail: null,
+        },
+        {
+          id: 'sa2',
+          mapId: 'm1',
+          q: 1,
+          r: 0,
+          characterId: 'char2',
+          skill: 'survival',
+          roll: 9,
+          modifier: 1,
+          total: 10,
+          at: 2001,
+          detail: null,
+        },
       ],
     },
     discoveries: [
-      { id: 'd1', clueId: 'cl1', characterId: 'char1', at: 1000, how: { kind: 'auto' }, direction: null, locates: true },
-      { id: 'd2', clueId: 'cl3', characterId: 'char2', at: 1001, how: { kind: 'auto' }, direction: null, locates: true },
+      {
+        id: 'd1',
+        clueId: 'cl1',
+        characterId: 'char1',
+        at: 1000,
+        how: { kind: 'auto' },
+        direction: null,
+        locates: true,
+      },
+      {
+        id: 'd2',
+        clueId: 'cl3',
+        characterId: 'char2',
+        at: 1001,
+        how: { kind: 'auto' },
+        direction: null,
+        locates: true,
+      },
     ],
     trailDiscoveries: [],
     senses: [],
     pendingReveals: [
-      { id: 'pr1', clueId: 'cl2', characterId: 'char1', attemptId: 'sa1', direction: null, locates: true, roll: 14, modifier: 4, total: 18, at: 2000 },
+      {
+        id: 'pr1',
+        clueId: 'cl2',
+        characterId: 'char1',
+        attemptId: 'sa1',
+        direction: null,
+        locates: true,
+        roll: 14,
+        modifier: 4,
+        total: 18,
+        at: 2000,
+      },
     ],
-    encounterTables: [{ id: 'et1', name: 'Forest', terrains: ['forest'], die: '1d12', entries: [], enabled: true }],
+    encounterTables: [
+      { id: 'et1', name: 'Forest', terrains: ['forest'], die: '1d12', entries: [], enabled: true },
+    ],
     log: [
       { id: 'l1', at: 1, kind: 'roll', text: 'dm secret roll', visibility: 'dm', data: {} },
-      { id: 'l2', at: 2, kind: 'narration', text: 'you all see smoke', visibility: 'all', data: {} },
+      {
+        id: 'l2',
+        at: 2,
+        kind: 'narration',
+        text: 'you all see smoke',
+        visibility: 'all',
+        data: {},
+      },
       { id: 'l3', at: 3, kind: 'discovery', text: 'alice private', visibility: 's1', data: {} },
       { id: 'l4', at: 4, kind: 'discovery', text: 'bob private', visibility: 's2', data: {} },
     ],
@@ -256,7 +513,13 @@ describe('filterStateForViewer', () => {
     const full = fullState();
     // char2 has also discovered cl1; their cl3 discovery stays invisible.
     full.discoveries.push({
-      id: 'd3', clueId: 'cl1', characterId: 'char2', at: 1002, how: { kind: 'auto' }, direction: null, locates: true,
+      id: 'd3',
+      clueId: 'cl1',
+      characterId: 'char2',
+      at: 1002,
+      how: { kind: 'auto' },
+      direction: null,
+      locates: true,
     });
     const s = filterStateForViewer(full, viewer);
     const sense = s.senses.find((x) => x.clueId === 'cl1')!;
@@ -294,7 +557,11 @@ describe('filterStateForViewer', () => {
   });
 
   it('unclaimed player sees no content or discoveries', () => {
-    const s = filterStateForViewer(fullState(), { seatId: 's9', role: 'player', characterId: null });
+    const s = filterStateForViewer(fullState(), {
+      seatId: 's9',
+      role: 'player',
+      characterId: null,
+    });
     expect(s.mapState!.contents).toEqual([]);
     expect(s.discoveries).toEqual([]);
   });
@@ -368,5 +635,98 @@ describe('campaign clock', () => {
     expect(minutesUntilSunrise(3 * 60, { sunriseHour: 9 })).toBe(6 * 60);
     // Works past day 1 the same way.
     expect(minutesUntilSunrise(1440 + 20 * 60)).toBe(10 * 60);
+  });
+});
+
+describe('unresolvedClueCells', () => {
+  it('is empty when every sensed source has been located', () => {
+    expect(unresolvedClueCells(fullState(), 'dm')).toEqual([]);
+  });
+
+  it('DM: visited hexes within range of a sensed-but-unlocated source, party-wide', () => {
+    const full = fullState();
+    // Buried gold (2,0) sensed from afar by char2 via a 2-hex skill clue.
+    const gold = full.mapState!.contents[1] as { clues: { gate: unknown }[] };
+    gold.clues[0]!.gate = { kind: 'skill', skill: 'perception', dc: 12, maxDistance: 2 };
+    full.discoveries = [
+      {
+        id: 'd2',
+        clueId: 'cl3',
+        characterId: 'char2',
+        at: 1001,
+        how: { kind: 'auto' },
+        direction: 'E',
+        locates: false,
+      },
+    ];
+    // Ground = explored (1,0) + the PC token's hex (0,0); visible-only (0,0)
+    // fog alone would not count, the token does.
+    const cells = unresolvedClueCells(full, 'dm').sort((a, b) => a.q - b.q);
+    expect(cells).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+    // Once anyone locates it the overlay drops the source.
+    full.discoveries.push({
+      id: 'd3',
+      clueId: 'cl3',
+      characterId: 'char1',
+      at: 1002,
+      how: { kind: 'auto' },
+      direction: null,
+      locates: true,
+    });
+    expect(unresolvedClueCells(full, 'dm')).toEqual([]);
+  });
+
+  it('player: union of observableFrom over their unlocated senses only', () => {
+    const full = fullState();
+    full.senses = [
+      {
+        clueId: 'cl3',
+        text: 'x',
+        direction: null,
+        inRange: false,
+        at: 1,
+        observableFrom: [
+          { q: 1, r: 0 },
+          { q: 1, r: 1 },
+        ],
+        located: false,
+        contentTitle: null,
+        sensedBy: [],
+      },
+      {
+        clueId: 'cl9',
+        text: 'y',
+        direction: null,
+        inRange: false,
+        at: 1,
+        observableFrom: [
+          { q: 1, r: 1 },
+          { q: 3, r: 3 },
+        ],
+        located: false,
+        contentTitle: null,
+        sensedBy: [],
+      },
+      {
+        clueId: 'cl1',
+        text: 'z',
+        direction: null,
+        inRange: true,
+        at: 1,
+        observableFrom: [{ q: 9, r: 9 }],
+        located: true,
+        contentTitle: 'Dragon Lair',
+        sensedBy: [],
+      },
+    ];
+    const cells = unresolvedClueCells(full, 'player').sort((a, b) => a.q - b.q || a.r - b.r);
+    expect(cells).toEqual([
+      { q: 1, r: 0 },
+      { q: 1, r: 1 },
+      { q: 3, r: 3 },
+    ]);
   });
 });

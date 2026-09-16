@@ -38,7 +38,10 @@ function applyDotEnv(file: string): void {
     if (!line || line.startsWith('#')) continue;
     const eq = line.indexOf('=');
     if (eq <= 0) continue;
-    const key = line.slice(0, eq).replace(/^export\s+/, '').trim();
+    const key = line
+      .slice(0, eq)
+      .replace(/^export\s+/, '')
+      .trim();
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
     if (process.env[key] !== undefined) continue; // real env wins
     let value = line.slice(eq + 1).trim();
@@ -103,6 +106,13 @@ export const CREATE_PASSWORD = process.env.CREATE_PASSWORD ?? '';
 
 /** Per-campaign cap on the total size of uploaded images. */
 export const UPLOAD_QUOTA_BYTES = num('UPLOAD_QUOTA_MB', 200) * 1024 * 1024;
+
+/**
+ * Largest backup archive `POST /api/campaigns/import` accepts. Archives carry
+ * every uploaded image as base64, so an image-heavy campaign can exceed the
+ * 100MB default — raise it rather than trimming the backup.
+ */
+export const MAX_IMPORT_BYTES = num('MAX_IMPORT_MB', 100) * 1024 * 1024;
 
 /**
  * Trust `X-Forwarded-For` for the rate-limiter's client identity. True by

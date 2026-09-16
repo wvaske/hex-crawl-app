@@ -29,6 +29,7 @@ import type { DB } from '../db/driver.js';
 export const EXPORT_FORMAT_VERSION = 1;
 
 /** Hard ceiling on an uploaded archive (images are embedded base64). */
+/** Default import cap; the live value is `MAX_IMPORT_BYTES` in config.ts (MAX_IMPORT_MB). */
 export const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
 
 type Row = Record<string, unknown>;
@@ -83,8 +84,7 @@ function childRows(db: DB, table: string, column: string, parents: string[], ord
 /** Everything except the (potentially huge) image payloads. */
 function collectExport(db: DB, campaignId: string): Omit<CampaignExport, 'images'> | null {
   const campaign = db.prepare('SELECT * FROM campaign WHERE id = ?').get(campaignId) as
-    | Row
-    | undefined;
+    Row | undefined;
   if (!campaign) return null;
   // Never leak the invite keys.
   const { dm_secret: _dm, player_secret: _player, ...campaignSafe } = campaign;
@@ -201,7 +201,9 @@ export function exportReadPlan(db: DB, campaignId: string): void {
 
 /** Convenience wrapper (tests, CLI): the whole export as one object. */
 export function exportCampaign(db: DB, campaignId: string, uploadsDir: string): CampaignExport {
-  return JSON.parse([...exportCampaignChunks(db, campaignId, uploadsDir)].join('')) as CampaignExport;
+  return JSON.parse(
+    [...exportCampaignChunks(db, campaignId, uploadsDir)].join(''),
+  ) as CampaignExport;
 }
 
 export function exportFileName(campaignId: string, at = new Date()): string {
@@ -356,7 +358,12 @@ export function importCampaign(
       urlPath = `/uploads/${campaignId}/${fileName}`;
     }
     const { dataBase64: _drop, ...rest } = row;
-    return { ...rest, id: imageMap.get(str(row.id) ?? '') ?? nanoid(10), map_id: mapId, path: urlPath };
+    return {
+      ...rest,
+      id: imageMap.get(str(row.id) ?? '') ?? nanoid(10),
+      map_id: mapId,
+      path: urlPath,
+    };
   });
 
   const counts: Record<string, number> = {};
@@ -407,8 +414,7 @@ export function importCampaign(
     );
     counts.image_layer = insertRows(db, 'image_layer', images);
     for (const table of ['hex', 'fog', 'hex_visit'] as const) {
-      const rows =
-        table === 'hex' ? data.hexes : table === 'fog' ? data.fog : data.hexVisits;
+      const rows = table === 'hex' ? data.hexes : table === 'fog' ? data.fog : data.hexVisits;
       counts[table] = insertRows(
         db,
         table,

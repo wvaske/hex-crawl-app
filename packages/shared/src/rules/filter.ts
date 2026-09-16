@@ -10,12 +10,7 @@ import type {
   Token,
   TrailSign,
 } from '../domain.js';
-import {
-  clueInRange,
-  clueObservableCells,
-  isFullContent,
-  nearestContentCell,
-} from '../domain.js';
+import { clueInRange, clueObservableCells, isFullContent, nearestContentCell } from '../domain.js';
 import { hexKey } from '../hex/coords.js';
 import { bearingAngle, compassDirection, withDirection } from '../hex/direction.js';
 import type { HexOrientation } from '../hex/layout.js';
@@ -299,4 +294,60 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
     }
   }
   return senses.sort((a, b) => Number(b.inRange) - Number(a.inRange) || b.at - a.at);
+}
+
+/**
+ * "We noticed something around here and never found it": the visited hexes
+ * from which a discovered clue can be sensed, for every source that has NOT
+ * been located yet. The map overlay behind the ❔ top-bar toggle.
+ *
+ * Players read it off their own senses, which the server has already filtered
+ * to their character. The DM sees the whole party's picture computed from the
+ * full state: a source counts as found once ANY character has located it (or
+ * it is common knowledge), and the ground is every explored hex plus wherever
+ * a PC token stands — the same triangulation ground `computeSenses` uses.
+ */
+export function unresolvedClueCells(
+  state: CampaignState,
+  role: SeatRole,
+): { q: number; r: number }[] {
+  const out = new Map<string, { q: number; r: number }>();
+  if (role !== 'dm') {
+    for (const sense of state.senses) {
+      if (sense.located) continue;
+      for (const c of sense.observableFrom) out.set(hexKey(c.q, c.r), c);
+    }
+    return [...out.values()];
+  }
+
+  const mapState = state.mapState;
+  if (!mapState) return [];
+  const byClue = new Map<string, Discovery[]>();
+  for (const d of state.discoveries) {
+    const list = byClue.get(d.clueId) ?? [];
+    list.push(d);
+    byClue.set(d.clueId, list);
+  }
+  if (byClue.size === 0) return [];
+  const visited = new Set(
+    mapState.fog.filter((f) => f.state === 'explored').map((f) => hexKey(f.q, f.r)),
+  );
+  for (const t of mapState.tokens) if (t.kind === 'pc') visited.add(hexKey(t.q, t.r));
+
+  for (const content of mapState.contents) {
+    if (!isFullContent(content) || !content.enabled || content.knownLocation) continue;
+    const found = content.clues.flatMap((clue) => byClue.get(clue.id) ?? []);
+    if (found.length === 0 || found.some(discoveryLocates)) continue;
+    // Every hex the clue can be perceived from (vantage set or radius, issue
+    // #123) that the party has actually stood on: that is where the DM would
+    // expect them to have picked up the thread.
+    for (const clue of content.clues) {
+      if (!byClue.has(clue.id)) continue;
+      for (const c of clueObservableCells(clue, content)) {
+        const key = hexKey(c.q, c.r);
+        if (visited.has(key)) out.set(key, c);
+      }
+    }
+  }
+  return [...out.values()];
 }
