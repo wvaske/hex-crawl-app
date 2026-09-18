@@ -59,6 +59,8 @@ export interface CampaignExport {
   pendingReveals: Row[];
   encTables: Row[];
   log: Row[];
+  /** Plugin key/value storage (plugins/AGENTS.md); absent in older archives. */
+  pluginData: Row[];
   /** image_layer rows, each with the uploaded file inlined as base64. */
   images: Row[];
 }
@@ -138,6 +140,9 @@ function collectExport(db: DB, campaignId: string): Omit<CampaignExport, 'images
     encTables: db.prepare('SELECT * FROM enc_table WHERE campaign_id = ?').all(campaignId) as Row[],
     log: db
       .prepare('SELECT * FROM log WHERE campaign_id = ? ORDER BY at, id')
+      .all(campaignId) as Row[],
+    pluginData: db
+      .prepare('SELECT * FROM plugin_data WHERE campaign_id = ? ORDER BY plugin_id, key')
       .all(campaignId) as Row[],
   };
 }
@@ -238,6 +243,7 @@ export const CampaignImportSchema = z.object({
   pendingReveals: RowsSchema.default([]),
   encTables: RowsSchema,
   log: RowsSchema,
+  pluginData: RowsSchema.default([]),
   images: RowsSchema,
 });
 
@@ -555,6 +561,25 @@ export function importCampaign(
           campaign_id: campaignId,
           visibility: visibility === 'all' ? 'all' : 'dm',
         };
+      }),
+    );
+    // Plugin storage is opaque to the importer, but plugins key their data by
+    // character id (`char:<id>`) and store ids inside values — and every
+    // character just got a new id. Ids are random 10+ character strings, so a
+    // textual swap is safe and keeps a restored campaign's plugin data attached.
+    const swapCharIds = (text: string): string => {
+      let out = text;
+      for (const [from, to] of charMap) if (from.length >= 8) out = out.split(from).join(to);
+      return out;
+    };
+    counts.plugin_data = insertRows(
+      db,
+      'plugin_data',
+      keep(data.pluginData, (row) => {
+        const key = str(row.key);
+        const value = str(row.value);
+        if (!key || value === null || !str(row.plugin_id)) return null;
+        return { ...row, campaign_id: campaignId, key: swapCharIds(key), value: swapCharIds(value) };
       }),
     );
   });

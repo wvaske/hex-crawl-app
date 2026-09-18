@@ -5,12 +5,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/server.mjs --external:better-sqlite3 --external:pg-native --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\""
+    "dev": "node ../../scripts/plugins.mjs && tsx watch src/index.ts",
+    "build": "pnpm run bundle",
+    "start": "node dist/server.mjs",
+    "test": "node ../../scripts/plugins.mjs && vitest run",
+    "typecheck": "node ../../scripts/plugins.mjs && tsc --noEmit",
+    "bundle": "node ../../scripts/plugins.mjs && esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/server.mjs --external:better-sqlite3 --external:pg-native --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\""
   },
   "dependencies": {
     "@hexcrawl/shared": "workspace:*",
@@ -30,5 +30,9 @@
     "tsx": "^4.19.0",
     "typescript": "~5.8.0",
     "vitest": "^4.0.18"
+  },
+  "exports": {
+    "./plugin-api": "./src/plugins/api.ts",
+    "./plugin-testing": "./src/plugins/testing.ts"
   }
 }

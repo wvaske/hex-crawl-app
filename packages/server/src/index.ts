@@ -19,7 +19,7 @@ const db = await openDatabase();
 const store = await Store.create(db);
 const hub = new Hub();
 const rng = seededRng(Date.now() ^ (Math.random() * 0xffffffff));
-const app = createApp(store, hub);
+const app = createApp(store, hub, { rng });
 
 // D&D Beyond game-log listeners (issue #146) resume for every campaign that
 // left one enabled — the DM's cookie is on disk, the connection is not.

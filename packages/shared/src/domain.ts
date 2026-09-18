@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { hexDistance, type HexCoord } from './hex/coords.js';
+import { PluginSettingsSchema } from './plugins.js';
 
 // ---------------------------------------------------------------------------
 // Terrain
@@ -311,6 +312,11 @@ export const CampaignSettingsSchema = z.object({
   weatherTable: z.array(WeatherEntrySchema).max(100).nullable().default(null),
   /** D&D Beyond game-log import (issue #146). */
   ddbGameLog: DdbGameLogSettingsSchema.default(() => DdbGameLogSettingsSchema.parse({})),
+  /**
+   * Per-campaign plugin switches and settings, keyed by plugin id (see
+   * `plugins.ts`). Players see `enabled` only — `config` is DM-only.
+   */
+  plugins: z.record(z.string(), PluginSettingsSchema).default({}),
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 

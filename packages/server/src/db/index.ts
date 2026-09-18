@@ -292,6 +292,15 @@ export function migrate(d: DB): void {
       at INTEGER NOT NULL,
       PRIMARY KEY (campaign_id, external_id)
     );
+
+    CREATE TABLE IF NOT EXISTS plugin_data (
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      plugin_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (campaign_id, plugin_id, key)
+    );
   `,
   );
   // Additive migrations for columns introduced after first release.

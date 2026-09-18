@@ -69,7 +69,21 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
     : null;
 
   return {
-    campaign: full.campaign,
+    // Plugin settings can hold things a DM would not read aloud (wiki page
+    // names for DM logs, tuning numbers): players learn which plugins are on
+    // and nothing else. A plugin serves players what they need via an action.
+    campaign: {
+      ...full.campaign,
+      settings: {
+        ...full.campaign.settings,
+        plugins: Object.fromEntries(
+          Object.entries(full.campaign.settings.plugins ?? {}).map(([id, p]) => [
+            id,
+            { enabled: p.enabled, config: {} },
+          ]),
+        ),
+      },
+    },
     seats: full.seats,
     characters: full.characters,
     maps: full.maps,

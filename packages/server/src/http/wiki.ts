@@ -81,6 +81,12 @@ export function clearWikiCache(): void {
   cache.clear();
 }
 
+/** Drop one page after the app itself edited it (`engine/wikiBot.ts`). */
+export function invalidateWikiPage(endpoint: string, title: string): void {
+  cache.delete(`${endpoint}|${title}`);
+  cache.delete(`${endpoint}|${title.replace(/_/g, ' ')}`);
+}
+
 /**
  * Fetch one page's parsed HTML, sanitized and cached for
  * {@link WIKI_CACHE_TTL_MS}. Never throws: transport and MediaWiki-level

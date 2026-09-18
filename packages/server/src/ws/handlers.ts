@@ -47,6 +47,8 @@ import { rollEncounter } from '../engine/encounters.js';
 import { rerollWeatherForNewDay, setWeather, weatherLogText } from '../engine/weather.js';
 import { startConnector, stopConnector } from '../engine/ddbGameLog.js';
 import { DDB_GAMELOG } from '../config.js';
+import { sanitizePluginSettingsPatch } from '../plugins/host.js';
+import { installedPlugins } from '../plugins/registry.js';
 
 export interface Ctx {
   runtime: CampaignRuntime;
@@ -151,7 +153,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
   'campaign.update': ((cmd: Extract<ClientCommand, { kind: 'campaign.update' }>, ctx: Ctx) => {
     requireDm(ctx);
     const wasPaused = ctx.runtime.campaign.settings.pausePlayerMapSync;
-    ctx.runtime.updateCampaign({ name: cmd.name, settings: cmd.settings });
+    // Plugin settings are only ever stored in the shape the manifest declares.
+    const settings = cmd.settings?.plugins
+      ? {
+          ...cmd.settings,
+          plugins: sanitizePluginSettingsPatch(installedPlugins(), cmd.settings.plugins),
+        }
+      : cmd.settings;
+    ctx.runtime.updateCampaign({ name: cmd.name, settings });
     // Changed map defaults flow straight into every map inheriting them.
     if (cmd.settings?.mapDefaults) {
       const changed = Object.keys(cmd.settings.mapDefaults).filter((f): f is InheritableMapField =>

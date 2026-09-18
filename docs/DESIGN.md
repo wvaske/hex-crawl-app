@@ -240,12 +240,22 @@ log           id, campaignId, at, kind, payload(json), visibility(dm|all|seatId)
 - Server→client: `snapshot` (on connect), `event` (broadcast diffs, role-filtered),
   `ack`/`error` (per command id), `presence`.
 
+### Plugins
+
+Table-specific features live outside the core as build-time plugins
+(`plugins/<id>/`: a manifest, server *actions*, client *panels*), switched on
+per campaign. They get a curated context — key/value storage, the campaign's
+wiki through a stored bot login, server-side dice, the game log — and never
+touch the snapshot: a plugin's actions are its own security boundary. Contract
+and rationale: [plugins/AGENTS.md](../plugins/AGENTS.md).
+
 ### Directory sketch
 
 ```
 packages/shared/src/    hex/  protocol/  rules/  (math, schemas, fog+knowledge+dice rules)
 packages/server/src/    db/  commands/  ws/  http/  engine/ (knowledge, encounters)
 packages/client/src/    engine/ (pixi)  stores/  views/ (dm, player, join)  ui/ (primitives)
+plugins/                <id>/{manifest.ts, server/, client/}  (example-* tracked, the rest gitignored)
 data/                   campaign.db, uploads/   (gitignored)
 ```
 

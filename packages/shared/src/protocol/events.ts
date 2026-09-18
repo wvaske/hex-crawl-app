@@ -128,6 +128,12 @@ export const ServerEventSchema = z.discriminatedUnion('kind', [
   ev('encounterTable.upserted', { table: EncounterTableSchema }),
   ev('encounterTable.deleted', { tableId: z.string() }),
   ev('log.appended', { entry: LogEntrySchema }),
+  /**
+   * A plugin's server side changed something its panels show (plugins/AGENTS.md).
+   * Carries no data — the panel refetches through its own action, which does
+   * its own per-viewer filtering.
+   */
+  ev('plugin.changed', { pluginId: z.string(), topic: z.string() }),
 ]);
 export type ServerEvent = z.infer<typeof ServerEventSchema>;
 export type ServerEventKind = ServerEvent['kind'];

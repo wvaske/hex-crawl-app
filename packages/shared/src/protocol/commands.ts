@@ -92,6 +92,17 @@ const CampaignSettingsPatchSchema = z
         countAsSearch: z.boolean(),
       })
       .partial(),
+    /**
+     * Plugin switches and settings, merged per plugin id server-side; the
+     * server sanitizes `config` against the plugin's manifest.
+     */
+    plugins: z.record(
+      z.string().max(40),
+      z.object({
+        enabled: z.boolean().optional(),
+        config: z.record(z.string().max(60), z.unknown()).optional(),
+      }),
+    ),
   })
   .partial();
 

@@ -1,0 +1,14 @@
+# Private plugins never reach the public repo: everything in here is ignored
+# except the workspace plumbing, the docs and the example-* plugins.
+# Keep yours in your own repo and mirror them in with HEXCRAWL_PLUGINS_DIR
+# (see AGENTS.md) — an ignored folder that exists only in one checkout is
+# exactly the kind of work that gets lost.
+/*
+!/.gitignore
+!/package.json
+!/tsconfig.json
+!/vitest.config.ts
+!/README.md
+!/AGENTS.md
+!/CLAUDE.md
+!/example-*/

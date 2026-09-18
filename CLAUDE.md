@@ -4,6 +4,9 @@ Read [docs/AI-DEVELOPMENT.md](docs/AI-DEVELOPMENT.md) before changing
 anything; it holds the workflow, architecture summary, and the gotchas that
 keep biting. Architecture background is in [docs/DESIGN.md](docs/DESIGN.md).
 
+Writing or changing a **plugin** (a sidebar extension under `plugins/`)? The
+contract is [plugins/AGENTS.md](plugins/AGENTS.md).
+
 Two rules that are not optional:
 
 1. **Survey other work before starting.** Run `git fetch --all --prune`,

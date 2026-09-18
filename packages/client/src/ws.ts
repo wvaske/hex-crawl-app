@@ -2,6 +2,7 @@ import type { ClientCommand, CommandInput, ServerMessage } from '@hexcrawl/share
 import { ServerMessageSchema, withDirection } from '@hexcrawl/shared';
 import { useSession } from './stores/session.js';
 import { useUi } from './stores/ui.js';
+import { emitPluginChanged } from './plugins/events.js';
 
 let socket: WebSocket | null = null;
 let campaignId: string | null = null;
@@ -113,6 +114,14 @@ function handleMessage(msg: ServerMessage): void {
             text: msg.entry.text,
           });
         }
+      } else if (msg.kind === 'plugin.changed') {
+        emitPluginChanged(msg.pluginId, msg.topic);
+      } else if (msg.kind === 'log.appended' && msg.entry.kind === 'plugin' && msg.entry.data?.toast) {
+        session.pushToast({
+          kind: 'info',
+          title: String(msg.entry.data.pluginName ?? 'Plugin'),
+          text: msg.entry.text,
+        });
       } else if (msg.kind === 'trail.found') {
         const mine = msg.characterId === currentCharacterId();
         const dirs = [

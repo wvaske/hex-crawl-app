@@ -131,6 +131,7 @@ function fullState(): CampaignState {
           userId: '',
           countAsSearch: false,
         },
+        plugins: {},
       },
       time: { minutes: 8 * 60, travelMode: 'foot', pace: 'normal', partyHex: null, weather: null },
     },

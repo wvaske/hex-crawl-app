@@ -8,8 +8,16 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/server/package.json packages/server/package.json
 COPY packages/client/package.json packages/client/package.json
+COPY plugins/package.json plugins/package.json
 RUN pnpm install --frozen-lockfile
 COPY packages packages
+# Plugins are compiled in (plugins/AGENTS.md): whatever folders sit under
+# plugins/ in the build context — tracked examples and gitignored private ones
+# alike — end up in the image. HEXCRAWL_PLUGINS_SKIP leaves some out.
+COPY scripts/plugins.mjs scripts/plugins.mjs
+COPY plugins plugins
+ARG HEXCRAWL_PLUGINS_SKIP=""
+ENV HEXCRAWL_PLUGINS_SKIP=$HEXCRAWL_PLUGINS_SKIP
 RUN pnpm --filter @hexcrawl/client build \
  && pnpm --filter @hexcrawl/server bundle
 

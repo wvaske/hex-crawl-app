@@ -9,6 +9,7 @@ import { useSession } from '../../stores/session.js';
 import { send } from '../../ws.js';
 import { fetchInviteKeys, type InviteKeys } from '../../api.js';
 import { DensityControl, TextSizeControl } from '../TopBar.js';
+import { PluginSettings } from './PluginSettings.js';
 import { Button, Field, Input, Section, Select, TextArea, Toggle, Lbl } from '../../ui/kit.js';
 
 export function SettingsTab({ campaignId }: { campaignId: string }) {
@@ -100,6 +101,8 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
           routing is in the map manager ("Explored routes").
         </p>
       </Section>
+
+      <PluginSettings campaignId={campaignId} />
 
       <DdbGameLog campaignId={campaignId} />
 
