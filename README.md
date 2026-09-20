@@ -289,6 +289,19 @@ your wiki, wire it to the map too: see [Integration API + MCP](#integration-api-
 | hold `Space` | Pan with left-drag in any tool |
 | `Esc`        | Clear selection / close dialog |
 
+## Plugins
+
+Features that belong to one table rather than to every table — a house-rule
+dice pool, in-character letters filed on the campaign wiki — are **plugins**: a
+folder under [`plugins/`](plugins/README.md) that adds a sidebar panel and the
+server logic behind it, compiled in at build time and switched on per campaign
+under **Setup → Plugins**. Two examples ship (disabled) to copy from. Your own
+plugins stay out of this repository: keep them in a directory of yours and
+point `HEXCRAWL_PLUGINS_DIR` at it. Plugins that write to the wiki use a
+MediaWiki bot login the DM stores under **Setup → Wiki write access**.
+Authoring guide (written for AI agents, readable by people):
+[plugins/AGENTS.md](plugins/AGENTS.md).
+
 ## Development
 
 Requires Node 22+ and pnpm (via corepack).

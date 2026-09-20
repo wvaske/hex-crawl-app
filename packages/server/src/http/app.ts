@@ -8,7 +8,7 @@ import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { Content, ImageLayer } from '@hexcrawl/shared';
-import { ContentTypeSchema, GateSchema, pixelToHex } from '@hexcrawl/shared';
+import { ContentTypeSchema, GateSchema, pixelToHex, seededRng, type Rng } from '@hexcrawl/shared';
 import { evaluateKnowledge } from '../engine/knowledge.js';
 import { deliverDiscoveries } from '../engine/deliver.js';
 import { evaluateTrails } from '../engine/trails.js';
@@ -36,6 +36,15 @@ import {
   importCampaign,
 } from './portability.js';
 import { fetchWikiPage, isWikiError, wikiApiEndpoint } from './wiki.js';
+import {
+  WIKI_BOT_SECRET,
+  WikiError,
+  forgetWikiSession,
+  wikiBotStatus,
+  wikiLogin,
+} from '../engine/wikiBot.js';
+import { mountPlugins } from '../plugins/host.js';
+import { installedPlugins } from '../plugins/registry.js';
 import {
   RateLimiter,
   clientIp,
@@ -81,6 +90,8 @@ export interface SecurityOptions {
   rateLimits?: Partial<Record<RateLimitName, RateLimitRule>>;
   /** Injectable clock so tests can step past a rate-limit window. */
   now?: () => number;
+  /** Dice source handed to plugin actions. Production passes the server's RNG. */
+  rng?: Rng;
 }
 
 type RateLimitName = 'create' | 'import' | 'join' | 'export';
@@ -404,6 +415,63 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Sync failed' }, 502);
     }
+  });
+
+  // -- wiki write access (plugins) --------------------------------------------
+
+  /** DM only: is a bot login stored? Never returns the password. */
+  app.get('/api/campaigns/:id/integrations/wiki', (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const seat = getSeat(c, runtime);
+    if (!seat || seat.role !== 'dm') return c.json({ error: 'DM only' }, 403);
+    return c.json(wikiBotStatus(runtime));
+  });
+
+  /**
+   * Store a MediaWiki bot login (Special:BotPasswords) so plugins can write to
+   * the campaign's wiki. Write-only, verified by logging in before it is kept;
+   * lives in `integration_secret` and never reaches a snapshot or an export.
+   */
+  app.post('/api/campaigns/:id/integrations/wiki/secret', async (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const seat = getSeat(c, runtime);
+    if (!seat || seat.role !== 'dm') return c.json({ error: 'DM only' }, 403);
+    const body = z
+      .object({ username: z.string().min(1).max(200), password: z.string().min(1).max(500) })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: 'Bot username and password required' }, 400);
+    const endpoint = wikiApiEndpoint(runtime.campaign.settings.wikiBaseUrl);
+    if (!endpoint) return c.json({ error: 'Set the campaign wiki URL first' }, 400);
+    const creds = { username: body.data.username.trim(), password: body.data.password };
+    try {
+      await wikiLogin(endpoint, creds);
+    } catch (err) {
+      return c.json({ error: err instanceof WikiError ? err.message : 'Wiki login failed' }, 502);
+    }
+    runtime.setSecret(WIKI_BOT_SECRET, JSON.stringify(creds));
+    forgetWikiSession(runtime);
+    return c.json(wikiBotStatus(runtime));
+  });
+
+  app.delete('/api/campaigns/:id/integrations/wiki/secret', (c) => {
+    const runtime = store.getCampaign(c.req.param('id'));
+    if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
+    const seat = getSeat(c, runtime);
+    if (!seat || seat.role !== 'dm') return c.json({ error: 'DM only' }, 403);
+    runtime.setSecret(WIKI_BOT_SECRET, null);
+    forgetWikiSession(runtime);
+    return c.json(wikiBotStatus(runtime));
+  });
+
+  // -- plugins (plugins/AGENTS.md) ---------------------------------------------
+
+  mountPlugins(app, installedPlugins(), {
+    getRuntime: (id) => store.getCampaign(id),
+    getSeat,
+    hub,
+    rng: security.rng ?? seededRng(Date.now() ^ (Math.random() * 0xffffffff)),
   });
 
   // -- D&D Beyond game log (issue #146) ---------------------------------------

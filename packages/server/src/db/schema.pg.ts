@@ -256,6 +256,15 @@ export const POSTGRES_SCHEMA = `
       at BIGINT NOT NULL,
       PRIMARY KEY (campaign_id, external_id)
     );
+
+    CREATE TABLE IF NOT EXISTS plugin_data (
+      campaign_id TEXT NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+      plugin_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (campaign_id, plugin_id, key)
+    );
 `;
 
 /**

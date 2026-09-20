@@ -1,4 +1,9 @@
 @import 'tailwindcss';
+/*
+ * Plugins (plugins/AGENTS.md) live outside this package, and private ones are
+ * gitignored — both reasons Tailwind's automatic source detection skips them.
+ */
+@source "../../../plugins";
 
 @theme {
   --color-ink-950: #0b0d12;

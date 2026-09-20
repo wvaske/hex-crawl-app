@@ -9,3 +9,6 @@ data/
 .env
 .env.*
 !.env.example
+
+# Written by scripts/plugins.mjs from whatever is installed under plugins/.
+registry.generated.ts

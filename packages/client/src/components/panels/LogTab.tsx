@@ -25,6 +25,7 @@ const KIND_META: Record<string, { icon: string; label: string }> = {
   travel: { icon: '🥾', label: 'Travel' },
   undo: { icon: '↶', label: 'Undo' },
   note: { icon: '📝', label: 'Note' },
+  plugin: { icon: '🧩', label: 'Plugin' },
 };
 
 const FILTERS = [

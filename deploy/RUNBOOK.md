@@ -35,6 +35,21 @@ docker build -t hex-crawl:latest .
 **B. Build elsewhere and push to a registry alder01 can reach**, then set
 `HEXCRAWL_IMAGE` in the stack env.
 
+**Plugins are baked into the image.** The build copies `plugins/` from the
+build context, so a `git clone` build contains only the tracked `example-*`
+plugins. To ship private ones, put their folders under `plugins/` in the build
+context first — on the build host, from their own repository:
+
+```bash
+HEXCRAWL_PLUGINS_DIR=/path/to/private/plugins node scripts/plugins.mjs --list
+docker build --build-arg 'HEXCRAWL_PLUGINS_SKIP=example-*' -t hex-crawl:latest .
+```
+
+(`--list` mirrors them in and prints what the build will include; the
+`--build-arg` leaves the examples out.) The private plugin repository is the
+source of truth — deploy a pushed commit of it, same rule as for this repo.
+Plugin *data* lives in the campaign database and survives redeploys.
+
 Verify: `docker run --rm -e DATA_DIR=/tmp -p 3000:3000 hex-crawl:latest` then
 `curl localhost:3000/api/health` → `{"ok":true}`.
 

@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"]
+  },
+  // pg.d.ts: server code reached through plugin-testing needs its ambient `pg` types.
+  "include": ["*/**/*.ts", "*/**/*.tsx", "../packages/server/src/db/pg.d.ts"],
+  "exclude": ["node_modules"]
+}

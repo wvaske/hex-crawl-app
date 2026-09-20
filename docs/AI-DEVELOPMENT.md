@@ -359,12 +359,69 @@ player-facing data).
 - `applySearchRoll` / `deliverCheckEntry` in `ws/handlers.ts` are the shared
   tail of `check.roll`; any new source of rolls should go through them.
 
+## Plugins (sidebar extensions)
+
+Campaign-specific features — a house-rule dice pool, letters that get filed on
+the wiki — are **plugins**, not core changes. The authoring contract is
+[plugins/AGENTS.md](../plugins/AGENTS.md); read it before writing one. What the
+core side looks like:
+
+- **Build-time, not run-time.** A plugin is a folder under top-level
+  `plugins/` (a pnpm workspace package, so its files resolve `react`, `zod`
+  and `@hexcrawl/*` normally). `scripts/plugins.mjs` runs before every
+  `dev`/`typecheck`/`test`/`build`/`bundle` and writes two **gitignored**
+  registries that statically import whatever is installed —
+  `packages/{server,client}/src/plugins/registry.generated.ts`. "Cannot find
+  module ./registry.generated.js" means the script did not run: invoke the
+  package script (`pnpm --filter … typecheck`), not bare `tsc`/`vitest`.
+- **Private plugins are gitignored** (everything in `plugins/` except
+  `example-*`) and should live in the owner's own repo, mirrored in through
+  `HEXCRAWL_PLUGINS_DIR`. A private plugin that exists only inside one
+  worktree is exactly the uncommitted-work hazard the workflow rules are
+  about — never leave one there.
+- **Server**: `plugins/api.ts` (the contract: actions + `PluginContext`),
+  `plugins/host.ts` (mounts `POST /api/campaigns/:id/plugins/:pluginId/:action`,
+  does seat/enabled/dmOnly/zod checks, builds the context), `plugins/testing.ts`
+  (`createPluginTestBed`). Plugin data is the `plugin_data` table, cached in
+  `CampaignRuntime` (`getPluginData`/`setPluginData`) like everything else, and
+  rides in backups (character ids inside keys/values are swapped textually on
+  import).
+- **Plugin data never touches the snapshot**, so `filterStateForViewer` has
+  nothing to say about it: each action does its own per-viewer filtering, and
+  clients refetch on the ephemeral `plugin.changed` event (`ctx.notify`). The
+  one thing on the snapshot is `campaign.settings.plugins[id] = { enabled,
+  config }` — and the filter blanks `config` for players.
+- **`campaign.update` sanitizes plugin settings** against the manifest
+  (`sanitizePluginSettingsPatch`): unknown plugin ids and keys are dropped,
+  numbers clamped. `runtime.updateCampaign` merges per plugin id.
+- **Wiki writes** go through `engine/wikiBot.ts`: a per-campaign MediaWiki bot
+  login in `integration_secret` (`wikiBot`, set from Setup → Wiki write access,
+  verified by logging in, never on a snapshot or in an export). Writes are
+  serialized per campaign and retried once through a fresh login on
+  session-shaped errors (`badtoken`, `assertuserfailed`, …) — MediaWiki
+  sessions die without notice. The host is still derived from `wikiBaseUrl`;
+  callers only choose titles. A write invalidates the read proxy's cache entry.
+- **Integration secrets are cached in the runtime** now (`getSecret` no longer
+  reads the database at request time, which would throw on Postgres).
+- **Client**: `plugins/api.tsx` is the only thing a plugin may import from the
+  client (`@hexcrawl/client/plugin-api`); `PanelShell` splices enabled plugin
+  panels between the play panels and Build/Setup, inside an error boundary, and
+  `PanelId` is now `BuiltinPanelId` or a `plugin:<pluginId>/<panelId>` string.
+  `index.css` has an explicit `@source "../../../plugins"` because Tailwind's
+  auto-detection skips gitignored and out-of-package files. The phone tab bar
+  scrolls horizontally once plugins push it past what fits.
+- Widening the plugin API is a core change: keep it generic, document it in
+  `plugins/AGENTS.md`, and cover it in `plugins-host.test.ts`.
+
 ## Dev & verification
 
 - `pnpm install`, then `pnpm dev` (server :3000, Vite client :5173, both on
   0.0.0.0). `pnpm typecheck`, `pnpm test`, `pnpm build`.
 - Full-stack manual test without Vite: `pnpm build`, then run the server with
   `CLIENT_DIST=../client/dist PORT=<port>` — it serves the built client.
+- `pnpm --filter @hexcrawl/server build` is the esbuild bundle
+  (`dist/server.mjs`, run with `start`); the old `tsc` emit is gone — it could
+  never run (shared is source-only) and cannot span the `plugins/` imports.
 - The server binds `PORT` (default 3000); data lives in `DATA_DIR`
   (default `../../data` relative to `packages/server`, gitignored).
 

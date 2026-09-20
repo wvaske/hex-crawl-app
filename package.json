@@ -5,11 +5,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "pnpm --parallel --filter @hexcrawl/server --filter @hexcrawl/client dev",
+    "dev": "pnpm --parallel --filter @hexcrawl/server --filter @hexcrawl/client --filter @hexcrawl/plugins dev",
     "build": "pnpm -r build",
     "test": "pnpm -r --no-bail test",
     "typecheck": "pnpm -r typecheck",
-    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx,css}\""
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx,css}\" \"plugins/**/*.{ts,tsx}\"",
+    "plugins": "node scripts/plugins.mjs --list"
   },
   "devDependencies": {
     "prettier": "^3.5.0",

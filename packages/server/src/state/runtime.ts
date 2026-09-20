@@ -54,7 +54,11 @@ export interface SeatRecord {
 }
 
 /** Nested patch shape for campaign settings (mapDefaults merges field-wise). */
-export type CampaignSettingsPatch = Partial<Omit<CampaignSettings, 'mapDefaults' | 'ddbGameLog'>> & {
+export type CampaignSettingsPatch = Partial<
+  Omit<CampaignSettings, 'mapDefaults' | 'ddbGameLog' | 'plugins'>
+> & {
+  /** Merged per plugin id; `config` replaces that plugin's config whole. */
+  plugins?: Record<string, { enabled?: boolean; config?: Record<string, unknown> }>;
   mapDefaults?: Partial<Omit<MapDefaults, 'encounterCheck'>> & {
     encounterCheck?: Partial<MapDefaults['encounterCheck']>;
   };
@@ -146,6 +150,10 @@ export class CampaignRuntime {
     recent: [],
   };
   private importedRolls = new Set<string>();
+  /** `integration_secret` rows, cached: the runtime never reads the DB at request time. */
+  private secrets = new Map<string, string>();
+  /** Plugin key/value storage: pluginId → key → parsed JSON value. */
+  private pluginData = new Map<string, Map<string, unknown>>();
   /**
    * Prep mode (settings.pausePlayerMapSync): per-map snapshot of the editable
    * layers as players last saw them. In-memory; recaptured at boot when the
@@ -307,6 +315,16 @@ export class CampaignRuntime {
       .prepare('SELECT external_id FROM imported_roll WHERE campaign_id = ?')
       .all(this.id) as Array<{ external_id: string }>) {
       this.importedRolls.add(r.external_id);
+    }
+    for (const r of d
+      .prepare('SELECT kind, value FROM integration_secret WHERE campaign_id = ?')
+      .all(this.id) as Array<{ kind: string; value: string }>) {
+      this.secrets.set(r.kind, r.value);
+    }
+    for (const r of d
+      .prepare('SELECT plugin_id, key, value FROM plugin_data WHERE campaign_id = ?')
+      .all(this.id) as Array<{ plugin_id: string; key: string; value: string }>) {
+      this.pluginBucket(r.plugin_id).set(r.key, safeJson(r.value));
     }
     this.log = (
       d
@@ -529,13 +547,12 @@ export class CampaignRuntime {
 
   /** A server-side secret for this campaign (never in snapshots or exports). */
   getSecret(kind: string): string | null {
-    const row = this.db
-      .prepare('SELECT value FROM integration_secret WHERE campaign_id = ? AND kind = ?')
-      .get(this.id, kind) as { value: string } | undefined;
-    return row?.value ?? null;
+    return this.secrets.get(kind) ?? null;
   }
 
   setSecret(kind: string, value: string | null): void {
+    if (value === null) this.secrets.delete(kind);
+    else this.secrets.set(kind, value);
     if (value === null) {
       this.db.prepare('DELETE FROM integration_secret WHERE campaign_id = ? AND kind = ?').run(this.id, kind);
     } else {
@@ -547,6 +564,50 @@ export class CampaignRuntime {
         .run(this.id, kind, value, Date.now());
     }
     if (kind === 'ddbCobalt') this.ddbStatus.hasSecret = value !== null;
+  }
+
+  // -- plugin storage (plugins/AGENTS.md) ------------------------------------
+
+  private pluginBucket(pluginId: string): Map<string, unknown> {
+    let bucket = this.pluginData.get(pluginId);
+    if (!bucket) {
+      bucket = new Map();
+      this.pluginData.set(pluginId, bucket);
+    }
+    return bucket;
+  }
+
+  getPluginData(pluginId: string, key: string): unknown {
+    const value = this.pluginData.get(pluginId)?.get(key);
+    // Hand out copies: a plugin mutating what it read must not edit the cache
+    // behind the write-through's back.
+    return value === undefined ? undefined : structuredClone(value);
+  }
+
+  /** Keys (optionally under a prefix), sorted. */
+  listPluginData(pluginId: string, prefix = ''): string[] {
+    return [...(this.pluginData.get(pluginId)?.keys() ?? [])]
+      .filter((k) => k.startsWith(prefix))
+      .sort();
+  }
+
+  /** `undefined` deletes the key. Values must be JSON-serializable. */
+  setPluginData(pluginId: string, key: string, value: unknown): void {
+    if (value === undefined) {
+      this.pluginData.get(pluginId)?.delete(key);
+      this.db
+        .prepare('DELETE FROM plugin_data WHERE campaign_id = ? AND plugin_id = ? AND key = ?')
+        .run(this.id, pluginId, key);
+      return;
+    }
+    const json = JSON.stringify(value);
+    this.pluginBucket(pluginId).set(key, JSON.parse(json));
+    this.db
+      .prepare(
+        `INSERT INTO plugin_data (campaign_id, plugin_id, key, value, updated_at) VALUES (?,?,?,?,?)
+         ON CONFLICT(campaign_id, plugin_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
+      )
+      .run(this.id, pluginId, key, json, Date.now());
   }
 
   hasImportedRoll(externalId: string): boolean {
@@ -621,9 +682,19 @@ export class CampaignRuntime {
   updateCampaign(patch: { name?: string; settings?: CampaignSettingsPatch }): void {
     if (patch.name !== undefined) this.campaign.name = patch.name;
     if (patch.settings) {
-      const { mapDefaults, ddbGameLog, ...rest } = patch.settings;
+      const { mapDefaults, ddbGameLog, plugins, ...rest } = patch.settings;
       const next: CampaignSettings = { ...this.campaign.settings, ...rest };
       if (ddbGameLog) next.ddbGameLog = { ...this.campaign.settings.ddbGameLog, ...ddbGameLog };
+      if (plugins) {
+        next.plugins = { ...this.campaign.settings.plugins };
+        for (const [id, p] of Object.entries(plugins)) {
+          const prev = next.plugins[id] ?? { enabled: false, config: {} };
+          next.plugins[id] = {
+            enabled: p.enabled ?? prev.enabled,
+            config: p.config ?? prev.config,
+          };
+        }
+      }
       if (mapDefaults) {
         // mapDefaults is a nested patch: merge field-wise (and its own
         // encounterCheck sub-object) so a one-field patch isn't a reset.

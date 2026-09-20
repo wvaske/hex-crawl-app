@@ -129,6 +129,40 @@ importers:
         specifier: ^4.0.18
         version: 4.1.11(@types/node@22.20.1)(vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12))
 
+  plugins:
+    dependencies:
+      '@hexcrawl/client':
+        specifier: workspace:*
+        version: link:../packages/client
+      '@hexcrawl/server':
+        specifier: workspace:*
+        version: link:../packages/server
+      '@hexcrawl/shared':
+        specifier: workspace:*
+        version: link:../packages/shared
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      zod:
+        specifier: ^4.0.0
+        version: 4.5.4
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ~5.8.0
+        version: 5.8.3
+      vite:
+        specifier: ^7.0.0
+        version: 7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.1.11(@types/node@22.20.1)(vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12))
+
 packages:
 
   '@babel/code-frame@7.29.7':

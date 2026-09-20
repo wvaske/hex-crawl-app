@@ -1,5 +1,8 @@
 packages:
   - packages/*
+  # Plugins (plugins/AGENTS.md): one workspace package so every plugin folder
+  # resolves react/zod/@hexcrawl/* the ordinary way.
+  - plugins
 
 onlyBuiltDependencies:
   - better-sqlite3

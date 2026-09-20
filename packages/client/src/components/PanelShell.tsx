@@ -7,8 +7,12 @@ import {
   persistPinnedPanel,
   persistPinnedWidth,
   useUi,
+  type BuiltinPanelId,
   type PanelId,
 } from '../stores/ui.js';
+import { pluginPanelId } from '@hexcrawl/shared';
+import { CLIENT_PLUGINS } from '../plugins/registry.js';
+import type { PluginPanelProps } from '../plugins/api.js';
 import { Button, cx, Lbl } from '../ui/kit.js';
 import { useIsMobile } from '../ui/responsive.js';
 import { CharacterDialog } from './CharacterDialog.js';
@@ -31,7 +35,14 @@ import { SettingsTab } from './panels/SettingsTab.js';
  * decides what belongs together, the components keep owning their content.
  */
 
-const PANEL_META: Record<PanelId, { icon: string; label: string; title: string; hint: string }> = {
+interface PanelMeta {
+  icon: string;
+  label: string;
+  title: string;
+  hint: string;
+}
+
+const PANEL_META: Record<BuiltinPanelId, PanelMeta> = {
   information: {
     icon: '🔍',
     label: 'Info',
@@ -64,8 +75,64 @@ const PANEL_META: Record<PanelId, { icon: string; label: string; title: string; 
   },
 };
 
-const PLAYER_PANELS: PanelId[] = ['information', 'character', 'history'];
-const DM_PANELS: PanelId[] = ['information', 'character', 'history', 'build', 'setup'];
+const PLAYER_PANELS: BuiltinPanelId[] = ['information', 'character', 'history'];
+const DM_PANELS: BuiltinPanelId[] = ['information', 'character', 'history', 'build', 'setup'];
+
+interface PluginPanelEntry {
+  id: PanelId;
+  pluginId: string;
+  meta: PanelMeta;
+  component: React.ComponentType<PluginPanelProps>;
+}
+
+/**
+ * Panels contributed by plugins (plugins/AGENTS.md): installed at build time,
+ * switched on per campaign by the DM, optionally limited to one role. They sit
+ * between the play panels and the DM's Build/Setup.
+ */
+function usePluginPanels(role: 'dm' | 'player' | null): PluginPanelEntry[] {
+  const settings = useSession((s) => s.state?.campaign.settings.plugins);
+  return React.useMemo(() => {
+    const out: PluginPanelEntry[] = [];
+    for (const plugin of CLIENT_PLUGINS) {
+      if (!settings?.[plugin.manifest.id]?.enabled) continue;
+      for (const panel of plugin.panels) {
+        const meta = plugin.manifest.panels?.find((m) => m.id === panel.id);
+        if (!meta || !role || (meta.roles && !meta.roles.includes(role))) continue;
+        out.push({
+          id: pluginPanelId(plugin.manifest.id, panel.id),
+          pluginId: plugin.manifest.id,
+          meta,
+          component: panel.component,
+        });
+      }
+    }
+    return out;
+  }, [settings, role]);
+}
+
+/** A plugin that throws must cost the table one panel, not the whole app. */
+class PluginBoundary extends React.Component<
+  { name: string; children: React.ReactNode },
+  { error: string | null }
+> {
+  override state = { error: null as string | null };
+  static getDerivedStateFromError(err: unknown) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+  override render() {
+    if (this.state.error === null) return this.props.children;
+    return (
+      <div className="p-3 text-xs text-ember-500">
+        <p className="font-semibold mb-1">{this.props.name} crashed</p>
+        <p className="text-ink-400 break-words">{this.state.error}</p>
+        <Button size="sm" className="mt-2" onClick={() => this.setState({ error: null })}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+}
 
 /** Bottom-sheet heights as a fraction of the viewport (mobile shell). */
 const SHEET_MIN = 0.25;
@@ -81,7 +148,15 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
   const setUi = useUi((s) => s.set);
   const mobile = useIsMobile();
   const [sheet, setSheet] = React.useState(SHEET_DEFAULT);
-  const panels = role === 'dm' ? DM_PANELS : PLAYER_PANELS;
+  const pluginPanels = usePluginPanels(role);
+  const panels = React.useMemo<PanelId[]>(() => {
+    const builtin: PanelId[] = role === 'dm' ? DM_PANELS : PLAYER_PANELS;
+    const ids = pluginPanels.map((p) => p.id);
+    // Plugins follow the play panels; the DM's prep panels stay at the end.
+    return [...builtin.slice(0, 3), ...ids, ...builtin.slice(3)];
+  }, [role, pluginPanels]);
+  const metaFor = (id: PanelId): PanelMeta =>
+    pluginPanels.find((p) => p.id === id)?.meta ?? PANEL_META[id as BuiltinPanelId];
   // A player who somehow holds a DM-only panel id (role flipped on rejoin)
   // must not end up staring at an empty shell. A pinned panel lives in the
   // second sidebar (desktop only), so the regular slot never repeats it.
@@ -147,9 +222,9 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
    */
   const headerFor = (id: PanelId, slot: 'main' | 'pinned') => (
     <header className="flex items-center gap-2 px-3 py-2 border-b border-ink-700 shrink-0">
-      <span className="text-base leading-none">{PANEL_META[id].icon}</span>
+      <span className="text-base leading-none">{metaFor(id).icon}</span>
       <h2 className="text-sm font-semibold text-ink-100 flex-1 truncate">
-        {PANEL_META[id].title}
+        {metaFor(id).title}
         {slot === 'pinned' && <span className="ml-1.5 text-[0.625rem] text-brass-300 font-normal">pinned</span>}
       </h2>
       {!mobile && slot === 'main' && (
@@ -200,6 +275,15 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
       {id === 'history' && <HistoryPanel />}
       {id === 'build' && <BuildPanel campaignId={campaignId} />}
       {id === 'setup' && <SetupPanel campaignId={campaignId} />}
+      {pluginPanels
+        .filter((p) => p.id === id)
+        .map((p) => (
+          <PluginBoundary key={p.id} name={p.meta.title}>
+            <PanelBody>
+              <p.component campaignId={campaignId} pluginId={p.pluginId} />
+            </PanelBody>
+          </PluginBoundary>
+        ))}
     </div>
   );
 
@@ -214,7 +298,7 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
           <section
             style={{ height: `${Math.round(sheet * 100)}dvh` }}
             className="panel-sheet fixed left-0 right-0 z-30 bg-ink-900 border-t border-ink-700 rounded-t-xl shadow-2xl flex flex-col"
-            aria-label={PANEL_META[active].title}
+            aria-label={metaFor(active).title}
           >
             <div
               role="separator"
@@ -229,9 +313,9 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
           </section>
         )}
 
-        <nav className="panel-tabbar fixed inset-x-0 bottom-0 z-40 bg-ink-900 border-t border-ink-700 flex items-stretch" aria-label="Panels">
+        <nav className="panel-tabbar fixed inset-x-0 bottom-0 z-40 bg-ink-900 border-t border-ink-700 flex items-stretch overflow-x-auto" aria-label="Panels">
           {panels.map((id) => {
-            const meta = PANEL_META[id];
+            const meta = metaFor(id);
             const isActive = active === id;
             return (
               <button
@@ -239,7 +323,8 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
                 onClick={() => setUi('openPanel', isActive ? null : id)}
                 aria-pressed={isActive}
                 className={cx(
-                  'flex-1 flex flex-col items-center justify-center gap-1 py-2 cursor-pointer transition-colors border-t-2 -mt-px',
+                  // min-w keeps labels legible once plugins add tabs; the bar scrolls.
+                  'flex-1 min-w-14 flex flex-col items-center justify-center gap-1 py-2 cursor-pointer transition-colors border-t-2 -mt-px',
                   isActive
                     ? 'border-brass-500 bg-ink-850 text-brass-300'
                     : 'border-transparent text-ink-400',
@@ -283,7 +368,7 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
         <aside
           style={{ width: `min(${pinnedWidth}px, 35vw)` }}
           className="relative shrink-0 bg-ink-900 border-l border-brass-500/40 flex flex-col z-20"
-          aria-label={`${PANEL_META[pinnedActive].title} (pinned)`}
+          aria-label={`${metaFor(pinnedActive).title} (pinned)`}
         >
           <div
             onPointerDown={startResize('pinnedWidth')}
@@ -296,11 +381,11 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
       )}
 
       <nav
-        className="shrink-0 w-14 bg-ink-900 border-l border-ink-700 flex flex-col items-stretch py-1 gap-0.5 z-20"
+        className="shrink-0 w-14 bg-ink-900 border-l border-ink-700 flex flex-col items-stretch py-1 gap-0.5 z-20 overflow-y-auto"
         aria-label="Panels"
       >
         {panels.map((id) => {
-          const meta = PANEL_META[id];
+          const meta = metaFor(id);
           const isActive = active === id;
           const isPinned = pinnedActive === id;
           return (
