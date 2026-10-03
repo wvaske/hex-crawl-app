@@ -47,6 +47,8 @@ export interface CampaignExport {
   fog: Row[];
   /** Per-hex time accounting (campaign clock); absent in pre-clock archives. */
   hexVisits: Row[];
+  /** Directed hex edges with terrain difficulty; absent in older archives. */
+  hexEdges: Row[];
   tokens: Row[];
   markers: Row[];
   contents: Row[];
@@ -120,6 +122,7 @@ function collectExport(db: DB, campaignId: string): Omit<CampaignExport, 'images
     hexes: childRows(db, 'hex', 'map_id', mapIds),
     fog: childRows(db, 'fog', 'map_id', mapIds),
     hexVisits: childRows(db, 'hex_visit', 'map_id', mapIds),
+    hexEdges: childRows(db, 'hex_edge', 'map_id', mapIds),
     tokens: childRows(db, 'token', 'map_id', mapIds),
     markers: childRows(db, 'marker', 'map_id', mapIds),
     contents,
@@ -231,6 +234,8 @@ export const CampaignImportSchema = z.object({
   fog: RowsSchema,
   // Absent in archives exported before the campaign clock existed.
   hexVisits: RowsSchema.default([]),
+  // Absent in archives exported before edge difficulty existed.
+  hexEdges: RowsSchema.default([]),
   tokens: RowsSchema,
   markers: RowsSchema,
   contents: RowsSchema,
@@ -419,8 +424,14 @@ export function importCampaign(
       }),
     );
     counts.image_layer = insertRows(db, 'image_layer', images);
-    for (const table of ['hex', 'fog', 'hex_visit'] as const) {
-      const rows = table === 'hex' ? data.hexes : table === 'fog' ? data.fog : data.hexVisits;
+    const perHexRows = {
+      hex: data.hexes,
+      fog: data.fog,
+      hex_visit: data.hexVisits,
+      hex_edge: data.hexEdges,
+    } as const;
+    for (const table of ['hex', 'fog', 'hex_visit', 'hex_edge'] as const) {
+      const rows = perHexRows[table];
       counts[table] = insertRows(
         db,
         table,

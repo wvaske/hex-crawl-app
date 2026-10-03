@@ -1,4 +1,4 @@
-import { type HexCoord, hexRound } from './coords.js';
+import { type HexCoord, hexNeighbor, hexRound } from './coords.js';
 
 export type HexOrientation = 'pointy' | 'flat';
 
@@ -91,6 +91,40 @@ export function hexCornerOffsets(layout: HexLayout): Point[] {
     corners.push({ x: layout.size * Math.cos(angle), y: layout.size * Math.sin(angle) });
   }
   return corners;
+}
+
+/**
+ * The two corners of the edge a hex shares with its neighbour in direction
+ * `dir` (an index into `HEX_DIRECTIONS`). Orientation-agnostic: the edge's
+ * corners are the two nearest the midpoint between the two hex centres.
+ */
+export function hexEdgeCorners(layout: HexLayout, hex: HexCoord, dir: number): [Point, Point] {
+  const center = hexToPixel(layout, hex);
+  const other = hexToPixel(layout, hexNeighbor(hex, dir));
+  const mid = { x: (center.x + other.x) / 2, y: (center.y + other.y) / 2 };
+  const corners = hexCorners(layout, hex)
+    .map((c) => ({ c, d: (c.x - mid.x) ** 2 + (c.y - mid.y) ** 2 }))
+    .sort((a, b) => a.d - b.d);
+  return [corners[0]!.c, corners[1]!.c];
+}
+
+/**
+ * Which of a hex's six edges a pixel point is nearest to: the direction whose
+ * neighbour centre is closest to the point. How the edge tool decides which
+ * side of the hex under the pointer the DM meant.
+ */
+export function nearestEdgeDirection(layout: HexLayout, hex: HexCoord, p: Point): number {
+  let best = 0;
+  let bestD = Infinity;
+  for (let dir = 0; dir < 6; dir++) {
+    const n = hexToPixel(layout, hexNeighbor(hex, dir));
+    const d = (n.x - p.x) ** 2 + (n.y - p.y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = dir;
+    }
+  }
+  return best;
 }
 
 /** Width/height of a single hex's bounding box. */

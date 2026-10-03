@@ -360,6 +360,7 @@ function fullState(): CampaignState {
           ],
         },
       ],
+      edges: [],
       pendingMoves: [],
       trails: [],
       trailSigns: [],

@@ -15,6 +15,8 @@ import type {
   EncounterTable,
   FogState,
   HexCell,
+  HexEdge,
+  EdgeDifficulty,
   HexVisit,
   ImageLayer,
   InheritableMapField,
@@ -41,6 +43,8 @@ import {
   SkillsSchema,
   hexKey,
   parseHexKey,
+  edgeKey,
+  parseEdgeKey,
 } from '@hexcrawl/shared';
 import type { DB } from '../db/driver.js';
 
@@ -73,6 +77,8 @@ export interface MapRuntime {
    */
   imageLayers: Map<string, ImageLayer>;
   hexes: Map<string, TerrainId>;
+  /** Marked hex edges keyed by `edgeKey(q, r, dir)` — the `EdgeIndex` the rules read. */
+  edges: Map<string, EdgeDifficulty>;
   fog: Map<string, FogState>;
   tokens: Map<string, Token>;
   markers: Map<string, Marker>;
@@ -95,6 +101,7 @@ const UNDO_HISTORY_SHOWN = 12;
 interface FrozenMapLayers {
   imageLayers: ImageLayer[];
   hexes: HexCell[];
+  edges: HexEdge[];
   markers: Marker[];
   contents: Content[];
   trails: Trail[];
@@ -355,6 +362,7 @@ export class CampaignRuntime {
     const rt: MapRuntime = {
       imageLayers: new Map(),
       hexes: new Map(),
+      edges: new Map(),
       fog: new Map(),
       tokens: new Map(),
       markers: new Map(),
@@ -402,6 +410,14 @@ export class CampaignRuntime {
       Record<string, unknown>
     >) {
       rt.hexes.set(hexKey(h.q as number, h.r as number), h.terrain as TerrainId);
+    }
+    for (const e of d.prepare('SELECT * FROM hex_edge WHERE map_id = ?').all(mapId) as Array<
+      Record<string, unknown>
+    >) {
+      rt.edges.set(
+        edgeKey(e.q as number, e.r as number, e.dir as number),
+        e.difficulty as EdgeDifficulty,
+      );
     }
     for (const f of d.prepare('SELECT * FROM fog WHERE map_id = ?').all(mapId) as Array<
       Record<string, unknown>
@@ -503,6 +519,9 @@ export class CampaignRuntime {
     return {
       imageLayers: this.imageLayersFor(mapId),
       hexes: [...rt.hexes.entries()].map(([k, terrain]): HexCell => ({ ...parseHexKey(k), terrain })),
+      edges: [...rt.edges.entries()].map(
+        ([k, difficulty]): HexEdge => ({ ...parseEdgeKey(k), difficulty }),
+      ),
       fog: [...rt.fog.entries()].map(([k, state]) => ({ ...parseHexKey(k), state })),
       tokens: [...rt.tokens.values()],
       markers: [...rt.markers.values()],
@@ -639,6 +658,7 @@ export class CampaignRuntime {
       this.frozenPlayerMaps.set(mapId, {
         imageLayers: ms.imageLayers,
         hexes: ms.hexes,
+        edges: ms.edges,
         markers: ms.markers,
         contents: ms.contents as Content[],
         trails: ms.trails,
@@ -676,6 +696,7 @@ export class CampaignRuntime {
         ...full.mapState,
         imageLayers: frozen.imageLayers,
         hexes: frozen.hexes,
+        edges: frozen.edges,
         markers: [...markers.values()],
         contents: frozen.contents,
         trails: frozen.trails,
@@ -988,6 +1009,7 @@ export class CampaignRuntime {
     this.mapStates.set(info.id, {
       imageLayers: new Map(),
       hexes: new Map(),
+      edges: new Map(),
       fog: new Map(),
       tokens: new Map(),
       markers: new Map(),
@@ -1228,6 +1250,42 @@ export class CampaignRuntime {
         } else {
           rt.hexes.set(key, terrain);
           put.run(mapId, c.q, c.r, terrain);
+        }
+      }
+    });
+    tx();
+    return changed;
+  }
+
+  /**
+   * Mark or clear directed hex edges (terrain difficulty); `difficulty: null`
+   * clears. Returns only the edges that actually changed, with their prior
+   * value, for undo.
+   */
+  setEdges(
+    mapId: string,
+    edits: { q: number; r: number; dir: number; difficulty: EdgeDifficulty | null }[],
+  ): { q: number; r: number; dir: number; prev: EdgeDifficulty | null }[] {
+    const rt = this.requireMap(mapId);
+    const del = this.db.prepare(
+      'DELETE FROM hex_edge WHERE map_id = ? AND q = ? AND r = ? AND dir = ?',
+    );
+    const put = this.db.prepare(
+      'INSERT INTO hex_edge (map_id, q, r, dir, difficulty) VALUES (?,?,?,?,?) ON CONFLICT(map_id,q,r,dir) DO UPDATE SET difficulty=excluded.difficulty',
+    );
+    const changed: { q: number; r: number; dir: number; prev: EdgeDifficulty | null }[] = [];
+    const tx = this.db.transaction(() => {
+      for (const e of edits) {
+        const key = edgeKey(e.q, e.r, e.dir);
+        const prev = rt.edges.get(key) ?? null;
+        if (prev === e.difficulty) continue;
+        changed.push({ q: e.q, r: e.r, dir: e.dir, prev });
+        if (e.difficulty === null) {
+          rt.edges.delete(key);
+          del.run(mapId, e.q, e.r, e.dir);
+        } else {
+          rt.edges.set(key, e.difficulty);
+          put.run(mapId, e.q, e.r, e.dir, e.difficulty);
         }
       }
     });

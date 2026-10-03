@@ -21,6 +21,14 @@ import {
   distanceToContent,
   exploredPassable,
   findRoute,
+  boundaryEdges,
+  edgeKey,
+  EDGE_DIFFICULTY_LABELS,
+  parseEdgeKey,
+  pathBlocked,
+  pathEffort,
+  reverseEdge,
+  stepCost,
   formatCalendarClock,
   formatDuration,
   GridStyleSchema,
@@ -35,7 +43,7 @@ import {
   rollCheck,
   formatCheck,
 } from '@hexcrawl/shared';
-import type { FogState, TerrainId } from '@hexcrawl/shared';
+import type { EdgeDifficulty, FogState, TerrainId } from '@hexcrawl/shared';
 import type { CampaignRuntime, SeatRecord } from '../state/runtime.js';
 import type { Hub } from './hub.js';
 import { applyAutoReveal } from '../engine/fog.js';
@@ -58,6 +66,51 @@ export interface Ctx {
 }
 
 type Handler = (cmd: never, ctx: Ctx) => void;
+
+/**
+ * Undo for edge marks (terrain difficulty): the same merge-within-a-window
+ * rule as `recordCellUndo`, keyed by directed edge, so a region-border apply
+ * and the exception clicks that follow it fold into one entry.
+ */
+function recordEdgeUndo(
+  ctx: Ctx,
+  mapId: string,
+  changed: { q: number; r: number; dir: number; prev: EdgeDifficulty | null }[],
+): void {
+  if (!changed.length) return;
+  const kind = 'edge';
+  const top = ctx.runtime.undoStack[ctx.runtime.undoStack.length - 1];
+  const now = Date.now();
+  if (top && top.kind === kind && top.mapId === mapId && now - top.at < 3000 && top.restore) {
+    for (const c of changed) {
+      const key = edgeKey(c.q, c.r, c.dir);
+      if (!top.restore.has(key)) top.restore.set(key, c.prev);
+    }
+    top.at = now;
+    top.description = `edge change (${top.restore.size} edges)`;
+    return;
+  }
+  const restore = new Map<string, unknown>(
+    changed.map((c) => [edgeKey(c.q, c.r, c.dir), c.prev]),
+  );
+  ctx.runtime.pushUndo({
+    at: now,
+    kind,
+    mapId,
+    description: `edge change (${restore.size} edges)`,
+    restore,
+    run: (runtime) => {
+      if (!runtime.maps.has(mapId)) return;
+      runtime.setEdges(
+        mapId,
+        [...restore].map(([key, prev]) => ({
+          ...parseEdgeKey(key),
+          difficulty: prev as EdgeDifficulty | null,
+        })),
+      );
+    },
+  });
+}
 
 /**
  * Record an undoable cell operation (fog/terrain). Consecutive strokes of the
@@ -264,6 +317,13 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     recordCellUndo(ctx, 'fog', cmd.mapId, changed);
   }) as Handler,
 
+  /** Terrain difficulty on directed hex edges (see shared `rules/edges.ts`). */
+  'edge.set': ((cmd: Extract<ClientCommand, { kind: 'edge.set' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const changed = ctx.runtime.setEdges(cmd.mapId, cmd.edges);
+    recordEdgeUndo(ctx, cmd.mapId, changed);
+  }) as Handler,
+
   // -- tokens ----------------------------------------------------------------
   'token.create': ((cmd: Extract<ClientCommand, { kind: 'token.create' }>, ctx: Ctx) => {
     requireDm(ctx);
@@ -349,6 +409,15 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         );
       }
     }
+    // A cliff is a cliff: players cannot walk an impassable edge (a routed
+    // path never crosses one; a step or straight line might). The DM can,
+    // and pays for it in `performTravel`.
+    if (
+      ctx.seat.role !== 'dm' &&
+      pathBlocked(ctx.runtime.requireMap(token.mapId).edges, travel.path)
+    ) {
+      throw new Error('That way is impassable');
+    }
     performTravel(ctx, map, token, travel.path, { teleport, routed: travel.routed });
   }) as Handler,
 
@@ -366,6 +435,9 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     const travel = map
       ? travelPath(ctx, map, { q: token.q, r: token.r }, { q: cmd.q, r: cmd.r }, false)
       : null;
+    if (ctx.seat.role !== 'dm' && travel && pathBlocked(rt.edges, travel.path)) {
+      throw new Error('That way is impassable');
+    }
     rt.pendingMoves.set(token.id, {
       tokenId: token.id,
       fromQ: token.q,
@@ -771,6 +843,52 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       'note',
       `${what} across ${found.title} — ${target.length} hex${target.length === 1 ? '' : 'es'}` +
         (skipped > 0 ? ` (${skipped} skipped in other regions)` : ''),
+      'dm',
+      { contentId: found.id },
+    );
+    notifyLog(ctx, entry);
+  }) as Handler,
+
+  /**
+   * Mark every crossing of a region's border (terrain difficulty): the canyon
+   * whose walls are hard to climb is one apply here, and the gentle slope
+   * out of it one click with the edge tool afterwards. `side` picks the
+   * outward edges (leaving), their reverses (entering), or both; the result
+   * is plain edge data, so the region can be reshaped later without the
+   * marks following it — rerun the apply, as with `content.applyTerrain`.
+   */
+  'content.applyEdges': ((
+    cmd: Extract<ClientCommand, { kind: 'content.applyEdges' }>,
+    ctx: Ctx,
+  ) => {
+    requireDm(ctx);
+    let found: Content | null = null;
+    for (const rt of ctx.runtime.mapStates.values()) {
+      const c = rt.contents.get(cmd.contentId);
+      if (c) {
+        found = c;
+        break;
+      }
+    }
+    if (!found) throw new Error('Content not found');
+    const outward = boundaryEdges(contentCells(found));
+    const edges: { q: number; r: number; dir: number }[] = [];
+    if (cmd.side !== 'entering') edges.push(...outward);
+    if (cmd.side !== 'leaving') edges.push(...outward.map((e) => reverseEdge(e)));
+    const changed = ctx.runtime.setEdges(
+      found.mapId,
+      edges.map((e) => ({ ...e, difficulty: cmd.difficulty })),
+    );
+    recordEdgeUndo(ctx, found.mapId, changed);
+    const what =
+      cmd.difficulty === null
+        ? 'Cleared'
+        : `Marked ${EDGE_DIFFICULTY_LABELS[cmd.difficulty].toLowerCase()}`;
+    const which = cmd.side === 'both' ? 'the border of' : cmd.side;
+    const entry = ctx.runtime.appendLog(
+      'note',
+      `${what} ${which} ${found.title} — ${edges.length} edge${edges.length === 1 ? '' : 's'}` +
+        (changed.length !== edges.length ? ` (${changed.length} changed)` : ''),
       'dm',
       { contentId: found.id },
     );
@@ -1746,20 +1864,29 @@ export function exploredRoute(
 ): HexCoord[] | null {
   const rt = runtime.mapStates.get(mapId);
   if (!rt) return null;
-  return findRoute(
-    from,
-    to,
-    exploredPassable((h) => rt.fog.get(hexKey(h.q, h.r))),
-  );
+  return findRoute(from, to, exploredPassable((h) => rt.fog.get(hexKey(h.q, h.r))), {
+    // Terrain difficulty: around the canyon wall, never across a cliff.
+    stepCost: (a, b) => stepCost(rt.edges, a, b),
+  });
 }
 
 export interface TravelOutcome {
   /** Where the party actually stopped (an encounter or nightfall can halt it short). */
   to: HexCoord;
   hexes: number;
+  /** Hexes of effort: hexes walked plus the extra for difficult edges crossed. */
+  effort: number;
   minutes: number;
   stoppedBy: 'encounter' | 'night' | null;
 }
+
+/**
+ * What a DM pays for dragging a token straight over an impassable edge:
+ * they are overriding the map, so the crossing is charged at the
+ * very-difficult rate (a step plus two) rather than refused.
+ */
+const IMPASSABLE_WALKED_COST = 3;
+const WALKED = { impassableAs: IMPASSABLE_WALKED_COST };
 
 /**
  * The whole of a party move (issue #127), in one place so one undo entry can
@@ -1787,6 +1914,7 @@ function performTravel(
   opts: { teleport: boolean; approved?: boolean; routed?: boolean },
 ): TravelOutcome {
   const runtime = ctx.runtime;
+  const rt = runtime.requireMap(map.id);
   const from = path[0] ?? { q: token.q, r: token.r };
   const label = token.label || 'token';
   const isParty = token.kind === 'pc';
@@ -1820,7 +1948,7 @@ function performTravel(
       const perHex = minutesPerHex(map.milesPerHex, mode, time.pace);
       let clock = time.minutes;
       for (let i = 0; i < steps.length; i++) {
-        clock += perHex;
+        clock += perHex * stepCost(rt.edges, i === 0 ? from : steps[i - 1]!, steps[i]!, WALKED);
         if (isNight(clock, settings) && i < steps.length - 1) {
           steps = steps.slice(0, i + 1);
           stoppedBy = 'night';
@@ -1841,6 +1969,10 @@ function performTravel(
   const to = opts.teleport ? (path[path.length - 1] ?? from) : (steps[steps.length - 1] ?? from);
   const toVisit = structuredClone(runtime.hexVisit(map.id, to.q, to.r));
   const walked: TravelPath = opts.teleport ? [to] : [from, ...steps];
+  // Hexes of effort (terrain difficulty): each step costs 1 plus the extra
+  // for the edge it crosses. Encounter checks stay per hex entered — a slow
+  // climb is not more country.
+  const effort = opts.teleport ? 0 : pathEffort(rt.edges, walked, WALKED);
 
   // -- 2. the move itself ----------------------------------------------------
   const dq = to.q - token.q;
@@ -1866,8 +1998,7 @@ function performTravel(
   if (isParty) {
     const time = runtime.campaign.time;
     const mode = resolveTravelMode(time.travelMode, runtime.campaign.settings.customTravelModes);
-    const hexes = opts.teleport ? 0 : steps.length;
-    minutes = hexes * minutesPerHex(map.milesPerHex, mode, time.pace);
+    minutes = effort * minutesPerHex(map.milesPerHex, mode, time.pace);
     if (parked) {
       runtime.addHexTime(parked.mapId, parked.q, parked.r, time.minutes - parked.arrivedMinutes);
     }
@@ -1888,7 +2019,9 @@ function performTravel(
   if (opts.teleport) {
     text = `${label} teleported to ${where}`;
   } else {
-    text = `${label} travelled ${hexes} hex${hexes === 1 ? '' : 'es'} to ${where}`;
+    text = `${label} travelled ${hexes} hex${hexes === 1 ? '' : 'es'}`;
+    if (effort > hexes) text += ` over difficult ground (${effort} hexes of effort)`;
+    text += ` to ${where}`;
     if (minutes > 0) text += ` — ${formatDuration(minutes)}`;
     if (isParty) text += ` — ${campaignClock(ctx, runtime.campaign.time.minutes)}`;
     const goal = path[path.length - 1]!;
@@ -1906,6 +2039,7 @@ function performTravel(
     to: { q: to.q, r: to.r },
     intended: { q: path[path.length - 1]!.q, r: path[path.length - 1]!.r },
     hexes,
+    effort,
     minutes,
     teleport: opts.teleport,
     approved: opts.approved ?? false,
@@ -1963,7 +2097,7 @@ function performTravel(
     },
   });
 
-  return { to, hexes, minutes, stoppedBy };
+  return { to, hexes, effort, minutes, stoppedBy };
 }
 
 /**

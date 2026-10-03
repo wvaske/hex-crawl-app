@@ -92,6 +92,15 @@ export const POSTGRES_SCHEMA = `
       PRIMARY KEY (map_id, q, r)
     );
 
+    CREATE TABLE IF NOT EXISTS hex_edge (
+      map_id TEXT NOT NULL REFERENCES map(id) ON DELETE CASCADE,
+      q BIGINT NOT NULL,
+      r BIGINT NOT NULL,
+      dir BIGINT NOT NULL,
+      difficulty TEXT NOT NULL,
+      PRIMARY KEY (map_id, q, r, dir)
+    );
+
     CREATE TABLE IF NOT EXISTS fog (
       map_id TEXT NOT NULL REFERENCES map(id) ON DELETE CASCADE,
       q BIGINT NOT NULL,

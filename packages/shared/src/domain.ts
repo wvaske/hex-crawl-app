@@ -497,6 +497,49 @@ export const HexCellSchema = z.object({
 });
 export type HexCell = z.infer<typeof HexCellSchema>;
 
+// ---------------------------------------------------------------------------
+// Hex edges (terrain difficulty)
+// ---------------------------------------------------------------------------
+
+/**
+ * How hard it is to cross ONE edge of a hex in ONE direction. Difficulty is a
+ * property of the crossing, not of either hex: climbing out of a canyon is
+ * difficult, walking back down into it is not, and the same two terrains can
+ * meet at a gentle slope elsewhere. `difficult` costs one extra hex of effort,
+ * `very_difficult` two, `impassable` cannot be walked at all (a cliff, an
+ * unfordable river) — the DM can still teleport across.
+ */
+export const EDGE_DIFFICULTIES = ['difficult', 'very_difficult', 'impassable'] as const;
+export const EdgeDifficultySchema = z.enum(EDGE_DIFFICULTIES);
+export type EdgeDifficulty = z.infer<typeof EdgeDifficultySchema>;
+
+/** Extra hexes of effort to cross an edge of each difficulty; Infinity = not walkable. */
+export const EDGE_EXTRA_COST: Record<EdgeDifficulty, number> = {
+  difficult: 1,
+  very_difficult: 2,
+  impassable: Infinity,
+};
+
+export const EDGE_DIFFICULTY_LABELS: Record<EdgeDifficulty, string> = {
+  difficult: 'Difficult',
+  very_difficult: 'Very difficult',
+  impassable: 'Impassable',
+};
+
+/**
+ * A marked edge: leaving hex (q, r) toward its neighbour in direction `dir`
+ * (an index into `HEX_DIRECTIONS`, counter-clockwise from east) has this
+ * difficulty. The opposite crossing is a separate edge — absent means normal.
+ * Sparse: only marked edges have an entry.
+ */
+export const HexEdgeSchema = z.object({
+  q: z.number().int(),
+  r: z.number().int(),
+  dir: z.number().int().min(0).max(5),
+  difficulty: EdgeDifficultySchema,
+});
+export type HexEdge = z.infer<typeof HexEdgeSchema>;
+
 /** A player's declared move awaiting DM approval (in-memory, per map). */
 export const PendingMoveSchema = z.object({
   tokenId: z.string(),
@@ -963,6 +1006,8 @@ export type PendingReveal = z.infer<typeof PendingRevealSchema>;
 export const MapStateSchema = z.object({
   imageLayers: z.array(ImageLayerSchema),
   hexes: z.array(HexCellSchema),
+  /** Marked hex edges (terrain difficulty); players see those touching a non-hidden hex. */
+  edges: z.array(HexEdgeSchema).default([]),
   fog: z.array(FogCellSchema),
   tokens: z.array(TokenSchema),
   markers: z.array(MarkerSchema),
