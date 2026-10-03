@@ -2,6 +2,7 @@ import React from 'react';
 import type { Character, PluginManifest, PluginPanelMeta } from '@hexcrawl/shared';
 import { useSession } from '../stores/session.js';
 import { onPluginChanged } from './events.js';
+import { send } from '../ws.js';
 
 /**
  * The client half of the plugin contract — import it as
@@ -149,7 +150,10 @@ export function usePluginAction(props: PluginPanelProps): {
 
 export interface Viewer {
   seatId: string | null;
+  /** False while a DM is viewing as a player: the panel must then render the player experience. */
   isDm: boolean;
+  /** Set while a DM seat is viewing the table as this character's player. */
+  viewingAs: { characterId: string; name: string } | null;
   /** The character this browser's seat has claimed. */
   character: Character | null;
   characters: Character[];
@@ -160,16 +164,29 @@ export function useViewer(): Viewer {
   const seatId = useSession((s) => s.seatId);
   const role = useSession((s) => s.role);
   const state = useSession((s) => s.state);
+  const viewingAs = useSession((s) => s.viewingAs);
   return React.useMemo(() => {
     const characters = state?.characters ?? [];
-    const characterId = state?.seats.find((s) => s.id === seatId)?.characterId ?? null;
+    const characterId = viewingAs?.characterId ?? state?.seats.find((s) => s.id === seatId)?.characterId ?? null;
     return {
       seatId,
       isDm: role === 'dm',
+      viewingAs,
       character: characters.find((c) => c.id === characterId) ?? null,
       characters,
     };
-  }, [seatId, role, state]);
+  }, [seatId, role, state, viewingAs]);
+}
+
+/**
+ * DM only: switch this seat to one character's player view — the map, the
+ * party, every plugin panel — until `viewAs(null)`. The server rebuilds the
+ * seat's snapshots and plugin contexts as that player; the shell shows a
+ * banner with the way back. Lets a plugin's DM pane offer "see what this
+ * player sees".
+ */
+export function viewAs(characterId: string | null): void {
+  send({ kind: 'seat.viewAs', characterId });
 }
 
 export function toast(title: string, text: string, kind: 'info' | 'error' | 'discovery' = 'info'): void {

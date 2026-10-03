@@ -426,6 +426,18 @@ export const SeatDeleteCommand = z.object({
   seatId: z.string(),
 });
 
+/**
+ * DM: see the table as one character's player does. While set, the DM's
+ * snapshots and plugin panels are built exactly as for a player seat holding
+ * that character (fog, senses, discoveries, plugin visibility); null exits.
+ * In memory only — a reconnect returns the DM to the DM view.
+ */
+export const SeatViewAsCommand = z.object({
+  ...base,
+  kind: z.literal('seat.viewAs'),
+  characterId: z.string().nullable(),
+});
+
 // --- content & clues --------------------------------------------------------
 
 export const ContentUpsertCommand = z.object({
@@ -765,6 +777,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   SeatRenameCommand,
   SeatReleaseCharacterCommand,
   SeatDeleteCommand,
+  SeatViewAsCommand,
   ContentUpsertCommand,
   ContentSetEnabledCommand,
   ContentSetQuestCommand,

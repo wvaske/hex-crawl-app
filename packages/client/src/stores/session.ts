@@ -19,14 +19,22 @@ export type ConnectionStatus = 'connecting' | 'open' | 'closed';
 interface SessionStore {
   status: ConnectionStatus;
   seatId: string | null;
+  /** The role this snapshot was built for; a DM viewing as a player sees `player` here. */
   role: SeatRole | null;
+  /** Set while a DM seat is viewing the table as this character's player (seat.viewAs). */
+  viewingAs: { characterId: string; name: string } | null;
   state: CampaignState | null;
   /** Bumped on every snapshot so imperative consumers can subscribe cheaply. */
   version: number;
   toasts: Toast[];
 
   setStatus(status: ConnectionStatus): void;
-  applySnapshot(seatId: string, role: SeatRole, state: CampaignState): void;
+  applySnapshot(
+    seatId: string,
+    role: SeatRole,
+    state: CampaignState,
+    viewingAs?: { characterId: string; name: string } | null,
+  ): void;
   pushToast(toast: Omit<Toast, 'id'>): void;
   dismissToast(id: number): void;
 
@@ -42,14 +50,15 @@ export const useSession = create<SessionStore>((set, get) => ({
   status: 'connecting',
   seatId: null,
   role: null,
+  viewingAs: null,
   state: null,
   version: 0,
   toasts: [],
 
   setStatus: (status) => set({ status }),
 
-  applySnapshot: (seatId, role, state) =>
-    set((s) => ({ seatId, role, state, version: s.version + 1 })),
+  applySnapshot: (seatId, role, state, viewingAs = null) =>
+    set((s) => ({ seatId, role, state, viewingAs, version: s.version + 1 })),
 
   pushToast: (toast) => {
     const id = toastCounter++;

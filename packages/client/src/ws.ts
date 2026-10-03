@@ -72,7 +72,7 @@ function handleMessage(msg: ServerMessage): void {
   const session = useSession.getState();
   switch (msg.type) {
     case 'snapshot':
-      session.applySnapshot(msg.seatId, msg.role, msg.state);
+      session.applySnapshot(msg.seatId, msg.role, msg.state, msg.viewingAs ?? null);
       break;
     case 'ack':
       break;

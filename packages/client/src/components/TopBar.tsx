@@ -716,6 +716,8 @@ export function TopBar({
 
       <div className="hidden md:block flex-1" />
 
+      {!mobile && <ViewAsControl />}
+
       <div
         className="hidden sm:flex items-center -space-x-1.5"
         title={online.map((s) => s.name).join(', ')}
@@ -808,5 +810,52 @@ export function TopBar({
         </MenuRow>
       </Overflow>
     </header>
+  );
+}
+
+/**
+ * DM only: look at the table as one character's player sees it (seat.viewAs).
+ * The server then builds this seat's snapshots and plugin panels exactly as
+ * for that player, so the whole UI switches to the player role; the banner
+ * below is the way back.
+ */
+export function ViewAsControl() {
+  const state = useSession((s) => s.state);
+  const role = useSession((s) => s.role);
+  const viewingAs = useSession((s) => s.viewingAs);
+  if (role !== 'dm' || viewingAs || !state || state.characters.length === 0) return null;
+  return (
+    <Select
+      value=""
+      onChange={(e) => {
+        if (e.target.value) send({ kind: 'seat.viewAs', characterId: e.target.value });
+      }}
+      className="w-auto text-xs py-1"
+      title="See the table as one player sees it: their fog, clues, senses and sidebar panels"
+      aria-label="View as player"
+    >
+      <option value="">👁 View as…</option>
+      {state.characters.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+/** Shown while a DM is viewing as a player; the only DM control left on screen. */
+export function ViewingAsBanner() {
+  const viewingAs = useSession((s) => s.viewingAs);
+  if (!viewingAs) return null;
+  return (
+    <div className="flex items-center justify-center gap-3 px-3 py-1 bg-brass-500 text-ink-950 text-xs font-medium shrink-0">
+      <span>
+        👁 Viewing as <strong>{viewingAs.name}</strong> — this is what their player sees. Actions you take here still run as the DM.
+      </span>
+      <Button size="sm" variant="ghost" className="text-ink-950 hover:bg-brass-400" onClick={() => send({ kind: 'seat.viewAs', characterId: null })}>
+        Back to DM view
+      </Button>
+    </div>
   );
 }

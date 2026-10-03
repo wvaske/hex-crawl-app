@@ -50,11 +50,26 @@ export class Hub {
     return { seatId: seat.id, role: seat.role, characterId: seat.characterId };
   }
 
+  /**
+   * Build one connection's snapshot from a full state. A DM viewing as a
+   * player (seat.viewAs) gets the player pipeline — freeze, filter, role —
+   * for that character, plus `viewingAs` so the client can show the way out.
+   */
+  private snapshotFor(conn: Conn, full: ReturnType<CampaignRuntime['buildFullState']>): ServerMessage {
+    const seat = conn.runtime.effectiveSeat(conn.seat);
+    const base = seat.role === 'dm' ? full : conn.runtime.applyPlayerFreeze(full);
+    const state = filterStateForViewer(base, this.viewerFor(seat));
+    return {
+      type: 'snapshot',
+      seatId: conn.seat.id,
+      role: seat.role,
+      state,
+      viewingAs: conn.runtime.viewingAsFor(conn.seat),
+    };
+  }
+
   sendSnapshot(conn: Conn): void {
-    let full = conn.runtime.buildFullState(conn.viewedMapId);
-    if (conn.seat.role !== 'dm') full = conn.runtime.applyPlayerFreeze(full);
-    const state = filterStateForViewer(full, this.viewerFor(conn.seat));
-    this.send(conn, { type: 'snapshot', seatId: conn.seat.id, role: conn.seat.role, state });
+    this.send(conn, this.snapshotFor(conn, conn.runtime.buildFullState(conn.viewedMapId)));
   }
 
   send(conn: Conn, message: ServerMessage): void {
@@ -114,9 +129,7 @@ export class Hub {
             full = runtime.buildFullState(conn.viewedMapId);
             fullByMap.set(key, full);
           }
-          const base = conn.seat.role === 'dm' ? full : runtime.applyPlayerFreeze(full);
-          const state = filterStateForViewer(base, this.viewerFor(conn.seat));
-          this.send(conn, { type: 'snapshot', seatId: conn.seat.id, role: conn.seat.role, state });
+          this.send(conn, this.snapshotFor(conn, full));
         }
       }, SYNC_COALESCE_MS),
     );

@@ -522,6 +522,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     ctx.runtime.claimCharacter(cmd.seatId, null);
   }) as Handler,
 
+  'seat.viewAs': ((cmd: Extract<ClientCommand, { kind: 'seat.viewAs' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    ctx.runtime.setViewAs(ctx.seat.id, cmd.characterId);
+  }) as Handler,
+
   'seat.delete': ((cmd: Extract<ClientCommand, { kind: 'seat.delete' }>, ctx: Ctx) => {
     requireDm(ctx);
     if (cmd.seatId === ctx.seat.id) throw new Error('You cannot remove your own seat');

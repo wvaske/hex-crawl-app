@@ -71,6 +71,15 @@ snapshot machinery handles delivery. Anything player-visible MUST be filtered
 in `filterStateForViewer` (pure, unit-tested — add cases there for new
 player-facing data).
 
+- **DM "view as player" (seat.viewAs).** `CampaignRuntime.viewAs` (in memory,
+  seat id → character id) is consulted by `runtime.effectiveSeat(seat)`, and
+  that effective seat drives both places a view is built: `Hub.snapshotFor`
+  (freeze + `filterStateForViewer` + the snapshot's `role`, plus `viewingAs`
+  for the banner) and the plugin action route in `plugins/host.ts`. Commands
+  still run as the real DM seat. Anything new that derives a player view from
+  a seat must go through `effectiveSeat`, or the DM's preview will diverge
+  from what the player gets.
+
 ## Adding a feature: the standard shape
 
 1. Schema: add/extend zod types in `shared/src/domain.ts`; new command in

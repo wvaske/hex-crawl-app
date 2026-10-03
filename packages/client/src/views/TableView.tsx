@@ -3,7 +3,7 @@ import { connectWs, disconnectWs, send } from '../ws.js';
 import { CanvasEngine } from '../engine/CanvasEngine.js';
 import { useSession } from '../stores/session.js';
 import { useUi } from '../stores/ui.js';
-import { TopBar } from '../components/TopBar.js';
+import { TopBar, ViewingAsBanner } from '../components/TopBar.js';
 import { Toolbar } from '../components/Toolbar.js';
 import { PanelShell } from '../components/PanelShell.js';
 import { Toasts } from '../components/Toasts.js';
@@ -161,6 +161,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         onRecenter={() => engineRef.current?.recenter()}
         onGoToMe={() => engineRef.current?.centerOnMyToken()}
       />
+      <ViewingAsBanner />
       <div className="flex-1 flex min-h-0 relative">
         <div ref={hostRef} className="canvas-host flex-1 min-w-0 relative" />
         <EmptyMapHint />

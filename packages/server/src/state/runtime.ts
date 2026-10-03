@@ -137,6 +137,12 @@ export class CampaignRuntime {
   log: LogEntry[] = [];
   /** Seat ids currently connected (managed by the hub). */
   online = new Set<string>();
+  /**
+   * DM seats currently viewing the table as a character's player
+   * (seat.viewAs): seat id → character id. In memory only, so a reconnect
+   * returns the DM to the DM view.
+   */
+  viewAs = new Map<string, string>();
   /** DM undo history (in-memory; newest last). */
   undoStack: UndoEntry[] = [];
   /** D&D Beyond game-log listener state (issue #146); in-memory. */
@@ -848,7 +854,41 @@ export class CampaignRuntime {
   deleteSeat(seatId: string): void {
     this.seats.delete(seatId);
     this.online.delete(seatId);
+    this.viewAs.delete(seatId);
     this.db.prepare('DELETE FROM seat WHERE id = ?').run(seatId);
+  }
+
+  /** DM only: view the table as `characterId`'s player, or null to return to the DM view. */
+  setViewAs(seatId: string, characterId: string | null): void {
+    const seat = this.seats.get(seatId);
+    if (!seat) throw new Error('Seat not found');
+    if (seat.role !== 'dm') throw new Error('Only the DM can view as a player');
+    if (characterId === null) {
+      this.viewAs.delete(seatId);
+      return;
+    }
+    if (!this.characters.has(characterId)) throw new Error('Character not found');
+    this.viewAs.set(seatId, characterId);
+  }
+
+  /**
+   * The seat whose perspective a connection or request gets. A DM viewing as
+   * a player is treated as a player seat holding that character everywhere a
+   * view is built (snapshots, plugin panels); every other seat is itself.
+   */
+  effectiveSeat(seat: SeatRecord): SeatRecord {
+    if (seat.role !== 'dm') return seat;
+    const characterId = this.viewAs.get(seat.id);
+    if (!characterId || !this.characters.has(characterId)) return seat;
+    return { ...seat, role: 'player', characterId };
+  }
+
+  /** What `seat` is viewing as, for the snapshot envelope; null when it is itself. */
+  viewingAsFor(seat: SeatRecord): { characterId: string; name: string } | null {
+    if (seat.role !== 'dm') return null;
+    const characterId = this.viewAs.get(seat.id);
+    const character = characterId ? this.characters.get(characterId) : undefined;
+    return character ? { characterId: character.id, name: character.name } : null;
   }
 
   claimCharacter(seatId: string, characterId: string | null): void {
@@ -901,6 +941,9 @@ export class CampaignRuntime {
     this.db.prepare('DELETE FROM character WHERE id = ?').run(characterId);
     for (const seat of this.seats.values()) {
       if (seat.characterId === characterId) this.claimCharacter(seat.id, null);
+    }
+    for (const [seatId, viewed] of [...this.viewAs]) {
+      if (viewed === characterId) this.viewAs.delete(seatId);
     }
     for (const [mapId, rt] of this.mapStates) {
       for (const token of [...rt.tokens.values()]) {
