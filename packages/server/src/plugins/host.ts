@@ -157,8 +157,11 @@ export function mountPlugins(app: Hono, plugins: readonly ServerPlugin[], deps: 
   app.post('/api/campaigns/:id/plugins/:pluginId/:action', async (c) => {
     const runtime = deps.getRuntime(c.req.param('id') ?? '');
     if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
-    const seat = deps.getSeat(c, runtime);
-    if (!seat) return c.json({ error: 'No seat' }, 401);
+    const realSeat = deps.getSeat(c, runtime);
+    if (!realSeat) return c.json({ error: 'No seat' }, 401);
+    // A DM viewing as a player (seat.viewAs) calls plugins as that player:
+    // DM-only actions are refused and the context carries the character.
+    const seat = runtime.effectiveSeat(realSeat);
     const plugin = byId.get(c.req.param('pluginId') ?? '');
     const actionName = c.req.param('action') ?? '';
     const action = plugin && Object.hasOwn(plugin.actions, actionName) ? plugin.actions[actionName] : undefined;

@@ -288,3 +288,16 @@ survives redeploys; removing a plugin from the build just hides its panels
 - [ ] Private plugin: source committed and pushed in the owner's repository
       (not just mirrored here). Core changes (anything outside `plugins/`):
       committed and pushed on a branch here, per docs/AI-DEVELOPMENT.md.
+
+## Seeing what a player sees
+
+The DM can view the table as any character's player (`seat.viewAs`, the
+"View as…" picker in the top bar). While it is set, the server builds that
+seat's snapshots **and plugin action contexts** as a player seat holding the
+character: `ctx.isDm` is false, `ctx.character` is the viewed character,
+`dmOnly` actions return 403, and `useViewer()` reports `isDm: false` with
+`viewingAs` set. A plugin needs no special code for this — render from the
+`state` your server action returns and the player view falls out. To offer the
+switch from your own DM UI, call `viewAs(characterId)` from
+`@hexcrawl/client/plugin-api`; `viewAs(null)` returns to the DM view, and the
+shell's banner always offers the same.

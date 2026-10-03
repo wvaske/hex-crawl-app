@@ -26,8 +26,11 @@ export const SnapshotMessage = z.object({
   type: z.literal('snapshot'),
   /** The recipient's own seat id and role, so the client knows who it is. */
   seatId: z.string(),
+  /** The role the snapshot was built for: a DM viewing as a player receives `player`. */
   role: z.enum(['dm', 'player']),
   state: CampaignStateSchema,
+  /** Set when a DM seat is viewing the table as this character's player (seat.viewAs). */
+  viewingAs: z.object({ characterId: z.string(), name: z.string() }).nullable().optional(),
 });
 
 export const AckMessage = z.object({
