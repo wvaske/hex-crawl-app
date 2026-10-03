@@ -2,7 +2,11 @@ import React from 'react';
 import {
   CONTENT_TYPE_GLYPHS,
   CORE_SKILLS,
+  EDGE_DIFFICULTY_LABELS,
   TERRAINS,
+  edgesAround,
+  hexNeighbor,
+  indexEdges,
   clueInRange,
   clueObservableCells,
   compassDirection,
@@ -60,6 +64,11 @@ export function InspectTab() {
   // A multi-hex region belongs to every hex of its footprint, not just the
   // anchor — inspecting any of its hexes shows it (issue #69).
   const contents = ms.contents.filter((c) => contentCoversHex(c, hex));
+  // Terrain difficulty on this hex's edges, named by compass bearing.
+  const edgeNotes = edgesAround(indexEdges(ms.edges), hex).map((e) => ({
+    ...e,
+    bearing: compassDirection(hex, hexNeighbor(hex, e.dir), map.orientation),
+  }));
   const isDm = role === 'dm';
   const myCharacterId = state.seats.find((s) => s.id === seatId)?.characterId ?? null;
   // Players have no toolbar; a claimed character is the bar for annotating.
@@ -75,6 +84,25 @@ export function InspectTab() {
           {cell ? TERRAINS[cell.terrain].label : 'Unpainted'}
         </span>
       </div>
+
+      {edgeNotes.length > 0 && (
+        <div className="mb-3 text-xs text-ink-300">
+          <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+            Difficult edges
+          </p>
+          <ul className="space-y-0.5">
+            {edgeNotes.map((e) => (
+              <li key={e.dir}>
+                <span className="text-ink-100 font-medium">{e.bearing}</span>
+                {e.leaving && <span> · out: {EDGE_DIFFICULTY_LABELS[e.leaving].toLowerCase()}</span>}
+                {e.entering && (
+                  <span> · in: {EDGE_DIFFICULTY_LABELS[e.entering].toLowerCase()}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {isDm && (
         <div className="mb-3">

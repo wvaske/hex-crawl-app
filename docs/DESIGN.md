@@ -58,6 +58,12 @@ Right for personal-group use; role checks still happen on every server command.
 - **Terrain painting**: per-hex terrain (plains, forest, hills, mountains, desert,
   swamp, water, tundra, jungle, urban…) with color fill + pattern at configurable
   opacity. Brush paint for the DM. Terrain feeds encounter tables and travel pace.
+- **Edge difficulty**: terrain difficulty is a property of a crossing, not a hex.
+  A directed hex edge can be difficult (+1 hex of effort), very difficult (+2) or
+  impassable; the reverse crossing is separate, so a canyon is hard to climb out
+  of and free to walk down into. Routing goes around walls and never across
+  cliffs; the clock runs on effort. Marked per edge (Edge tool) or across a
+  region's whole border (leaving / entering / both), then fixed per exception.
 - Pan (drag) and zoom (wheel/pinch), 60fps with thousands of hexes via culling.
 - **Map manager dialog** (DM): every map with a thumbnail, its settings, ordering,
   rename/activate/delete. Shareable settings (sight radius, fog mode/decay, move
@@ -221,6 +227,8 @@ map           id, campaignId, name, orientation, hexSize, originX/Y, gridStyle(j
               sightRadius, fogMode, encounterDie(json), sortOrder
 image_layer   id, mapId, path, x, y, scale, opacity, z, dmOnly
 hex           mapId, q, r, terrain, note?            (sparse: only painted hexes)
+hex_edge      mapId, q, r, dir(0-5), difficulty(difficult|very_difficult|impassable)
+                                                     (sparse, DIRECTED: leaving q,r toward dir)
 fog           mapId, q, r, state(hidden|explored|visible)   (sparse; default hidden)
 token         id, mapId, q, r, kind(pc|npc), characterId?, label, color, glyph,
               playerVisible, size

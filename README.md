@@ -45,6 +45,11 @@ player hasn't earned ever reaches their browser._
   align the grid over it. Multiple maps per campaign. The **Scale** tool fits
   the grid to an image's own scale bar: click both ends of the bar, type the
   distance it shows, and the hex size is solved for you.
+- **Difficult terrain on hex edges** — mark a crossing as difficult, very
+  difficult or impassable, one direction at a time (climbing out of a canyon
+  costs extra; walking back down does not). Mark a whole region's border in
+  one click, then fix the exceptions. Routes go around walls and never across
+  cliffs; the travel clock runs on hexes of effort.
 - **Party** — characters with skill modifiers (Perception, Survival, Nature,
   Arcana, Religion, plus custom skills). Players can create and edit their own.
 - **Group skill checks, markers, measurement** — d20-per-character checks with

@@ -35,6 +35,9 @@ export function HexReadout() {
     : routing?.cells
       ? routing.cells.length - 1
       : null;
+  // Terrain difficulty: hexes of effort can exceed hexes walked; the clock
+  // (and so the estimate) runs on effort.
+  const effort = routing?.cells ? (routing.effort ?? dist) : dist;
 
   // Travel-time estimate (#77): distance at the campaign's current travel
   // mode/pace. Both roles see it — it's the "should we push on?" question.
@@ -42,7 +45,7 @@ export function HexReadout() {
   const time = state.campaign.time;
   if (dist !== null && dist > 0 && time) {
     const mode = resolveTravelMode(time.travelMode, state.campaign.settings.customTravelModes);
-    const totalMinutes = dist * minutesPerHex(map.milesPerHex, mode, time.pace);
+    const totalMinutes = (effort ?? dist) * minutesPerHex(map.milesPerHex, mode, time.pace);
     if (totalMinutes > 0) {
       travelEstimate = `~${formatDuration(totalMinutes)} · ${mode.label} (${time.pace})`;
     }
@@ -58,8 +61,14 @@ export function HexReadout() {
       {dist !== null && (
         <span className="text-arcane-500 font-medium">
           {' '}
-          · {routing ? 'route ' : ''}
+          · {routing && dist > 1 ? 'route ' : ''}
           {dist} hex{dist === 1 ? '' : 'es'} ≈ {dist * map.milesPerHex} mi
+        </span>
+      )}
+      {effort !== null && dist !== null && effort > dist && (
+        <span className="text-ember-500 font-medium">
+          {' '}
+          · difficult ground: {effort} hexes of effort
         </span>
       )}
       {travelEstimate && <span className="text-ink-400"> · {travelEstimate}</span>}

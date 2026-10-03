@@ -1,8 +1,17 @@
 import { create } from 'zustand';
-import type { FogState, HexCoord, LogEntry, TerrainId } from '@hexcrawl/shared';
+import type { EdgeDifficulty, FogState, HexCoord, LogEntry, TerrainId } from '@hexcrawl/shared';
 
 export type Tool =
-  'select' | 'paint' | 'fog' | 'marker' | 'content' | 'trail' | 'region' | 'measure' | 'calibrate';
+  | 'select'
+  | 'paint'
+  | 'fog'
+  | 'marker'
+  | 'content'
+  | 'trail'
+  | 'region'
+  | 'edge'
+  | 'measure'
+  | 'calibrate';
 
 /**
  * Side pop-out panels (issue #61). Three player-facing headings plus two
@@ -29,6 +38,10 @@ interface UiStore {
   tool: Tool;
   paintTerrain: TerrainId | null; // null = eraser
   brushRadius: 0 | 1 | 2;
+  /** Edge tool: what a click marks the crossing as; null clears it. */
+  edgeDifficulty: EdgeDifficulty | null;
+  /** Edge tool: also mark the reverse crossing (a wall rather than a one-way climb). */
+  edgeBothWays: boolean;
   fogTarget: FogState;
   markerGlyph: string;
   /** Sticker id (`<category>/<slug>`); empty means place the emoji glyph. */
@@ -92,7 +105,12 @@ interface UiStore {
    * no such route and the move would be a straight line. Written by the
    * engine, read by the hex readout.
    */
-  routePreview: { cells: HexCoord[] | null; target: HexCoord } | null;
+  routePreview: {
+    cells: HexCoord[] | null;
+    target: HexCoord;
+    /** Hexes of effort along `cells` (terrain difficulty); null when there is no route. */
+    effort?: number | null;
+  } | null;
   /** Sense triangulation: visited hexes a clicked clue is observable from. */
   senseHighlight: { clueId: string; cells: HexCoord[] } | null;
   /** DM: the encounter log entry shown in the run-this-encounter popup. */
@@ -274,6 +292,8 @@ export const useUi = create<UiStore>((set) => ({
   tool: 'select',
   paintTerrain: 'plains',
   brushRadius: 0,
+  edgeDifficulty: 'difficult',
+  edgeBothWays: false,
   fogTarget: 'visible',
   markerGlyph: '⭐',
   markerIcon: 'story/objective',

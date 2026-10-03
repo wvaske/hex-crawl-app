@@ -323,6 +323,27 @@ player-facing data).
   preview and the Travel-to picker. `settings.stopTravelAtNight` halts a
   ROUTED journey at the hex where dusk falls; a party that departs after
   dark is not stopped.
+- **Terrain difficulty is on directed EDGES, not hexes** (`shared/rules/edges.ts`).
+  A `HexEdge {q, r, dir, difficulty}` means "leaving (q, r) toward
+  `HEX_DIRECTIONS[dir]` is difficult / very_difficult / impassable"; the
+  reverse crossing is its own entry (`reverseEdge`), so climbing out of a
+  canyon costs extra and walking back down does not. `MapRuntime.edges` is
+  the `EdgeIndex` (keyed `edgeKey(q, r, dir)`, table `hex_edge`); the client
+  builds one from `mapState.edges` (`CanvasEngine.edges()`). Costs are whole
+  hexes of effort — a step is 1 + `EDGE_EXTRA_COST` — which is what lets
+  `findRoute`'s `stepCost` option keep its integer bucket queue; `Infinity`
+  (impassable) is simply not expanded. `performTravel` charges the clock by
+  `pathEffort` (nightfall truncation included) and logs `effort` next to
+  `hexes`; encounter checks stay per hex entered. Players cannot walk an
+  impassable edge (`token.move`, `move.request` throw; the engine toasts);
+  the DM can and is charged `IMPASSABLE_WALKED_COST`. Authoring: `edge.set`
+  (the Edge tool, E — click inside a hex near an edge; `nearestEdgeDirection`
+  picks the side) and `content.applyEdges` (Region tool → Border difficulty:
+  `boundaryEdges` of the footprint, leaving / entering / both). Both go
+  through `recordEdgeUndo`, which merges within 3s like cell strokes, so an
+  apply plus its exception clicks is one undo. Players see the edges touching
+  any non-hidden hex (`filterStateForViewer`); edges are a frozen layer in
+  prep mode and ride along in campaign export/import (`hexEdges`).
 - **Clue geometry (#123).** Never compare `distance` to `gate.maxDistance`
   inline. `clueInRange(clue, content, pos)` / `clueObservableCells` /
   `clueObserveSet` (shared `domain.ts`) apply the vantage sets
