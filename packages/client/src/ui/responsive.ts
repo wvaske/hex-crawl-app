@@ -41,6 +41,17 @@ export function useIsMobile(): boolean {
 }
 
 /**
+ * Below this width the top bar folds its secondary controls (text size,
+ * density, tint, undo, prep mode, view-as, re-center) into the ⋯ menu so the
+ * clock, scale and weather keep their room. Phones fold more (the map picker).
+ */
+export const COMPACT_MAX_WIDTH = 1279;
+export const COMPACT_QUERY = `(max-width: ${COMPACT_MAX_WIDTH}px)`;
+export function useIsCompact(): boolean {
+  return useMediaQuery(COMPACT_QUERY);
+}
+
+/**
  * Touch (or pen) as the primary input. Read imperatively — the engine is a
  * plain class, not a component, and only needs this at pointer-down time.
  */

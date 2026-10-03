@@ -19,7 +19,7 @@ import { activeMap, useSession } from '../stores/session.js';
 import { UI_SCALES, persistUiDensity, useUi, useVerbose } from '../stores/ui.js';
 import { send } from '../ws.js';
 import { Button, Input, Select, cx, Lbl } from '../ui/kit.js';
-import { useIsMobile } from '../ui/responsive.js';
+import { useIsCompact, useIsMobile } from '../ui/responsive.js';
 
 /**
  * Secondary top-bar controls. On a phone the bar has room for the campaign,
@@ -29,6 +29,7 @@ import { useIsMobile } from '../ui/responsive.js';
  */
 function Overflow({ children, extra }: { children: React.ReactNode; extra?: React.ReactNode }) {
   const mobile = useIsMobile();
+  const compact = useIsCompact();
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
 
@@ -41,7 +42,7 @@ function Overflow({ children, extra }: { children: React.ReactNode; extra?: Reac
     return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  if (!mobile) return <>{children}</>;
+  if (!compact) return <>{children}</>;
   return (
     <div className="relative" ref={ref}>
       <Button
@@ -57,7 +58,7 @@ function Overflow({ children, extra }: { children: React.ReactNode; extra?: Reac
           className="absolute right-0 top-full mt-1 w-52 rounded-md border border-ink-700 bg-ink-900 p-1.5 shadow-lg z-40 flex flex-col items-stretch gap-1"
           onClick={() => setOpen(false)}
         >
-          {extra}
+          {mobile && extra}
           {children}
         </div>
       )}
@@ -451,9 +452,9 @@ const EMPTY_HISTORY: never[] = [];
  * desktop, where the control goes straight back into the bar.
  */
 function MenuRow({ label, children }: { label: string; children: React.ReactNode }) {
-  const mobile = useIsMobile();
+  const compact = useIsCompact();
   const verbose = useVerbose();
-  if (!mobile || verbose) return <>{children}</>;
+  if (!compact || verbose) return <>{children}</>;
   return (
     <div className="flex items-center gap-2">
       {children}
@@ -653,6 +654,7 @@ export function TopBar({
   const status = useSession((s) => s.status);
   const map = activeMap(state);
   const mobile = useIsMobile();
+  const compact = useIsCompact();
 
   const online = state?.seats.filter((s) => s.online) ?? [];
 
@@ -716,7 +718,7 @@ export function TopBar({
 
       <div className="hidden md:block flex-1" />
 
-      {!mobile && <ViewAsControl />}
+      {!compact && <ViewAsControl />}
 
       <div
         className="hidden sm:flex items-center -space-x-1.5"
@@ -803,6 +805,7 @@ export function TopBar({
             <PauseSyncToggle />
           </MenuRow>
         )}
+        {role === 'dm' && <ViewAsControl asList />}
         <MenuRow label="Re-center map">
           <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
             ⌖<Lbl>Center</Lbl>
@@ -819,28 +822,61 @@ export function TopBar({
  * for that player, so the whole UI switches to the player role; the banner
  * below is the way back.
  */
-export function ViewAsControl() {
+export function ViewAsControl({ asList = false }: { asList?: boolean }) {
   const state = useSession((s) => s.state);
   const role = useSession((s) => s.role);
   const viewingAs = useSession((s) => s.viewingAs);
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
   if (role !== 'dm' || viewingAs || !state || state.characters.length === 0) return null;
-  return (
-    <Select
-      value=""
-      onChange={(e) => {
-        if (e.target.value) send({ kind: 'seat.viewAs', characterId: e.target.value });
-      }}
-      className="w-auto text-xs py-1"
-      title="See the table as one player sees it: their fog, clues, senses and sidebar panels"
-      aria-label="View as player"
-    >
-      <option value="">👁 View as…</option>
+  const pick = (characterId: string) => send({ kind: 'seat.viewAs', characterId });
+  const list = (
+    <>
       {state.characters.map((c) => (
-        <option key={c.id} value={c.id}>
+        <Button key={c.id} variant="ghost" size="sm" className="justify-start" onClick={() => pick(c.id)}>
+          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
           {c.name}
-        </option>
+        </Button>
       ))}
-    </Select>
+    </>
+  );
+  if (asList) {
+    return (
+      <div className="flex flex-col items-stretch gap-0.5 border-t border-ink-700 pt-1 mt-0.5">
+        <span className="px-1 text-[0.625rem] uppercase tracking-wider text-ink-400">👁 View as player</span>
+        {list}
+      </div>
+    );
+  }
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen((o) => !o)}
+        title="See the table as one player sees it: their fog, clues, senses and sidebar panels"
+        aria-label="View as player"
+        aria-expanded={open}
+      >
+        👁<Lbl>View as</Lbl>
+      </Button>
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-1 w-44 rounded-md border border-ink-700 bg-ink-900 p-1.5 shadow-lg z-40 flex flex-col items-stretch gap-0.5"
+          onClick={() => setOpen(false)}
+        >
+          {list}
+        </div>
+      )}
+    </div>
   );
 }
 
