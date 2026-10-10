@@ -432,10 +432,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     }
     const rt = ctx.runtime.requireMap(token.mapId);
     const map = ctx.runtime.maps.get(token.mapId);
+    const teleport = cmd.teleport ?? false;
     const travel = map
-      ? travelPath(ctx, map, { q: token.q, r: token.r }, { q: cmd.q, r: cmd.r }, false)
+      ? travelPath(ctx, map, { q: token.q, r: token.r }, { q: cmd.q, r: cmd.r }, teleport)
       : null;
-    if (ctx.seat.role !== 'dm' && travel && pathBlocked(rt.edges, travel.path)) {
+    if (!teleport && ctx.seat.role !== 'dm' && travel && pathBlocked(rt.edges, travel.path)) {
       throw new Error('That way is impassable');
     }
     rt.pendingMoves.set(token.id, {
@@ -449,6 +450,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       color: token.color,
       at: Date.now(),
       routeHexes: travel?.routed ? travel.path.length - 1 : null,
+      teleport,
     });
     ctx.hub.sendTo(
       ctx.runtime,
@@ -459,6 +461,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         label: token.label || 'token',
         q: cmd.q,
         r: cmd.r,
+        teleport,
       },
       { dm: true },
     );

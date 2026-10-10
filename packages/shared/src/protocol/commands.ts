@@ -325,13 +325,15 @@ export const TokenMoveCommand = z.object({
   teleport: z.boolean().default(false),
 });
 
-/** Player: request a move for DM approval (when the map requires it). */
+/** Player: request a move for DM approval, including voluntary requests on free-move maps. */
 export const MoveRequestCommand = z.object({
   ...base,
   kind: z.literal('move.request'),
   tokenId: z.string(),
   q: z.number().int(),
   r: z.number().int(),
+  /** Requested mode only: the DM still chooses how to approve the move. */
+  teleport: z.boolean().optional(),
 });
 
 /** DM: approve or deny a pending move. */

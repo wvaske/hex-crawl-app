@@ -26,7 +26,7 @@ export function PendingMoves() {
               style={{ background: pm.color }}
             />
             <span className="text-sm text-ink-100 min-w-0 flex-1 truncate">
-              <span className="font-medium">{pm.label}</span> wants to travel to{' '}
+              <span className="font-medium">{pm.label}</span> wants to {pm.teleport ? 'teleport' : 'travel'} to{' '}
               <span className="text-brass-300">
                 {pm.toQ}, {pm.toR}
               </span>

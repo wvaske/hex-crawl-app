@@ -145,8 +145,8 @@ function handleMessage(msg: ServerMessage): void {
       } else if (msg.kind === 'move.requested') {
         session.pushToast({
           kind: 'info',
-          title: 'Move requested',
-          text: `${msg.label} wants to travel to hex ${msg.q}, ${msg.r} — approve in the panel above the map.`,
+          title: msg.teleport ? 'Teleport requested' : 'Move requested',
+          text: `${msg.label} wants to ${msg.teleport ? 'teleport' : 'travel'} to hex ${msg.q}, ${msg.r} — approve in the panel above the map.`,
         });
       } else if (msg.kind === 'move.resolved') {
         session.pushToast({

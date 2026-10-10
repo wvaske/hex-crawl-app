@@ -12,6 +12,7 @@ import { EmptyMapHint, HexReadout } from '../components/StatusOverlays.js';
 import { PendingMoves } from '../components/PendingMoves.js';
 import { SelectionBar } from '../components/SelectionBar.js';
 import { PinActions } from '../components/PinActions.js';
+import { PlayerHexActions } from '../components/PlayerHexActions.js';
 import { LocationDialog } from '../components/LocationDialog.js';
 import { EncounterDialog } from '../components/EncounterDialog.js';
 import { MapManagerDialog } from '../components/MapManagerDialog.js';
@@ -171,6 +172,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         {role === 'dm' && <Toolbar />}
         {role === 'dm' && <SelectionBar />}
         {role === 'dm' && <PinActions />}
+        {role === 'player' && <PlayerHexActions />}
         <PanelShell campaignId={campaignId} />
         {!hasState && (
           <div className="absolute inset-0 flex items-center justify-center bg-ink-950/70 pointer-events-none">

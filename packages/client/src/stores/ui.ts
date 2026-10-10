@@ -156,7 +156,7 @@ interface UiStore {
   /** DM box-select: content ids selected for bulk enable/disable/quest. */
   contentSelection: string[] | null;
   /** Screen position (canvas coords) of the selected hex, for the pin popup. */
-  pinPopup: { x: number; y: number } | null;
+  pinPopup: { x: number; y: number; belowY: number; width: number; height: number } | null;
   /** Player-chosen map for this session (null = follow the DM default). */
   viewedMapId: string | null;
   /** DM view aid: dim location pins on hexes the party hasn't explored. */
