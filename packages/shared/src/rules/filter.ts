@@ -306,9 +306,11 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
         clueId: clue.id,
         text: clue.text,
         direction: liveDirection ?? d.direction,
-        distance: clue.indicatesDistance
-          ? inRange && here ? distanceToContent(content, here) : d.distance ?? null
-          : null,
+        // Turning disclosure off stops live measurement, but cannot retract
+        // what was already learned (same rule as saved bearings and journals).
+        distance: clue.indicatesDistance && inRange && here
+          ? distanceToContent(content, here)
+          : d.distance ?? null,
         inRange,
         at: d.at,
         observableFrom: [...observable.values()],

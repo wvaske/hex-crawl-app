@@ -176,7 +176,8 @@ truth, not for players yet.
        {
          "text": "Smoke rises from chimneys along the ridge, more than a hamlet this size should need.",
          "gate": { "kind": "skill", "skill": "Perception", "dc": 12, "maxDistance": 2, "mode": "passive" },
-         "indicatesDirection": true
+         "indicatesDirection": true,
+         "indicatesDistance": false
        }
      ]
    }

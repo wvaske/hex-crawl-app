@@ -103,6 +103,15 @@ describe('optional clue distance (#154)', () => {
     expect(defaults.clues[0]?.indicatesDistance).toBe(false);
   });
 
+  it('stops live measurements when toggled off but retains the distance already learned', () => {
+    const source = content();
+    evaluateKnowledge(runtime, mapId);
+    source.clues[0]!.indicatesDistance = false;
+    runtime.upsertContent(source);
+    runtime.updateToken(mapId, tokenId, { q: 1 });
+    expect(view().senses[0]?.distance).toBe(2);
+  });
+
   it('freezes approved search distance at roll time, through reload and campaign export/import', () => {
     content(true, 'active');
     dispatch(player, { kind: 'check.roll', mapId, skill: 'perception', characterIds: [characterId], hex: { q: 0, r: 0 } });

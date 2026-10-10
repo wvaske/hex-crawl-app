@@ -31,7 +31,7 @@ export function deliverDiscoveries(
           : how.kind;
     runtime.appendLog(
       'discovery',
-      `${d.characterName} discovered "${d.contentTitle}": ${d.clueText} (${howText})`,
+      `${d.characterName} discovered "${d.contentTitle}": ${deliveredText} (${howText})`,
       'dm',
       { contentId: d.contentId, clueId: d.discovery.clueId, characterId: d.discovery.characterId },
     );
