@@ -74,6 +74,13 @@ const STROKE_FLUSH_MS = 180;
 const PIN_BASE_FONT = 32;
 /** Minimum on-screen token diameter in px. */
 const TOKEN_MIN_SCREEN = 26;
+/**
+ * Token disc radius as a fraction of the hex circumradius. Kept well inside
+ * the hex (its inradius is 0.866) so the terrain-difficulty bars along the
+ * edges — inset 0.13 from the edge, up to 0.15 wide — stay visible with a
+ * token standing on the hex, party halo and name label included.
+ */
+const TOKEN_RADIUS = 0.42;
 /** Zoom range expressed as an on-screen hex circumradius (px). */
 const HEX_MAX_SCREEN = 240;
 const HEX_MIN_SCREEN = 0.6;
@@ -929,9 +936,9 @@ export class CanvasEngine {
       }
     }
     // Party/NPC tokens: same guarantee — never smaller than a thumbprint.
-    const tokenWorldDiameter = this.layout.size * 1.1;
+    const tokenWorldDiameter = this.layout.size * TOKEN_RADIUS * 2;
     const tokenScale = Math.max(1, TOKEN_MIN_SCREEN / (tokenWorldDiameter * zoom));
-    const tokenFont = this.layout.size * 0.55 * tokenScale * zoom;
+    const tokenFont = this.layout.size * TOKEN_RADIUS * tokenScale * zoom;
     const tokenRes = rasterResolution(tokenFont);
     for (const view of this.tokens.values()) {
       view.root.scale.set(tokenScale * view.crowdScale);
@@ -1738,7 +1745,8 @@ export class CanvasEngine {
       let crowd = 1;
       if (n > 1) {
         const angle = (2 * Math.PI * idx) / n - Math.PI / 2;
-        const radius = size * (n === 2 ? 0.34 : 0.48);
+        // Spread stays inside the edge bars: offset + shrunken disc < ~0.65.
+        const radius = size * (n === 2 ? 0.3 : 0.42);
         offX = Math.cos(angle) * radius;
         offY = Math.sin(angle) * radius;
         crowd = n === 2 ? 0.62 : n <= 4 ? 0.5 : 0.4;
@@ -1791,9 +1799,9 @@ export class CanvasEngine {
         g.lineTo(a.x + dx * t1, a.y + dy * t1);
       }
       g.stroke({ width: Math.max(2, size * 0.12), color: pm.color, alpha: 0.9 });
-      g.circle(b.x, b.y, size * 0.55);
+      g.circle(b.x, b.y, size * TOKEN_RADIUS);
       g.fill({ color: pm.color, alpha: 0.35 });
-      g.circle(b.x, b.y, size * 0.55);
+      g.circle(b.x, b.y, size * TOKEN_RADIUS);
       g.stroke({ width: Math.max(1.5, size * 0.08), color: 0xffffff, alpha: 0.8 });
       this.pendingC.addChild(g);
       const label = new Text({
@@ -1807,7 +1815,7 @@ export class CanvasEngine {
         resolution: 3,
       });
       label.anchor.set(0.5, 0);
-      label.position.set(b.x, b.y + size * 0.7);
+      label.position.set(b.x, b.y + size * (TOKEN_RADIUS + 0.12));
       (label as unknown as PinContainer).__pin = { worldSize: size, minScreen: 14 };
       this.pendingC.addChild(label);
     }
@@ -1849,7 +1857,7 @@ export class CanvasEngine {
   }
 
   private styleTokenView(view: TokenView, token: Token): void {
-    const size = (this.layout?.size ?? 40) * 0.55;
+    const size = (this.layout?.size ?? 40) * TOKEN_RADIUS;
     view.body.clear();
     view.body.circle(0, 0, size);
     view.body.fill({ color: token.color });
@@ -1874,7 +1882,7 @@ export class CanvasEngine {
     view.glyph.scale.set((size * (token.glyph ? 1.0 : 0.75)) / PIN_BASE_FONT);
     view.label.text = token.label;
     view.label.scale.set((size * 0.42) / PIN_BASE_FONT);
-    view.label.position.set(0, size * 1.12);
+    view.label.position.set(0, size * 1.05);
     view.root.alpha = token.kind === 'npc' && !token.playerVisible ? 0.75 : 1;
     // Explicit grab target: hit-testing a bare Container depends on child
     // geometry, which is fragile; a hitArea makes the whole disc grabbable.
