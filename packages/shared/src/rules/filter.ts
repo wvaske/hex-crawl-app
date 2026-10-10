@@ -10,9 +10,9 @@ import type {
   Token,
   TrailSign,
 } from '../domain.js';
-import { clueInRange, clueObservableCells, isFullContent, nearestContentCell } from '../domain.js';
+import { clueInRange, clueObservableCells, distanceToContent, isFullContent, nearestContentCell } from '../domain.js';
 import { hexKey, hexNeighbor } from '../hex/coords.js';
-import { bearingAngle, compassDirection, withDirection } from '../hex/direction.js';
+import { bearingAngle, compassDirection, withDirection, withDistance } from '../hex/direction.js';
 import type { HexOrientation } from '../hex/layout.js';
 
 export interface Viewer {
@@ -235,7 +235,7 @@ export function contentPlayerView(
       .sort((a, b) => a.at - b.at)
       .map((d) => ({
         clueId: d.clueId,
-        text: withDirection(clueText.get(d.clueId) ?? '', d.direction),
+        text: withDistance(withDirection(clueText.get(d.clueId) ?? '', d.direction), d.distance),
         at: d.at,
       })),
   };
@@ -306,6 +306,11 @@ function computeSenses(full: CampaignState, characterId: string | null): Sense[]
         clueId: clue.id,
         text: clue.text,
         direction: liveDirection ?? d.direction,
+        // Turning disclosure off stops live measurement, but cannot retract
+        // what was already learned (same rule as saved bearings and journals).
+        distance: clue.indicatesDistance && inRange && here
+          ? distanceToContent(content, here)
+          : d.distance ?? null,
         inRange,
         at: d.at,
         observableFrom: [...observable.values()],

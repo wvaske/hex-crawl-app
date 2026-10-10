@@ -377,6 +377,18 @@ player-facing data).
   their own PC token only. `deleteCharacter` deletes the character's tokens
   and cascades discoveries, trail finds, search attempts and pending reveals.
 
+## Clue distance (issue #154)
+
+Clue distance (#154): `indicatesDistance` is opt-in, independent of direction and
+location revelation. `Discovery.distance` and `PendingReveal.distance` store the
+disclosed hex distance at discovery/roll time; sharing and delayed approval keep
+that value. Senses recompute it only while in range, using `distanceToContent`
+(nearest region member), and fall back to the saved value out of range. Older
+discoveries have null/absent distance, never a guessed historical value. The
+additive columns ride the common SQLite/Postgres migration and campaign exports.
+Turning Distance off stops new/live measurements but preserves already-disclosed
+distances in senses and history, just like historical bearings.
+
 ## D&D Beyond game-log import (issue #146)
 
 - `engine/ddbGameLog.ts`: `mintToken` (cookie → short-lived token + user id),

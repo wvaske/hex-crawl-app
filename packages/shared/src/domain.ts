@@ -730,6 +730,8 @@ export const ClueSchema = z.object({
    * toward this content's hex) to the delivered text: "… — to the north-east".
    */
   indicatesDirection: z.boolean().default(false),
+  /** Include the distance to the nearest source hex in delivered observations. */
+  indicatesDistance: z.boolean().default(false),
   /**
    * Whether discovering this clue on the hex pins down the content's
    * location. Info-only clues (tracks, rumors) never reveal the pin, so an
@@ -813,6 +815,8 @@ export const DiscoverySchema = z.object({
   how: DiscoveryHowSchema,
   /** Compass bearing sensed at discovery time (clue's indicatesDirection). */
   direction: z.string().nullable().default(null),
+  /** Disclosed distance at discovery time; absent/null means it was not disclosed. */
+  distance: z.number().int().nonnegative().nullable().optional(),
   /**
    * Whether this discovery pins down the source's location (made on the hex
    * itself, or DM-revealed). Distance discoveries start false and upgrade
@@ -997,6 +1001,7 @@ export const PendingRevealSchema = z.object({
   /** The search_attempt this came out of (carries the skill and the hex). */
   attemptId: z.string(),
   direction: z.string().nullable().default(null),
+  distance: z.number().int().nonnegative().nullable().optional(),
   locates: z.boolean().default(false),
   roll: z.number().int(),
   modifier: z.number().int(),
@@ -1043,6 +1048,8 @@ export const SenseSchema = z.object({
   text: z.string(),
   /** Bearing toward the source: live while in range, else the discovery snapshot. */
   direction: z.string().nullable(),
+  /** Disclosed distance: live while in range, else the discovery snapshot. */
+  distance: z.number().int().nonnegative().nullable().optional(),
   /** Whether the clue is observable from the character's current hex. */
   inRange: z.boolean(),
   /** When it was first discovered (epoch ms). */

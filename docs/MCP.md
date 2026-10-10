@@ -348,7 +348,9 @@ missing/wrong key returns `401 {"error": "Unauthorized"}`.
 `region`, `lore`, `hazard`, `cache`, `other`), `glyph?`, `dmNotes?`,
 `wikiPage?`, `showLabel?`, `scaleVisibility?` (0-2), `enabled?`,
 `knownLocation?`, `quest?`, `clues?` (array of `{text, gate?,
-indicatesDirection?, revealsLocation?}`).
+indicatesDirection?, indicatesDistance?, revealsLocation?}`). Direction and Distance
+are independent opt-ins. Distance appends “— N hexes away” using the nearest
+region member; it does not reveal the source pin.
 
 **The wrong-path-returns-SPA-200 gotcha:** when a build serves the client
 (`CLIENT_DIST` set — true of every production deployment), the app falls

@@ -494,9 +494,10 @@ export const ContentUpsertCommand = z.object({
     clues: z.array(
       // `observeFrom` is re-declared optional: reusing the domain default
       // would make it required in `CommandInput` at every call site.
-      ClueSchema.omit({ id: true, contentId: true, observeFrom: true }).extend({
+      ClueSchema.omit({ id: true, contentId: true, observeFrom: true, indicatesDistance: true }).extend({
         id: z.string().nullable().default(null),
         observeFrom: z.array(HexRefSchema).max(2000).optional(),
+        indicatesDistance: z.boolean().optional(),
       }),
     ),
   }),

@@ -80,6 +80,7 @@ export function evaluateKnowledge(
           evaluation.passive,
           direction,
           clue.revealsLocation,
+          clue.indicatesDistance,
         );
         if (runtime.addDiscovery(discovery)) {
           results.push({
@@ -104,6 +105,7 @@ function buildDiscovery(
   passive: number | undefined,
   direction: string | null,
   revealsLocation: boolean,
+  indicatesDistance: boolean,
 ): Discovery {
   const how: Discovery['how'] =
     gate.kind === 'skill'
@@ -122,6 +124,7 @@ function buildDiscovery(
     at: Date.now(),
     how,
     direction,
+    distance: indicatesDistance ? distance : null,
     locates: distance === 0 && revealsLocation,
   };
 }

@@ -741,6 +741,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
           text: z.string().min(1).max(2000),
           gate: GateSchema.default({ kind: 'auto' }),
           indicatesDirection: z.boolean().default(false),
+          indicatesDistance: z.boolean().default(false),
           revealsLocation: z.boolean().default(true),
           observeFrom: z
             .array(z.object({ q: z.number().int(), r: z.number().int() }))
@@ -810,6 +811,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
             gate: cl.gate,
             sortOrder: i,
             indicatesDirection: cl.indicatesDirection,
+            indicatesDistance: cl.indicatesDistance,
             revealsLocation: cl.revealsLocation,
             observeFrom: cl.observeFrom,
           }))

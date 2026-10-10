@@ -86,6 +86,7 @@ export function PinActions() {
                     gate: cl.gate,
                     sortOrder: cl.sortOrder,
                     indicatesDirection: cl.indicatesDirection,
+                    indicatesDistance: cl.indicatesDistance,
                     revealsLocation: cl.revealsLocation,
                   })),
                 },

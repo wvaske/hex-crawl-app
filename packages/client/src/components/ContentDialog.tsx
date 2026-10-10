@@ -20,6 +20,7 @@ interface ClueDraft {
   text: string;
   gate: Gate;
   indicatesDirection: boolean;
+  indicatesDistance: boolean;
   revealsLocation: boolean;
   /** Vantage hexes: perceivable only from these (issue #123). */
   observeFrom: HexCoord[];
@@ -59,6 +60,7 @@ export function ContentDialog() {
       text: c.text,
       gate: c.gate,
       indicatesDirection: c.indicatesDirection,
+      indicatesDistance: c.indicatesDistance,
       revealsLocation: c.revealsLocation,
       observeFrom: c.observeFrom,
     })) ?? [],
@@ -156,6 +158,7 @@ export function ContentDialog() {
             gate: c.gate,
             sortOrder: i,
             indicatesDirection: c.indicatesDirection,
+            indicatesDistance: c.indicatesDistance,
             revealsLocation: c.revealsLocation,
             observeFrom: c.observeFrom,
           })),
@@ -302,6 +305,7 @@ export function ContentDialog() {
                     text: '',
                     gate: { kind: 'skill', skill: 'perception', dc: 12, maxDistance: 1, mode: 'passive' },
                     indicatesDirection: false,
+                    indicatesDistance: false,
                     revealsLocation: true,
                     observeFrom: [],
                   },
@@ -488,6 +492,19 @@ function ClueEditor({
           title='Append the sensed compass bearing when delivered, e.g. "… — to the north-east" (computed from where the character stands toward this hex)'
         >
           🧭 direction
+        </button>
+        <button
+          onClick={() => onChange({ ...clue, indicatesDistance: !clue.indicatesDistance })}
+          aria-pressed={clue.indicatesDistance}
+          className={cx(
+            'px-2 py-0.5 rounded-full text-[0.6875rem] cursor-pointer border',
+            clue.indicatesDistance
+              ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+              : 'border-ink-700 text-ink-300 hover:bg-ink-700',
+          )}
+          title="Include distance to the nearest source hex, e.g. 2 hexes away; independent of direction and location reveal"
+        >
+          📏 Distance
         </button>
         <button
           onClick={() => onChange({ ...clue, revealsLocation: !clue.revealsLocation })}

@@ -37,6 +37,11 @@ export function withDirection(text: string, direction: string | null | undefined
   return direction ? `${text} — to the ${direction}` : text;
 }
 
+/** Optional distance disclosure. Zero is meaningful: the source is on this hex. */
+export function withDistance(text: string, distance: number | null | undefined): string {
+  return distance == null ? text : `${text} — ${distance} hex${distance === 1 ? '' : 'es'} away`;
+}
+
 /**
  * Exact map-space bearing from one hex to another in degrees
  * (0 = east, clockwise on screen). Null when the hexes coincide.
