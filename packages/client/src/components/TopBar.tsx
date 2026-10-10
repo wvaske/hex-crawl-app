@@ -806,8 +806,8 @@ export function TopBar({
           </MenuRow>
         )}
         {role === 'dm' && <ViewAsControl asList />}
-        <MenuRow label="Re-center map">
-          <Button variant="ghost" size="sm" onClick={onRecenter} title="Re-center map">
+        <MenuRow label="Center on party">
+          <Button variant="ghost" size="sm" onClick={onRecenter} title="Center on your character or the party at the selected hex scale (Auto uses the finest scale)">
             ⌖<Lbl>Center</Lbl>
           </Button>
         </MenuRow>
