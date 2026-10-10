@@ -2491,6 +2491,30 @@ export class CanvasEngine {
     }
   }
 
+  /** Center on a PC at a playable scale, rather than fitting the whole map (#157). */
+  centerOnParty(): void {
+    const pcs = [...this.tokens.values()].filter((v) => v.token.kind === 'pc');
+    const selected = useUi.getState().selectedTokenId;
+    const view = pcs.find((v) => v.token.characterId === this.myCharacterId && this.myCharacterId !== null)
+      ?? pcs.find((v) => v.token.id === selected)
+      ?? pcs[0];
+    if (view) this.centerOnToken(view.token);
+    else this.recenter();
+  }
+
+  private centerOnToken(token: Token): void {
+    if (!this.layout) return;
+    const p = hexToPixel(this.layout, token);
+    const selectedScale = useUi.getState().scaleLock;
+    const level = selectedScale === 'auto' ? 0 : selectedScale;
+    // The selected hex spans 120px. Auto deliberately starts at the finest
+    // scale; no fixed zoom cap, which made tiny source-map hexes unreadable.
+    const scale = 120 / (2 * this.layout.size * Math.pow(SUPER_SCALE, level));
+    this.viewport.setZoom(scale, true);
+    this.viewport.moveCenter(p.x, p.y);
+    this.viewDirty = true;
+  }
+
   /** Center and zoom the view on the viewer's own PC token ("Go to me"). */
   centerOnMyToken(): void {
     if (!this.layout) return;
@@ -2508,12 +2532,7 @@ export class CanvasEngine {
       });
       return;
     }
-    const p = hexToPixel(this.layout, view.token);
-    // Zoom so one hex reads comfortably regardless of the map's hex size.
-    const scale = Math.min(Math.max(120 / (this.layout.size * 2), 0.3), 3);
-    this.viewport.setZoom(scale, true);
-    this.viewport.moveCenter(p.x, p.y);
-    this.viewDirty = true;
+    this.centerOnToken(view.token);
   }
 
   // -- ticker ----------------------------------------------------------------

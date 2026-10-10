@@ -159,7 +159,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
     <div className="h-full flex flex-col overflow-hidden">
       <TopBar
         campaignId={campaignId}
-        onRecenter={() => engineRef.current?.recenter()}
+        onRecenter={() => engineRef.current?.centerOnParty()}
         onGoToMe={() => engineRef.current?.centerOnMyToken()}
       />
       <ViewingAsBanner />
