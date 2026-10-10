@@ -1126,7 +1126,14 @@ export class CanvasEngine {
     const p = hexToPixel(this.layout, ui.selectedHex);
     const sp = this.viewport.toScreen(p.x, p.y);
     const zoom = this.viewport.scale.x;
-    ui.set('pinPopup', { x: sp.x, y: sp.y - this.layout.size * zoom * 0.95 });
+    const width = this.viewport.screenWidth;
+    const height = this.viewport.screenHeight;
+    if (sp.x < 0 || sp.x > width || sp.y < 0 || sp.y > height) {
+      if (ui.pinPopup) ui.set('pinPopup', null);
+      return;
+    }
+    const offset = this.layout.size * zoom * 0.95;
+    ui.set('pinPopup', { x: sp.x, y: sp.y - offset, belowY: sp.y + offset, width, height });
   }
 
   private drawHighlight(): void {
@@ -2542,6 +2549,7 @@ export class CanvasEngine {
     this.updateScaleLevel();
     if (this.viewDirty) {
       this.viewDirty = false;
+      this.updatePinPopupPos();
       this.drawViewDependent();
       this.drawHighlight();
     }
