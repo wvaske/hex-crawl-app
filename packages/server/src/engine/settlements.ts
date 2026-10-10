@@ -111,6 +111,7 @@ export function generateSettlementClues(
           },
           sortOrder: content.clues.length + i,
           indicatesDirection: true,
+          indicatesDistance: false,
           revealsLocation: true,
           observeFrom: [],
         })),

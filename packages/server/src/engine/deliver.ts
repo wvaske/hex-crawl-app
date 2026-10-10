@@ -1,6 +1,7 @@
 import type { CampaignRuntime } from '../state/runtime.js';
 import type { Hub } from '../ws/hub.js';
 import type { NewDiscovery } from './knowledge.js';
+import { withDirection, withDistance } from '@hexcrawl/shared';
 
 /**
  * Deliver freshly-created discoveries: a journal entry for the owning
@@ -16,6 +17,7 @@ export function deliverDiscoveries(
   discoveries: NewDiscovery[],
 ): void {
   for (const d of discoveries) {
+    const deliveredText = withDistance(withDirection(d.clueText, d.discovery.direction), d.discovery.distance);
     const character = runtime.characters.get(d.discovery.characterId);
     const ownerSeats = [...runtime.seats.values()]
       .filter((s) => s.characterId === d.discovery.characterId)
@@ -34,7 +36,7 @@ export function deliverDiscoveries(
       { contentId: d.contentId, clueId: d.discovery.clueId, characterId: d.discovery.characterId },
     );
     for (const seatId of ownerSeats) {
-      runtime.appendLog('discovery', `${character?.name ?? 'You'} noticed: ${d.clueText}`, seatId, {
+      runtime.appendLog('discovery', `${character?.name ?? 'You'} noticed: ${deliveredText}`, seatId, {
         contentId: d.contentId,
       });
     }

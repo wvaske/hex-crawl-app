@@ -236,6 +236,7 @@ const TOOLS = [
               text: { type: 'string', description: 'Player-facing text delivered on discovery. Never put DM-only/spoiler information here.' },
               gate: { type: 'object', description: GATE_DESCRIPTION },
               indicatesDirection: { type: 'boolean', description: 'Append an auto-computed compass bearing to the delivered text. Default: false.' },
+              indicatesDistance: { type: 'boolean', description: 'Append distance in hexes to the nearest source hex. Default: false.' },
               revealsLocation: { type: 'boolean', description: 'Whether discovering this clue pins down the location on the map. Default: true; set false for rumor/info-only clues.' },
             },
             required: ['text'],

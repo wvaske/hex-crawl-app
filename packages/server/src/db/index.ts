@@ -320,6 +320,9 @@ export function migrate(d: DB): void {
   ensureColumn(d, 'map', 'move_approval', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'token', 'party_id', 'TEXT');
   ensureColumn(d, 'clue', 'indicates_direction', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'clue', 'indicates_distance', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'discovery', 'distance', 'INTEGER');
+  ensureColumn(d, 'pending_reveal', 'distance', 'INTEGER');
   ensureColumn(d, 'discovery', 'direction', 'TEXT');
   // Grandfather pre-existing discoveries as locating: players who could see a
   // pin before the senses rework keep seeing it.

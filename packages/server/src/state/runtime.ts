@@ -290,6 +290,7 @@ export class CampaignRuntime {
         at: dd.at as number,
         how: safeJson(dd.how as string, { kind: 'manual' }) as Discovery['how'],
         direction: (dd.direction as string | null) ?? null,
+        distance: (dd.distance as number | null) ?? null,
         locates: Boolean(dd.locates),
       };
       this.discoveries.set(disc.id, disc);
@@ -317,6 +318,7 @@ export class CampaignRuntime {
         characterId: pr.character_id as string,
         attemptId: pr.attempt_id as string,
         direction: (pr.direction as string | null) ?? null,
+        distance: (pr.distance as number | null) ?? null,
         locates: Boolean(pr.locates),
         roll: pr.roll as number,
         modifier: pr.modifier as number,
@@ -474,6 +476,7 @@ export class CampaignRuntime {
         gate: GateSchema.parse(safeJson(cl.gate as string)),
         sortOrder: cl.sort_order as number,
         indicatesDirection: Boolean(cl.indicates_direction),
+        indicatesDistance: Boolean(cl.indicates_distance),
         revealsLocation: Boolean(cl.reveals_location ?? 1),
         observeFrom: safeJson(cl.observe_from as string, []) as Clue['observeFrom'],
       }));
@@ -1487,8 +1490,8 @@ export class CampaignRuntime {
         }
       }
       const put = this.db.prepare(
-        `INSERT INTO clue (id, content_id, text, gate, sort_order, indicates_direction, reveals_location, observe_from) VALUES (?,?,?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET text=excluded.text, gate=excluded.gate, sort_order=excluded.sort_order, indicates_direction=excluded.indicates_direction, reveals_location=excluded.reveals_location, observe_from=excluded.observe_from`,
+        `INSERT INTO clue (id, content_id, text, gate, sort_order, indicates_direction, reveals_location, observe_from, indicates_distance) VALUES (?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET text=excluded.text, gate=excluded.gate, sort_order=excluded.sort_order, indicates_direction=excluded.indicates_direction, reveals_location=excluded.reveals_location, observe_from=excluded.observe_from, indicates_distance=excluded.indicates_distance`,
       );
       for (const clue of content.clues) {
         put.run(
@@ -1500,6 +1503,7 @@ export class CampaignRuntime {
           clue.indicatesDirection ? 1 : 0,
           clue.revealsLocation ? 1 : 0,
           JSON.stringify(clue.observeFrom ?? []),
+          clue.indicatesDistance ? 1 : 0,
         );
       }
     });
@@ -1566,7 +1570,7 @@ export class CampaignRuntime {
     this.discoveredByClueChar.add(`${discovery.clueId}|${discovery.characterId}`);
     this.db
       .prepare(
-        'INSERT INTO discovery (id, campaign_id, clue_id, character_id, at, how, direction, locates) VALUES (?,?,?,?,?,?,?,?)',
+        'INSERT INTO discovery (id, campaign_id, clue_id, character_id, at, how, direction, locates, distance) VALUES (?,?,?,?,?,?,?,?,?)',
       )
       .run(
         discovery.id,
@@ -1577,6 +1581,7 @@ export class CampaignRuntime {
         JSON.stringify(discovery.how),
         discovery.direction,
         discovery.locates ? 1 : 0,
+        discovery.distance ?? null,
       );
     return true;
   }
@@ -1690,7 +1695,7 @@ export class CampaignRuntime {
     this.pendingReveals.set(pending.id, pending);
     this.db
       .prepare(
-        'INSERT INTO pending_reveal (id, campaign_id, clue_id, character_id, attempt_id, direction, locates, roll, modifier, total, at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO pending_reveal (id, campaign_id, clue_id, character_id, attempt_id, direction, locates, roll, modifier, total, at, distance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         pending.id,
@@ -1704,6 +1709,7 @@ export class CampaignRuntime {
         pending.modifier,
         pending.total,
         pending.at,
+        pending.distance ?? null,
       );
     return true;
   }

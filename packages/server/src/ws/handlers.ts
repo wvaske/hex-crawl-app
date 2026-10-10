@@ -19,6 +19,9 @@ import {
   contentCells,
   contentCoversHex,
   distanceToContent,
+  nearestContentCell,
+  withDirection,
+  withDistance,
   exploredPassable,
   findRoute,
   boundaryEdges,
@@ -641,6 +644,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         gate: c.gate,
         sortOrder: i,
         indicatesDirection: c.indicatesDirection ?? false,
+        indicatesDistance: c.indicatesDistance ?? prior?.clues.find((old) => old.id === c.id)?.indicatesDistance ?? false,
         revealsLocation: c.revealsLocation ?? true,
         observeFrom: c.observeFrom ?? [],
       })),
@@ -975,6 +979,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         at: Date.now(),
         how: { kind: 'manual' as const },
         direction: clueDirectionFor(ctx, clue, content, characterId),
+        distance: clueDistanceFor(ctx, clue, content, characterId),
         // A deliberate DM reveal locates unless the clue is info-only.
         locates: clue.revealsLocation,
       };
@@ -1018,13 +1023,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         how: { kind: 'shared', fromCharacterId: characterId },
         // Passing on the knowledge passes on what the sharer knew of it.
         direction: mine.direction,
+        distance: mine.distance ?? null,
         locates: mine.locates,
       });
       if (added) shared++;
     }
     const entry = ctx.runtime.appendLog(
       'share',
-      `${sharer?.name ?? 'Someone'} shared with the party: ${clue.text}`,
+      `${sharer?.name ?? 'Someone'} shared with the party: ${withDistance(withDirection(clue.text, mine.direction), mine.distance)}`,
       'all',
       {
         clueId: cmd.clueId,
@@ -1283,6 +1289,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
           dc: clue.gate.kind === 'skill' ? clue.gate.dc : 0,
         },
         direction: pending.direction,
+        distance: pending.distance ?? null,
         locates: pending.locates,
       };
       // addDiscovery consumes the pending row itself; the explicit delete
@@ -1600,7 +1607,15 @@ function clueDirectionFor(
   );
   if (!token) return null;
   const orientation = ctx.runtime.maps.get(content.mapId)?.orientation ?? 'flat';
-  return compassDirection({ q: token.q, r: token.r }, { q: content.q, r: content.r }, orientation);
+  return compassDirection(token, nearestContentCell(content, token), orientation);
+}
+
+function clueDistanceFor(ctx: Ctx, clue: Clue, content: Content, characterId: string): number | null {
+  if (!clue.indicatesDistance) return null;
+  const token = [...(ctx.runtime.mapStates.get(content.mapId)?.tokens.values() ?? [])].find(
+    (t) => t.kind === 'pc' && t.characterId === characterId,
+  );
+  return token ? distanceToContent(content, token) : null;
 }
 
 /** All tokens moving together with `token` — just the token itself unless it's in a party. */
@@ -1692,7 +1707,7 @@ export function applySearchRoll(
         if (ctx.runtime.hasDiscovery(clue.id, r.characterId)) continue;
         const direction =
           clue.indicatesDirection && distance > 0
-            ? compassDirection({ q: token.q, r: token.r }, search.hex, map.orientation)
+            ? compassDirection(token, nearestContentCell(content, token), map.orientation)
             : null;
         const locates = distance === 0 && clue.revealsLocation;
         // A player's success is a proposal, not a reveal (issue #107):
@@ -1707,6 +1722,7 @@ export function applySearchRoll(
               characterId: r.characterId,
               attemptId: attempts.get(r.characterId) ?? '',
               direction,
+              distance: clue.indicatesDistance ? distance : null,
               locates,
               roll: r.roll,
               modifier: r.modifier,
@@ -1733,6 +1749,7 @@ export function applySearchRoll(
           },
           direction,
           locates,
+          distance: clue.indicatesDistance ? distance : null,
         };
         if (ctx.runtime.addDiscovery(discovery)) {
           created.push({

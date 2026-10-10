@@ -1,5 +1,5 @@
 import type { ClientCommand, CommandInput, ServerMessage } from '@hexcrawl/shared';
-import { ServerMessageSchema, withDirection } from '@hexcrawl/shared';
+import { ServerMessageSchema, withDirection, withDistance } from '@hexcrawl/shared';
 import { useSession } from './stores/session.js';
 import { useUi } from './stores/ui.js';
 import { emitPluginChanged } from './plugins/events.js';
@@ -87,7 +87,7 @@ function handleMessage(msg: ServerMessage): void {
         session.pushToast({
           kind: 'discovery',
           title: mine ? 'You notice something…' : `${msg.characterName} noticed something`,
-          text: withDirection(msg.clueText, msg.discovery.direction),
+          text: withDistance(withDirection(msg.clueText, msg.discovery.direction), msg.discovery.distance),
         });
       } else if (msg.kind === 'log.appended' && msg.entry.kind === 'narration') {
         session.pushToast({ kind: 'narration', title: 'The DM narrates', text: msg.entry.text });

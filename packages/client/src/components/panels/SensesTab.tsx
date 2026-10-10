@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Sense } from '@hexcrawl/shared';
+import { withDistance, type Sense } from '@hexcrawl/shared';
 import { useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
@@ -71,6 +71,7 @@ export function SenseRow({ sense }: { sense: Sense }) {
       <span className="block text-sm text-ink-100">
         {sense.text}
         {sense.direction && <span className="text-brass-300"> — to the {sense.direction}</span>}
+        {sense.distance != null && <span className="text-brass-300">{withDistance('', sense.distance)}</span>}
       </span>
       <span className="block text-[0.6875rem] text-ink-400 mt-0.5">
         {sense.located && sense.contentTitle ? (

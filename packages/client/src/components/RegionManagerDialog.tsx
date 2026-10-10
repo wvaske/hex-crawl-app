@@ -389,6 +389,7 @@ function RegionDetail({
           gate: c.gate,
           sortOrder: c.sortOrder,
           indicatesDirection: c.indicatesDirection,
+          indicatesDistance: c.indicatesDistance,
           revealsLocation: c.revealsLocation,
         })),
       },
