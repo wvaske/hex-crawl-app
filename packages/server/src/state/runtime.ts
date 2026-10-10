@@ -670,6 +670,23 @@ export class CampaignRuntime {
     this.frozenPlayerMaps.clear();
   }
 
+  /** File reads follow the same player image baseline as snapshots, including prep mode. */
+  canReadUpload(uploadPath: string, seat: SeatRecord): boolean {
+    if (this.effectiveSeat(seat).role === 'dm') return true;
+    let allowed = false;
+    for (const mapId of this.maps.keys()) {
+      const live = this.imageLayersFor(mapId);
+      // Marking an asset DM-only revokes access immediately, even while prep is
+      // paused or another layer references the same file as player-visible.
+      if (live.some((l) => l.path === uploadPath && l.dmOnly)) return false;
+      const layers = this.campaign.settings.pausePlayerMapSync
+        ? this.frozenPlayerMaps.get(mapId)?.imageLayers ?? live
+        : live;
+      if (layers.some((l) => l.path === uploadPath && !l.dmOnly && l.visible)) allowed = true;
+    }
+    return allowed;
+  }
+
   /**
    * While prep mode is on, substitute the frozen editable layers into a
    * player's full state. Tokens, fog, pending moves, discoveries and the log

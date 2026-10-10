@@ -201,6 +201,12 @@ player-facing data).
 - **Seat cookies are per-hostname.** To run a DM and a player session against
   one dev server, open one on `localhost` and one on `127.0.0.1` — separate
   cookie jars.
+- **Upload URLs are authorization boundaries** (#164): `/uploads` checks a
+  campaign seat and `runtime.canReadUpload`, including the effective player
+  preview and frozen prep baseline. New upload consumers (custom stickers or
+  plugins) must extend that reference check with explicit visibility rules;
+  unreferenced files are DM-only. Check authorization before returning an ETag
+  304, and never use public caching for campaign files.
 - In DEV builds the page exposes `window.__engine` (CanvasEngine) and
   `window.__send` (WS sender) — the fastest way to drive/verify from a
   browser console. Production builds do not.

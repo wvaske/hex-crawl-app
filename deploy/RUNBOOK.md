@@ -294,8 +294,11 @@ the export endpoint, so it is the crown jewel: it grants full DM access,
 including a complete campaign archive. Player-visible data is filtered
 server-side (`shared/src/rules/filter.ts`) — clients never receive DM notes,
 hidden content, or fogged terrain, so a hostile player's dev tools buy nothing.
-Uploaded images are served from unguessable paths under `/uploads/` and are
-**not** access-controlled; treat a leaked image URL as public.
+Uploaded images under `/uploads/` require a seat in that campaign. Players can
+read only visible, non-DM image layers; DM player-preview uses player permissions.
+Responses use `private, no-cache` and an ETag, with authorization checked before
+every conditional response. Prep-mode image reads follow the frozen player view;
+marking an existing file DM-only revokes player access immediately.
 
 What that leaves exposed, and what the app now does about it:
 
@@ -323,8 +326,11 @@ Operational notes:
 - **Always terminate TLS in front of the app.** The seat cookie is not marked
   `Secure`, and invite keys travel in URLs; plain HTTP over the open internet
   hands both to anyone on the path.
-- **Uploads are public-by-URL.** Do not put spoiler maps in an instance whose
-  `/uploads/` you would mind being fetched by anyone holding the link.
+- **Previously cached uploads:** releases before issue #164 used year-long public
+  caching. Purge `/uploads/*` from any CDN/shared cache when upgrading; the new
+  server cannot revoke copies already downloaded or cached by a browser. New
+  responses always require private revalidation. External tools fetching an
+  upload must now supply the campaign seat cookie (invite keys alone do not work).
 - **Still missing** (issue #80's remaining bullets): seat expiry, kick+ban, and
   a per-campaign seat cap. A removed seat can re-join with the same invite key,
   so the ban story today is "rotate the key and re-invite everyone else".
