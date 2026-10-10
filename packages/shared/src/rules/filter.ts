@@ -21,6 +21,13 @@ export interface Viewer {
   characterId: string | null;
 }
 
+/** Only Discovery.distance is an intentional distance disclosure (#154/#164). */
+export function discoveryForPlayer(discovery: Discovery): Discovery {
+  if (discovery.how.kind !== 'passive') return discovery;
+  const { distance: _adjudicationDistance, ...how } = discovery.how;
+  return { ...discovery, how };
+}
+
 /**
  * Project the full campaign state down to what one seat is allowed to see.
  * This is THE security boundary: everything sent to a player client passes
@@ -97,7 +104,7 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
     maps: full.maps,
     mapState: filteredMapState,
     discoveries: viewer.characterId
-      ? full.discoveries.filter((d) => d.characterId === viewer.characterId)
+      ? full.discoveries.filter((d) => d.characterId === viewer.characterId).map(discoveryForPlayer)
       : [],
     trailDiscoveries: viewer.characterId
       ? full.trailDiscoveries.filter((d) => d.characterId === viewer.characterId)

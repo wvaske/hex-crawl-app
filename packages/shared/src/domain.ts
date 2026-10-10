@@ -791,7 +791,8 @@ export const DiscoveryHowSchema = z.discriminatedUnion('kind', [
     skill: z.string(),
     passive: z.number(),
     dc: z.number(),
-    distance: z.number(),
+    /** DM adjudication detail; omitted from player snapshots and events. */
+    distance: z.number().optional(),
   }),
   z.object({
     kind: z.literal('roll'),
