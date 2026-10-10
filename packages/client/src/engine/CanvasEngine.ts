@@ -421,6 +421,7 @@ export class CanvasEngine {
     const state = session.state;
     this.role = session.role ?? 'player';
     this.myCharacterId =
+      session.viewingAs?.characterId ??
       state?.seats.find((seat) => seat.id === session.seatId)?.characterId ?? null;
     const map = activeMap(state);
 
