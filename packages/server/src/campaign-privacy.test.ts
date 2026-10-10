@@ -58,6 +58,17 @@ describe('campaign metadata isolation (#164)', () => {
     expect((await app.request(`${url}?key=wrong`)).status).toBe(429);
     expect((await app.request(`${url}/join`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: campaign.runtime.playerSecret, name: 'Player' }) })).status).toBe(429);
+    // A full party sharing a NAT must still enter/reload their table after
+    // anonymous attempts have exhausted that IP's invitation budget.
+    const player = campaign.runtime.createSeat('player', 'Seated player');
+    for (let i = 0; i < 12; i++) {
+      for (const seat of [player, campaign.dmSeat]) {
+        expect((await app.request(url, {
+          headers: { Cookie: `${seatCookieName(campaign.runtime.id)}=${seat.token}` },
+        })).status).toBe(200);
+      }
+    }
+    expect((await app.request(`${url}?key=wrong`)).status).toBe(429);
   });
 
   it.each([false, true])('filters raw passive geometry from snapshots and events (distance toggle %s)', (disclosed) => {

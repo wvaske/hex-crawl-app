@@ -279,14 +279,21 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     },
   );
 
-  app.get('/api/campaigns/:id', rateLimit('join'), (c) => {
+  app.get('/api/campaigns/:id', async (c, next) => {
     c.header('Cache-Control', 'private, no-store');
     c.header('Vary', 'Cookie');
+    const runtime = store.getCampaign(c.req.param('id') ?? '');
+    // Reloading a seated table is not an invite-key probe. Players behind
+    // one NAT must not lock each other out by refreshing their browsers.
+    if (runtime && getSeat(c, runtime)) return next();
+    return rateLimit('join')(c, next);
+  }, (c) => {
     const runtime = store.getCampaign(c.req.param('id') ?? '');
     if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
     const key = c.req.query('key') ?? null;
     const keyRole =
-      key === runtime.dmSecret ? 'dm' : key === runtime.playerSecret ? 'player' : null;
+      key && secretEquals(key, runtime.dmSecret) ? 'dm'
+        : key && secretEquals(key, runtime.playerSecret) ? 'player' : null;
     const seat = getSeat(c, runtime);
     if (!seat && !keyRole) {
       return c.json({ error: 'A valid invite link or campaign seat is required. Ask your DM for an invite.' }, 403);
