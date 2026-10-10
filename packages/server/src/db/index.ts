@@ -128,6 +128,15 @@ export function migrate(d: DB): void {
       PRIMARY KEY (map_id, q, r)
     );
 
+    CREATE TABLE IF NOT EXISTS hex_edge (
+      map_id TEXT NOT NULL REFERENCES map(id) ON DELETE CASCADE,
+      q INTEGER NOT NULL,
+      r INTEGER NOT NULL,
+      dir INTEGER NOT NULL,
+      difficulty TEXT NOT NULL,
+      PRIMARY KEY (map_id, q, r, dir)
+    );
+
     CREATE TABLE IF NOT EXISTS fog (
       map_id TEXT NOT NULL REFERENCES map(id) ON DELETE CASCADE,
       q INTEGER NOT NULL,

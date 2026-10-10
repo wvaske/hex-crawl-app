@@ -11,7 +11,7 @@ import type {
   TrailSign,
 } from '../domain.js';
 import { clueInRange, clueObservableCells, isFullContent, nearestContentCell } from '../domain.js';
-import { hexKey } from '../hex/coords.js';
+import { hexKey, hexNeighbor } from '../hex/coords.js';
 import { bearingAngle, compassDirection, withDirection } from '../hex/direction.js';
 import type { HexOrientation } from '../hex/layout.js';
 
@@ -40,6 +40,14 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
         return {
           imageLayers: mapState.imageLayers.filter((l) => !l.dmOnly && l.visible),
           hexes: mapState.hexes.filter((h) => fogAt(h.q, h.r) !== 'hidden'),
+          // A marked edge is terrain, visible from either side: players get
+          // the edges touching any hex they can see (a cliff on the far
+          // side of an explored hex is as plain as the hex itself).
+          edges: mapState.edges.filter((e) => {
+            if (fogAt(e.q, e.r) !== 'hidden') return true;
+            const n = hexNeighbor(e, e.dir);
+            return fogAt(n.q, n.r) !== 'hidden';
+          }),
           fog: mapState.fog.filter((f) => f.state !== 'hidden'),
           tokens: mapState.tokens.filter((t) => tokenVisibleToPlayers(t, fogAt(t.q, t.r))),
           markers: mapState.markers.filter((m) => !m.dmOnly && fogAt(m.q, m.r) !== 'hidden'),

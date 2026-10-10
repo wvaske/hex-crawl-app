@@ -113,6 +113,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         c: 'content',
         t: 'trail',
         g: 'region',
+        e: 'edge',
         r: 'measure',
         k: 'calibrate',
       } as const;

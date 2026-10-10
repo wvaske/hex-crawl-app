@@ -10,10 +10,11 @@ import { hexDistance, hexKey, hexNeighbors, type HexCoord } from '../hex/coords.
  * predicate; on the server that predicate is "fog is explored or visible",
  * on the client it is the same test over the fog cells a viewer can see.
  *
- * Uniform cost by design: there is no terrain speed yet, so the shortest
- * route by hex count is the fastest. Both ends count — the destination has to
- * be passable too, or there is no route (the start is always allowed: you are
- * standing on it).
+ * Steps cost 1 by default; `stepCost` (terrain difficulty on hex edges, see
+ * `rules/edges.ts`) can make a crossing dearer or forbid it outright, so the
+ * cheapest route by effort wins — around a canyon wall rather than up it.
+ * Both ends count — the destination has to be passable too, or there is no
+ * route (the start is always allowed: you are standing on it).
  *
  * The search is bounded by `maxNodes` so a huge explored map cannot make one
  * hover computation expensive; a route beyond that budget reads as "none".
@@ -21,6 +22,13 @@ import { hexDistance, hexKey, hexNeighbors, type HexCoord } from '../hex/coords.
 export interface RouteOptions {
   /** Hard cap on hexes expanded before giving up. Default 250000. */
   maxNodes?: number;
+  /**
+   * Effort to step from one hex to an adjacent one. Must be a whole number
+   * >= 1 (the open set is a bucket queue indexed by integer f, and the hex
+   * distance stays an admissible heuristic only while no step is cheaper
+   * than 1); `Infinity` means the crossing cannot be made. Default: 1.
+   */
+  stepCost?: (from: HexCoord, to: HexCoord) => number;
 }
 
 /**
@@ -36,8 +44,8 @@ export const ROUTE_MAX_NODES = 250000;
  * when the destination cannot be reached through passable hexes. A route
  * from a hex to itself is `[from]`.
  *
- * A* with the hex distance as its (exact-on-open-ground) heuristic. Uniform
- * step cost means f = g + h is an integer, so the open set is a bucket
+ * A* with the hex distance as its (exact-on-open-ground) heuristic. Integer
+ * step costs mean f = g + h is an integer, so the open set is a bucket
  * queue indexed by f — no heap, O(1) push/pop.
  */
 export function findRoute(
@@ -51,6 +59,7 @@ export function findRoute(
   if (start.q === goal.q && start.r === goal.r) return [start];
   if (!passable(goal)) return null;
   const maxNodes = Math.max(1, opts.maxNodes ?? ROUTE_MAX_NODES);
+  const cost = opts.stepCost;
   const goalKey = hexKey(goal.q, goal.r);
   const startKey = hexKey(start.q, start.r);
 
@@ -86,7 +95,9 @@ export function findRoute(
       const nKey = hexKey(n.q, n.r);
       if (closed.has(nKey)) continue;
       if (nKey !== goalKey && !passable(n)) continue;
-      const tentative = g + 1;
+      const step = cost ? cost(hex, n) : 1;
+      if (!(step < Infinity)) continue; // an impassable edge: not a way through
+      const tentative = g + Math.max(1, Math.ceil(step));
       const known = gScore.get(nKey);
       if (known !== undefined && known <= tentative) continue;
       gScore.set(nKey, tentative);

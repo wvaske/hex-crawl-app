@@ -96,3 +96,56 @@ describe('exploredPassable', () => {
     expect(passable({ q: 9, r: 9 })).toBe(false);
   });
 });
+
+describe('findRoute with step costs (terrain difficulty)', () => {
+  // Direct: (0,0) → (1,0) → (2,0). Detour: (1,0) → (1,1) → (2,0).
+  const ground = [
+    { q: 0, r: 0 },
+    { q: 1, r: 0 },
+    { q: 1, r: 1 },
+    { q: 2, r: 0 },
+  ];
+  const costly =
+    (cost: number) =>
+    (from: HexCoord, to: HexCoord): number =>
+      from.q === 1 && from.r === 0 && to.q === 2 && to.r === 0 ? cost : 1;
+
+  it('takes the direct line when the crossing is merely difficult and the detour is no cheaper', () => {
+    // Direct effort 1 + 2 = 3; detour 3. Ties go to whichever A* pops first,
+    // so only assert on the total effort.
+    const route = findRoute({ q: 0, r: 0 }, { q: 2, r: 0 }, passableSet(ground), {
+      stepCost: costly(2),
+    })!;
+    let effort = 0;
+    for (let i = 1; i < route.length; i++) effort += costly(2)(route[i - 1]!, route[i]!);
+    expect(effort).toBe(3);
+  });
+
+  it('detours around a very difficult crossing', () => {
+    const route = findRoute({ q: 0, r: 0 }, { q: 2, r: 0 }, passableSet(ground), {
+      stepCost: costly(3),
+    });
+    expect(route).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 1, r: 1 },
+      { q: 2, r: 0 },
+    ]);
+  });
+
+  it('never crosses an impassable edge, even into the goal', () => {
+    const route = findRoute({ q: 0, r: 0 }, { q: 2, r: 0 }, passableSet(ground), {
+      stepCost: costly(Infinity),
+    });
+    expect(route).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 1, r: 1 },
+      { q: 2, r: 0 },
+    ]);
+    const direct = findRoute({ q: 0, r: 0 }, { q: 2, r: 0 }, passableSet(ground.slice(0, 2)), {
+      stepCost: costly(Infinity),
+    });
+    expect(direct).toBeNull();
+  });
+});

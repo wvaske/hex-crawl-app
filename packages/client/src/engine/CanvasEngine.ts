@@ -15,9 +15,12 @@ import type {
   CampaignState,
   Content,
   ContentPlayerView,
+  EdgeDifficulty,
+  EdgeIndex,
   FogCell,
   HexCell,
   HexCoord,
+  HexEdge,
   HexLayout,
   ImageLayer,
   MapInfo,
@@ -35,6 +38,14 @@ import {
   TERRAINS,
   exploredPassable,
   findRoute,
+  hexEdgeCorners,
+  hexLine,
+  indexEdges,
+  nearestEdgeDirection,
+  pathBlocked,
+  pathEffort,
+  reverseEdge,
+  stepCost,
   fineToIndex,
   fractionalIndex,
   hexCornerOffsets,
@@ -119,6 +130,8 @@ export class CanvasEngine {
   private imageLayerC = new Container();
   private terrainG = new Graphics();
   private gridG = new Graphics();
+  // Terrain difficulty marks on hex edges, drawn over the grid.
+  private edgesG = new Graphics();
   // Fog is a dark sheet with the non-hidden hexes erased out of it. The erase
   // happens inside a filtered container (its own offscreen pass), so holes are
   // pixel-perfect — no polygon-with-holes triangulation, which produced sliver
@@ -151,6 +164,9 @@ export class CanvasEngine {
   private layoutKey = '';
   private lastMap: MapInfo | null = null;
   private lastHexes: HexCell[] = [];
+  private lastEdges: HexEdge[] = [];
+  /** `lastEdges` indexed for the rules (route costs, impassable checks). */
+  private edgeIndex: { source: HexEdge[]; index: EdgeIndex } | null = null;
   private lastFog: FogCell[] = [];
   private lastMarkers: Marker[] = [];
   private lastContents: (Content | ContentPlayerView)[] = [];
@@ -246,6 +262,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.imageLayerC);
     this.viewport.addChild(this.terrainG);
     this.viewport.addChild(this.gridG);
+    this.viewport.addChild(this.edgesG);
     this.viewport.addChild(this.pinsC);
     this.viewport.addChild(this.tintG);
     this.viewport.addChild(this.tokensC);
@@ -266,6 +283,7 @@ export class CanvasEngine {
       this.imageLayerC,
       this.terrainG,
       this.gridG,
+      this.edgesG,
       this.pinsC,
       this.tintG,
       this.pendingC,
@@ -349,7 +367,7 @@ export class CanvasEngine {
       }
       if (u.tool !== prev.tool || u.regionTargetId !== prev.regionTargetId) {
         this.syncRegionHighlight();
-        const crosshair = (t: Tool) => t === 'region' || t === 'calibrate';
+        const crosshair = (t: Tool) => t === 'region' || t === 'calibrate' || t === 'edge';
         if (crosshair(u.tool) !== crosshair(prev.tool)) {
           this.viewport.cursor = crosshair(u.tool) ? 'crosshair' : 'default';
         }
@@ -436,6 +454,10 @@ export class CanvasEngine {
     if (layoutChanged || !hexCellsEqual(ms.hexes, this.lastHexes) || styleChanged) {
       this.lastHexes = ms.hexes;
       this.drawTerrain();
+    }
+    if (layoutChanged || !hexEdgesEqual(ms.edges, this.lastEdges)) {
+      this.lastEdges = ms.edges;
+      this.drawEdges();
     }
     if (layoutChanged || !fogCellsEqual(ms.fog, this.lastFog)) {
       this.lastFog = ms.fog;
@@ -530,6 +552,8 @@ export class CanvasEngine {
     this.layoutKey = '';
     this.lastMap = null;
     this.lastHexes = [];
+    this.lastEdges = [];
+    this.edgesG.clear();
     this.lastFog = [];
     this.lastMarkers = [];
     this.lastContents = [];
@@ -622,6 +646,60 @@ export class CanvasEngine {
       }
       g.fill({ color, alpha });
     }
+  }
+
+  /**
+   * Terrain difficulty on hex edges: a bar just inside the hex you would be
+   * LEAVING, along the shared edge, with a chevron pointing the way the
+   * penalty applies. Difficult is amber, very difficult orange, impassable a
+   * heavy dark-red bar; an edge marked both ways reads as a double line.
+   * World-space sizes, so the marks scale with the hexes.
+   */
+  private drawEdges(): void {
+    const g = this.edgesG;
+    g.clear();
+    if (!this.layout || this.lastEdges.length === 0) return;
+    const size = this.layout.size;
+    const inset = size * 0.13;
+    const trim = 0.14; // shorten each end so neighbouring bars don't fuse into a ring
+    for (const edge of this.lastEdges) {
+      const style = EDGE_STYLE[edge.difficulty];
+      const center = hexToPixel(this.layout, edge);
+      const [a, b] = hexEdgeCorners(this.layout, edge, edge.dir);
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      // Inward unit vector (edge midpoint → hex centre), scaled to the inset.
+      const len = Math.hypot(center.x - mid.x, center.y - mid.y) || 1;
+      const ix = ((center.x - mid.x) / len) * inset;
+      const iy = ((center.y - mid.y) / len) * inset;
+      const ax = a.x + (b.x - a.x) * trim + ix;
+      const ay = a.y + (b.y - a.y) * trim + iy;
+      const bx = b.x - (b.x - a.x) * trim + ix;
+      const by = b.y - (b.y - a.y) * trim + iy;
+      g.moveTo(ax, ay);
+      g.lineTo(bx, by);
+      g.stroke({ width: size * style.width, color: style.color, alpha: 0.95, cap: 'round' });
+      // Chevron from the bar out to the edge: the direction that costs.
+      const elen = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const ux = ((b.x - a.x) / elen) * size * 0.1;
+      const uy = ((b.y - a.y) / elen) * size * 0.1;
+      g.poly([
+        mid.x + ix - ux,
+        mid.y + iy - uy,
+        mid.x + ix + ux,
+        mid.y + iy + uy,
+        mid.x - ix * 0.25,
+        mid.y - iy * 0.25,
+      ]);
+      g.fill({ color: style.color, alpha: 0.95 });
+    }
+  }
+
+  /** The current edges as the rules' index, rebuilt only when the snapshot's array changes. */
+  private edges(): EdgeIndex {
+    if (!this.edgeIndex || this.edgeIndex.source !== this.lastEdges) {
+      this.edgeIndex = { source: this.lastEdges, index: indexEdges(this.lastEdges) };
+    }
+    return this.edgeIndex.index;
   }
 
   /**
@@ -1087,6 +1165,15 @@ export class CanvasEngine {
         }
         g.fill({ color: 0xffffff, alpha: 0.08 });
       }
+    }
+    // Edge tool: light up the edge of the hovered hex nearest the pointer —
+    // the crossing a click would mark (leaving this hex that way).
+    if (ui.tool === 'edge' && ui.hoverHex && this.pointerWorld && this.role === 'dm' && lvl === 0) {
+      const dir = nearestEdgeDirection(this.layout, ui.hoverHex, this.pointerWorld);
+      const [a, b] = hexEdgeCorners(this.layout, ui.hoverHex, dir);
+      g.moveTo(a.x, a.y);
+      g.lineTo(b.x, b.y);
+      g.stroke({ width: lineW * 3, color: 0xffffff, alpha: 0.9, cap: 'round' });
     }
     if (ui.tool === 'measure' && ui.measureStart && ui.hoverHex) {
       const a = hexToPixel(this.layout, ui.measureStart);
@@ -1994,6 +2081,20 @@ export class CanvasEngine {
           this.beginStroke('region', hex, ui.regionTargetId);
           break;
         }
+        case 'edge': {
+          // Terrain difficulty: the click lands in a hex, near one of its
+          // edges; the mark is "leaving this hex across that edge" (and the
+          // reverse crossing too when the panel says both ways).
+          if (!isDm || !this.lastMap || !this.layout || this.scaleLevel !== 0) return;
+          const world = this.viewport.toWorld(e.global.x, e.global.y);
+          const dir = nearestEdgeDirection(this.layout, hex, world);
+          const edges = [{ q: hex.q, r: hex.r, dir, difficulty: ui.edgeDifficulty }];
+          if (ui.edgeBothWays) {
+            edges.push({ ...reverseEdge({ q: hex.q, r: hex.r, dir }), difficulty: ui.edgeDifficulty });
+          }
+          send({ kind: 'edge.set', mapId: this.lastMap.id, edges });
+          break;
+        }
         case 'measure':
           if (ui.measureStart && hexDistance(ui.measureStart, hex) > 0) {
             useUi.getState().set('measureStart', null);
@@ -2032,6 +2133,8 @@ export class CanvasEngine {
         if (ui0.tool === 'calibrate' && ui0.calibrateLine && !ui0.calibrateLine.b) {
           this.drawHighlight();
         }
+        // The edge tool's highlight moves within a hex, not just between hexes.
+        if (ui0.tool === 'edge' && this.role === 'dm') this.drawHighlight();
       }
       const hex = this.worldHex(e);
       const ui = useUi.getState();
@@ -2283,6 +2386,22 @@ export class CanvasEngine {
         return 'denied';
       }
     }
+    // An impassable edge stops players here as it does on the server: a routed
+    // path never crosses one, so this only bites a step or a straight line.
+    if (this.role !== 'dm') {
+      const far = hexDistance(token, dropHex) > 1;
+      const walk =
+        (far && map?.routeExplored ? this.routeFor(token, dropHex) : null) ??
+        hexLine(token, dropHex);
+      if (pathBlocked(this.edges(), walk)) {
+        useSession.getState().pushToast({
+          kind: 'info',
+          title: 'Impassable',
+          text: 'There is no way across that edge on foot.',
+        });
+        return 'denied';
+      }
+    }
     const teleport = this.role === 'dm' && useUi.getState().altTeleport;
     useSession.getState().optimisticTokenMove(token.id, dropHex.q, dropHex.r);
     // Party members shift by the same offset; the server moves them for real.
@@ -2323,11 +2442,9 @@ export class CanvasEngine {
       this.fogIndex = { source: this.lastFog, states };
     }
     const states = this.fogIndex.states;
-    return findRoute(
-      from,
-      to,
-      exploredPassable((h) => states.get(hexKey(h.q, h.r))),
-    );
+    return findRoute(from, to, exploredPassable((h) => states.get(hexKey(h.q, h.r))), {
+      stepCost: (a, b) => stepCost(this.edges(), a, b),
+    });
   }
 
   /** Publish the route a drop on `hex` would walk (or that there is none). */
@@ -2335,12 +2452,26 @@ export class CanvasEngine {
     const ui = useUi.getState();
     const map = this.lastMap;
     const far = hexDistance(token, hex) > 1;
-    if (!map?.routeExplored || !far || (ui.altTeleport && this.role === 'dm')) {
+    const teleporting = ui.altTeleport && this.role === 'dm';
+    // A single step only previews when its edge is marked — the readout then
+    // says what the climb will cost before the token is dropped.
+    if (!teleporting && !far && stepCost(this.edges(), token, hex) !== 1) {
+      const cells = [{ q: token.q, r: token.r }, hex];
+      ui.set('routePreview', { cells, target: hex, effort: pathEffort(this.edges(), cells) });
+      this.drawHighlight();
+      return;
+    }
+    if (!map?.routeExplored || !far || teleporting) {
       if (ui.routePreview) ui.set('routePreview', null);
       this.drawHighlight();
       return;
     }
-    ui.set('routePreview', { cells: this.routeFor(token, hex), target: hex });
+    const cells = this.routeFor(token, hex);
+    ui.set('routePreview', {
+      cells,
+      target: hex,
+      effort: cells ? pathEffort(this.edges(), cells) : null,
+    });
     this.drawHighlight();
   }
 
@@ -2431,6 +2562,23 @@ function hexCellsEqual(a: HexCell[], b: HexCell[]): boolean {
   }
   return true;
 }
+
+function hexEdgesEqual(a: HexEdge[], b: HexEdge[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!,
+      y = b[i]!;
+    if (x.q !== y.q || x.r !== y.r || x.dir !== y.dir || x.difficulty !== y.difficulty) return false;
+  }
+  return true;
+}
+
+/** Edge mark colours and bar widths (as a fraction of the hex size). */
+const EDGE_STYLE: Record<EdgeDifficulty, { color: number; width: number }> = {
+  difficult: { color: 0xe3b341, width: 0.08 },
+  very_difficult: { color: 0xe0702f, width: 0.1 },
+  impassable: { color: 0x8f1d1d, width: 0.15 },
+};
 
 function fogCellsEqual(a: FogCell[], b: FogCell[]): boolean {
   if (a.length !== b.length) return false;

@@ -15,6 +15,7 @@ import {
   INHERITABLE_MAP_FIELDS,
   MarkerSchema,
   TerrainIdSchema,
+  EdgeDifficultySchema,
   TokenKindSchema,
   TrailSchema,
 } from '../domain.js';
@@ -248,6 +249,28 @@ export const TerrainPaintCommand = z.object({
   cells: CellsSchema,
   /** null erases. */
   terrain: TerrainIdSchema.nullable(),
+});
+
+/**
+ * DM: mark (or clear, with `difficulty: null`) directed hex edges. Each entry
+ * is "leaving (q, r) toward direction `dir`"; the opposite crossing is its
+ * own entry, so a one-way climb is one entry and a wall both ways is two.
+ */
+export const EdgeSetCommand = z.object({
+  ...base,
+  kind: z.literal('edge.set'),
+  mapId: z.string(),
+  edges: z
+    .array(
+      z.object({
+        q: z.number().int(),
+        r: z.number().int(),
+        dir: z.number().int().min(0).max(5),
+        difficulty: EdgeDifficultySchema.nullable(),
+      }),
+    )
+    .min(1)
+    .max(20000),
 });
 
 // --- fog --------------------------------------------------------------------
@@ -536,6 +559,20 @@ export const ContentApplyTerrainCommand = z.object({
   skipOtherRegions: z.boolean().optional(),
 });
 
+/**
+ * DM: mark every crossing of a region's border at once — the canyon whose
+ * walls are hard to climb is one action here plus a click per exception
+ * with the edge tool. `side` picks which crossings: `leaving` the footprint,
+ * `entering` it, or both. `difficulty: null` clears them.
+ */
+export const ContentApplyEdgesCommand = z.object({
+  ...base,
+  kind: z.literal('content.applyEdges'),
+  contentId: z.string(),
+  side: z.enum(['leaving', 'entering', 'both']),
+  difficulty: EdgeDifficultySchema.nullable(),
+});
+
 /** Any seat: view a different map on this connection (handled per-connection). */
 export const ViewMapCommand = z.object({
   ...base,
@@ -760,6 +797,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   ImageLayerUpdateCommand,
   ImageLayerDeleteCommand,
   TerrainPaintCommand,
+  EdgeSetCommand,
   FogSetCommand,
   TokenCreateCommand,
   TokenUpdateCommand,
@@ -784,6 +822,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   ContentMoveCommand,
   ContentAreaCommand,
   ContentApplyTerrainCommand,
+  ContentApplyEdgesCommand,
   ViewMapCommand,
   TrailUpsertCommand,
   TrailDeleteCommand,

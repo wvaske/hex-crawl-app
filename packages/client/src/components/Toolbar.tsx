@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import {
   CONTENT_TYPE_GLYPHS,
+  EDGE_DIFFICULTIES,
+  EDGE_DIFFICULTY_LABELS,
   HEX_SCALE_PRESETS,
   TERRAINS,
   TERRAIN_IDS,
@@ -12,6 +14,7 @@ import {
   hexesInPixelRect,
   isFullContent,
   type Content,
+  type EdgeDifficulty,
   type FogState,
   type HexCoord,
 } from '@hexcrawl/shared';
@@ -29,6 +32,12 @@ const TOOLS: { tool: Tool; icon: string; name: string; hint: string }[] = [
   { tool: 'content', icon: '📖', name: 'Content (C)', hint: 'Add hex content' },
   { tool: 'trail', icon: '👣', name: 'Trail (T)', hint: 'Draw a footstep trail cell by cell' },
   { tool: 'region', icon: '🗺️', name: 'Region (G)', hint: 'Paint area footprints' },
+  {
+    tool: 'edge',
+    icon: '⛰️',
+    name: 'Edges (E)',
+    hint: 'Mark hex edges as difficult, very difficult or impassable to cross',
+  },
   { tool: 'measure', icon: '📏', name: 'Measure (R)', hint: 'Measure distances' },
   {
     tool: 'calibrate',
@@ -164,6 +173,8 @@ export function Toolbar() {
 
       {ui.tool === 'region' && <RegionOptions />}
 
+      {ui.tool === 'edge' && <EdgeOptions />}
+
       {ui.tool === 'measure' && (
         <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-44 text-xs text-ink-300">
           Click a hex to set the start point, then hover. Click again to clear.
@@ -171,6 +182,135 @@ export function Toolbar() {
       )}
 
       {ui.tool === 'calibrate' && <CalibrateOptions />}
+    </div>
+  );
+}
+
+const EDGE_CHOICES: [EdgeDifficulty | null, string, string][] = [
+  ['difficult', '▲ Difficult', 'Crossing costs one extra hex of effort'],
+  ['very_difficult', '▲▲ Very difficult', 'Crossing costs two extra hexes of effort'],
+  ['impassable', '⛔ Impassable', 'Cannot be walked; the DM can still teleport across'],
+  [null, '⌫ Clear', 'Remove the mark from the crossing'],
+];
+
+/**
+ * Edge tool (terrain difficulty): what a click marks a crossing as, and
+ * whether it marks the reverse crossing too. The crossing itself is chosen
+ * on the canvas — the edge of the hovered hex nearest the pointer, meaning
+ * "leaving this hex that way".
+ */
+function EdgeOptions() {
+  const difficulty = useUi((s) => s.edgeDifficulty);
+  const bothWays = useUi((s) => s.edgeBothWays);
+  return (
+    <div className="bg-ink-900/95 border border-ink-700 rounded-lg p-2 shadow-xl backdrop-blur w-52 space-y-2">
+      <div>
+        <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+          Mark the crossing as
+        </p>
+        <div className="flex flex-col gap-1">
+          {EDGE_CHOICES.map(([value, label, hint]) => (
+            <button
+              key={value ?? 'clear'}
+              onClick={() => useUi.getState().set('edgeDifficulty', value)}
+              title={hint}
+              className={cx(
+                'text-left text-xs px-2 py-1.5 rounded cursor-pointer border',
+                difficulty === value
+                  ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+                  : 'border-ink-700 hover:bg-ink-700 text-ink-200',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+          Direction
+        </p>
+        <div className="flex gap-1">
+          {(
+            [
+              [false, 'One way', 'Only leaving the hex you click, across the edge you click near'],
+              [true, 'Both ways', 'The crossing in both directions — a wall, not a slope'],
+            ] as [boolean, string, string][]
+          ).map(([value, label, hint]) => (
+            <button
+              key={label}
+              onClick={() => useUi.getState().set('edgeBothWays', value)}
+              title={hint}
+              className={cx(
+                'flex-1 py-1 rounded text-xs cursor-pointer border',
+                bothWays === value
+                  ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+                  : 'border-ink-700 hover:bg-ink-700 text-ink-200',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-[0.6875rem] text-ink-400">
+        Click inside a hex near one of its edges: the mark is for leaving that hex across that
+        edge. Going the other way stays normal unless marked too. To mark a whole region's border
+        at once, use the Region tool (G).
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Region tool: mark every crossing of the footprint's border at once (the
+ * canyon whose walls are hard to climb), then fix the exceptions — the one
+ * gentle slope out — with the Edge tool.
+ */
+function BorderDifficulty({ contentId }: { contentId: string }) {
+  const [side, setSide] = useState<'leaving' | 'entering' | 'both'>('leaving');
+  const [difficulty, setDifficulty] = useState<EdgeDifficulty | null>('difficult');
+  return (
+    <div>
+      <p className="text-[0.625rem] uppercase tracking-wider text-ink-400 font-semibold mb-1">
+        Border difficulty
+      </p>
+      <div className="flex gap-1 mb-1">
+        <select
+          className="flex-1 min-w-0 bg-ink-950 border border-ink-600 rounded px-1 py-1 text-xs text-ink-100 cursor-pointer"
+          value={side}
+          onChange={(e) => setSide(e.target.value as 'leaving' | 'entering' | 'both')}
+          title="Which crossings of the border to mark"
+        >
+          <option value="leaving">Leaving</option>
+          <option value="entering">Entering</option>
+          <option value="both">Both ways</option>
+        </select>
+        <select
+          className="flex-1 min-w-0 bg-ink-950 border border-ink-600 rounded px-1 py-1 text-xs text-ink-100 cursor-pointer"
+          value={difficulty ?? ''}
+          onChange={(e) => setDifficulty((e.target.value || null) as EdgeDifficulty | null)}
+          title="What to mark them as"
+        >
+          {EDGE_DIFFICULTIES.map((d) => (
+            <option key={d} value={d}>
+              {EDGE_DIFFICULTY_LABELS[d]}
+            </option>
+          ))}
+          <option value="">Clear</option>
+        </select>
+      </div>
+      <button
+        className="w-full px-2 py-1 rounded text-xs cursor-pointer border border-ink-600 text-ink-200 hover:bg-ink-700"
+        title="Mark every crossing of this region's border; undo reverts the whole apply"
+        onClick={() => send({ kind: 'content.applyEdges', contentId, side, difficulty })}
+      >
+        {difficulty === null ? 'Clear border marks' : 'Apply to border'}
+      </button>
+      <p className="text-[0.6875rem] text-ink-400 mt-1">
+        Leaving = climbing out is hard, coming in is not. Fix single crossings afterwards with the
+        Edges tool (E).
+      </p>
     </div>
   );
 }
@@ -465,6 +605,7 @@ function RegionOptions() {
         </p>
         <RegionBrushControls />
       </div>
+      {target && <BorderDifficulty contentId={target.id} />}
       <button
         className="w-full px-2 py-1 rounded text-xs cursor-pointer border border-ink-600 text-ink-200 hover:bg-ink-700"
         title="Auto-detect footprints, fill terrain, rename (issue #113)"
