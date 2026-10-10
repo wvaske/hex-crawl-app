@@ -291,10 +291,12 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     const runtime = store.getCampaign(c.req.param('id') ?? '');
     if (!runtime) return c.json({ error: 'Campaign not found' }, 404);
     const key = c.req.query('key') ?? null;
-    const keyRole =
+    const seat = getSeat(c, runtime);
+    // Seated browsers need no invite verdict (and must not become an
+    // unthrottled key oracle just because their reloads bypass the limiter).
+    const keyRole = seat ? null :
       key && secretEquals(key, runtime.dmSecret) ? 'dm'
         : key && secretEquals(key, runtime.playerSecret) ? 'player' : null;
-    const seat = getSeat(c, runtime);
     if (!seat && !keyRole) {
       return c.json({ error: 'A valid invite link or campaign seat is required. Ask your DM for an invite.' }, 403);
     }
