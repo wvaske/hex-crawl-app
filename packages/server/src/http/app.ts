@@ -4,6 +4,7 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
@@ -630,21 +631,39 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     return c.json({ maps });
   });
 
-  // -- uploaded files (images are not secret; ids are unguessable) -----------
+  // -- uploaded files: campaign membership and layer visibility are required --
 
   app.get('/uploads/:campaignId/:file', (c) => {
+    // Never let shared caches store files or denials. Auth must precede both
+    // filesystem access and conditional responses (a stale ETag grants nothing).
+    c.header('Cache-Control', 'private, no-cache');
+    c.header('Vary', 'Cookie');
+    c.header('X-Content-Type-Options', 'nosniff');
     const campaignId = c.req.param('campaignId');
     const file = c.req.param('file');
     if (!/^[\w-]+$/.test(campaignId) || !/^[\w-]+\.\w+$/.test(file)) {
       return c.text('Bad path', 400);
     }
+    const runtime = store.getCampaign(campaignId);
+    const seat = runtime ? getSeat(c, runtime) : null;
+    if (!runtime || !seat) return c.text('No seat', 401);
+    if (!runtime.canReadUpload(`/uploads/${campaignId}/${file}`, seat)) {
+      return c.text('Forbidden', 403);
+    }
     const filePath = path.join(uploadsDir, campaignId, file);
     if (!fs.existsSync(filePath)) return c.text('Not found', 404);
     const ext = path.extname(filePath);
     const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
-    return c.body(fs.readFileSync(filePath), 200, {
+    const bytes = fs.readFileSync(filePath);
+    const etag = `"${createHash('sha256').update(bytes).digest('hex')}"`;
+    c.header('ETag', etag);
+    const matches = (c.req.header('If-None-Match') ?? '').split(',').some((value) => {
+      const tag = value.trim().replace(/^W\//, '');
+      return tag === '*' || tag === etag;
+    });
+    if (matches) return c.body(null, 304);
+    return c.body(bytes, 200, {
       'Content-Type': mime,
-      'Cache-Control': 'public, max-age=31536000, immutable',
     });
   });
 
