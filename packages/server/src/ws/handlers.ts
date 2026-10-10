@@ -646,7 +646,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         indicatesDirection: c.indicatesDirection ?? false,
         indicatesDistance: c.indicatesDistance ?? prior?.clues.find((old) => old.id === c.id)?.indicatesDistance ?? false,
         revealsLocation: c.revealsLocation ?? true,
-        observeFrom: c.observeFrom ?? [],
+        observeFrom: c.observeFrom ?? prior?.clues.find((old) => old.id === c.id)?.observeFrom ?? [],
       })),
     };
     ctx.runtime.upsertContent(content);

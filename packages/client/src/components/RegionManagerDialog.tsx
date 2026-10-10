@@ -390,6 +390,7 @@ function RegionDetail({
           sortOrder: c.sortOrder,
           indicatesDirection: c.indicatesDirection,
           indicatesDistance: c.indicatesDistance,
+          observeFrom: c.observeFrom,
           revealsLocation: c.revealsLocation,
         })),
       },
