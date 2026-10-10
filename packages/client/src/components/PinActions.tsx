@@ -87,6 +87,7 @@ export function PinActions() {
                     sortOrder: cl.sortOrder,
                     indicatesDirection: cl.indicatesDirection,
                     indicatesDistance: cl.indicatesDistance,
+                    observeFrom: cl.observeFrom,
                     revealsLocation: cl.revealsLocation,
                   })),
                 },
