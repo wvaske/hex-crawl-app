@@ -1116,10 +1116,10 @@ export class CanvasEngine {
     this.drawAreaHighlight();
   }
 
-  /** Keep the DM pin-action popup glued above the selected hex. */
+  /** Keep the selected-hex actions glued to the map for both roles. */
   private updatePinPopupPos(): void {
     const ui = useUi.getState();
-    if (this.role !== 'dm' || !this.layout || !ui.selectedHex) {
+    if (!this.layout || !ui.selectedHex) {
       if (ui.pinPopup) ui.set('pinPopup', null);
       return;
     }

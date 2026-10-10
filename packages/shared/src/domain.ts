@@ -553,6 +553,8 @@ export const PendingMoveSchema = z.object({
   at: z.number(),
   /** Hexes along the explored route the move would take; null = straight line (#130). */
   routeHexes: z.number().int().nullable().default(null),
+  /** Player's requested mode; only a DM resolution can actually teleport. */
+  teleport: z.boolean().default(false),
 });
 export type PendingMove = z.infer<typeof PendingMoveSchema>;
 

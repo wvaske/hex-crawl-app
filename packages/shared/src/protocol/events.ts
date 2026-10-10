@@ -88,6 +88,7 @@ export const ServerEventSchema = z.discriminatedUnion('kind', [
     label: z.string(),
     q: z.number().int(),
     r: z.number().int(),
+    teleport: z.boolean().default(false),
   }),
   ev('move.resolved', { tokenId: z.string(), label: z.string(), approved: z.boolean() }),
   ev('marker.added', { marker: MarkerSchema }),
