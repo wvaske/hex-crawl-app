@@ -388,6 +388,10 @@ discoveries have null/absent distance, never a guessed historical value. The
 additive columns ride the common SQLite/Postgres migration and campaign exports.
 Turning Distance off stops new/live measurements but preserves already-disclosed
 distances in senses and history, just like historical bearings.
+`discoveryForPlayer` strips the passive roll's internal `how.distance` from
+snapshots and live events. Only `Discovery.distance` is intentional disclosure.
+Player discovery events also omit source titles; located titles come from the
+filtered content snapshot. Keep both transports in sync when extending discoveries.
 
 ## D&D Beyond game-log import (issue #146)
 

@@ -1,7 +1,7 @@
 import type { CampaignRuntime } from '../state/runtime.js';
 import type { Hub } from '../ws/hub.js';
 import type { NewDiscovery } from './knowledge.js';
-import { withDirection, withDistance } from '@hexcrawl/shared';
+import { discoveryForPlayer, withDirection, withDistance } from '@hexcrawl/shared';
 
 /**
  * Deliver freshly-created discoveries: a journal entry for the owning
@@ -51,7 +51,23 @@ export function deliverDiscoveries(
         clueText: d.clueText,
         characterName: d.characterName,
       },
-      { dm: true, seatIds: ownerSeats },
+      { dm: true },
+    );
+    // The raw passive roll has DM-only geometry, and a clue's source title
+    // may still be secret. Players get disclosed distance only; located
+    // source names arrive through the regular filtered content snapshot.
+    hub.sendTo(
+      runtime,
+      {
+        type: 'event',
+        kind: 'discovery.new',
+        discovery: discoveryForPlayer(d.discovery),
+        contentId: d.contentId,
+        contentTitle: '',
+        clueText: d.clueText,
+        characterName: d.characterName,
+      },
+      { seatIds: ownerSeats.filter((id) => runtime.seats.get(id)?.role !== 'dm') },
     );
   }
 }
