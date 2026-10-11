@@ -805,7 +805,8 @@ export function TopBar({
             <PauseSyncToggle />
           </MenuRow>
         )}
-        {role === 'dm' && <ViewAsControl asList />}
+        {/* Overflow renders children inline on desktop; the list belongs only in its compact menu. */}
+        {compact && role === 'dm' && <ViewAsControl asList />}
         <MenuRow label="Center on party">
           <Button variant="ghost" size="sm" onClick={onRecenter} title="Center on your character or the party at the selected hex scale (Auto uses the finest scale)">
             ⌖<Lbl>Center</Lbl>
