@@ -211,6 +211,9 @@ function fullState(): CampaignState {
           tracksDcPerDay: 2,
           tracksExpireDays: 7,
           contentId: null,
+          observe: false,
+          observation: 10,
+          journal: [],
         },
         {
           id: 't2',
@@ -241,6 +244,9 @@ function fullState(): CampaignState {
           tracksDcPerDay: 2,
           tracksExpireDays: 7,
           contentId: null,
+          observe: false,
+          observation: 10,
+          journal: [],
         },
         {
           id: 't3',
@@ -271,6 +277,9 @@ function fullState(): CampaignState {
           tracksDcPerDay: 2,
           tracksExpireDays: 7,
           contentId: null,
+          observe: false,
+          observation: 10,
+          journal: [],
         },
         {
           id: 't4',
@@ -301,6 +310,9 @@ function fullState(): CampaignState {
           tracksDcPerDay: 2,
           tracksExpireDays: 7,
           contentId: null,
+          observe: false,
+          observation: 10,
+          journal: [],
         },
       ],
       markers: [

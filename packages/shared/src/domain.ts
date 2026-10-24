@@ -640,6 +640,26 @@ export type Gate = z.infer<typeof GateSchema>;
 export const TokenKindSchema = z.enum(['pc', 'npc']);
 export type TokenKind = z.infer<typeof TokenKindSchema>;
 
+/**
+ * What a mover that observes has seen on its journey and not yet reported:
+ * hexes passed, and clues its observation score opened. Delivered to the
+ * party as a report (fog + discoveries) by the DM — or lost with the mover.
+ */
+export const JournalEntrySchema = z.object({
+  at: z.number(),
+  q: z.number().int(),
+  r: z.number().int(),
+  kind: z.enum(['hex', 'clue']),
+  clueId: z.string().optional(),
+  contentId: z.string().optional(),
+  contentTitle: z.string().optional(),
+  text: z.string().optional(),
+  direction: z.string().nullable().optional(),
+  distance: z.number().int().nullable().optional(),
+  locates: z.boolean().optional(),
+});
+export type JournalEntry = z.infer<typeof JournalEntrySchema>;
+
 export const TokenSchema = z.object({
   id: z.string(),
   mapId: z.string(),
@@ -698,6 +718,12 @@ export const TokenSchema = z.object({
    * the ordinary knowledge engine.
    */
   contentId: z.string().nullable().default(null),
+  /** DM only: keep a journal of hexes passed and clues noticed while travelling. */
+  observe: z.boolean().default(false),
+  /** DM only: the mover's passive score for every skill gate it meets (10 = untrained). */
+  observation: z.number().int().min(1).max(40).default(10),
+  /** DM only: the unreported journal. */
+  journal: z.array(JournalEntrySchema).max(5000).default([]),
 });
 export type Token = z.infer<typeof TokenSchema>;
 
@@ -717,6 +743,9 @@ export function tokenPlayerView(token: Token): Token {
     tracksDcPerDay: 2,
     tracksExpireDays: 7,
     contentId: null,
+    observe: false,
+    observation: 10,
+    journal: [],
   };
 }
 
@@ -751,6 +780,13 @@ export const MoverSummarySchema = z.object({
   layTracks: z.boolean(),
   /** Title of the attached presence content, if any. */
   presence: z.string().nullable(),
+  observe: z.boolean(),
+  observation: z.number(),
+  /** Unreported journal: hexes passed and clues noticed. */
+  journalHexes: z.number().int(),
+  journalClues: z.number().int(),
+  /** Shares a hex with a PC token: a report can be handed over in person. */
+  withParty: z.boolean(),
 });
 export type MoverSummary = z.infer<typeof MoverSummarySchema>;
 

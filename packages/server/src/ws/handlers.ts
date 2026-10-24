@@ -369,6 +369,9 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       tracksDcPerDay: 2,
       tracksExpireDays: 7,
       contentId: null,
+      observe: false,
+      observation: 10,
+      journal: [],
     };
     // A retinue member wears its cell's colours unless told otherwise.
     const retinue = retinueOf(ctx.runtime, token);
@@ -583,6 +586,101 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       description: route.length ? `cancel ${label}'s planned route` : `restore ${label}'s route`,
       run: (rt) => {
         if (rt.findToken(tokenId)) rt.updateToken(mapId, tokenId, before);
+      },
+    });
+  }) as Handler,
+
+  /**
+   * A mover's report reaches the party (or does not). Delivering turns the
+   * hexes it passed into explored fog and the clues it noticed into
+   * discoveries for the target characters — attributed to the mover in the
+   * log, `manual` in the record, as a DM reveal would be. Discarding clears
+   * the journal: the courier never arrived. One undo entry puts it all back.
+   */
+  'token.report': ((cmd: Extract<ClientCommand, { kind: 'token.report' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const token = ctx.runtime.findToken(cmd.tokenId);
+    if (!token) throw new Error('Token not found');
+    const journal = token.journal;
+    if (journal.length === 0) throw new Error('Nothing to report');
+    const label = token.label || 'The traveller';
+    const mapId = token.mapId;
+    const tokenId = token.id;
+    const logBefore = new Set(ctx.runtime.log.map((e) => e.id));
+    let fogDelta: FogDelta = [];
+    const created: NewDiscovery[] = [];
+    if (cmd.discard) {
+      const entry = ctx.runtime.appendLog('note', `${label}'s report is lost: ${summarizeJournal(journal)}`, 'dm', {
+        tokenId,
+        discarded: true,
+      });
+      notifyLog(ctx, entry);
+    } else {
+      const rt = ctx.runtime.requireMap(mapId);
+      const hexes = journal
+        .filter((j) => j.kind === 'hex')
+        .filter((j) => (rt.fog.get(hexKey(j.q, j.r)) ?? 'hidden') === 'hidden')
+        .map((j) => ({ q: j.q, r: j.r }));
+      if (hexes.length) fogDelta = ctx.runtime.setFog(mapId, hexes, 'explored');
+      const onMap = [...rt.tokens.values()]
+        .filter((t) => t.kind === 'pc' && t.characterId)
+        .map((t) => t.characterId!);
+      const targets = cmd.characterIds?.length
+        ? cmd.characterIds
+        : onMap.length
+          ? onMap
+          : [...ctx.runtime.characters.keys()];
+      for (const j of journal) {
+        if (j.kind !== 'clue' || !j.clueId) continue;
+        const content = ctx.runtime.findContentByClue(j.clueId);
+        const clue = content?.clues.find((c) => c.id === j.clueId);
+        if (!content || !clue) continue; // the thing it saw is gone
+        for (const characterId of targets) {
+          const character = ctx.runtime.characters.get(characterId);
+          if (!character || ctx.runtime.hasDiscovery(j.clueId, characterId)) continue;
+          const discovery = {
+            id: nanoid(12),
+            clueId: j.clueId,
+            characterId,
+            at: Date.now(),
+            how: { kind: 'manual' as const },
+            direction: j.direction ?? null,
+            distance: j.distance ?? null,
+            locates: j.locates ?? false,
+          };
+          if (ctx.runtime.addDiscovery(discovery)) {
+            created.push({
+              discovery,
+              contentId: content.id,
+              contentTitle: content.title,
+              clueText: `${clue.text} (reported by ${label})`,
+              characterName: character.name,
+            });
+          }
+        }
+      }
+      deliverDiscoveries(ctx, created);
+      const entry = ctx.runtime.appendLog(
+        'note',
+        `${label} reports: ${summarizeJournal(journal)}`,
+        'all',
+        { tokenId, hexes: hexes.length, discoveries: created.length },
+      );
+      notifyLog(ctx, entry);
+    }
+    ctx.runtime.updateToken(mapId, tokenId, { journal: [] });
+    const newLog = ctx.runtime.log.filter((e) => !logBefore.has(e.id)).map((e) => e.id);
+    const createdIds = created.map((d) => d.discovery.id);
+    ctx.runtime.pushUndo({
+      at: Date.now(),
+      kind: 'token.report',
+      mapId,
+      description: cmd.discard ? `restore ${label}'s report` : `take back ${label}'s report`,
+      run: (rt) => {
+        if (rt.findToken(tokenId)) rt.updateToken(mapId, tokenId, { journal });
+        restoreFogDelta(rt, mapId, fogDelta);
+        for (const id of createdIds) rt.revokeDiscovery(id);
+        rt.deleteLogEntries(newLog);
       },
     });
   }) as Handler,
@@ -1698,6 +1796,16 @@ function runTravellers(ctx: Ctx, beforeMinutes: number, afterMinutes: number): T
     deliverTrailFinds(ctx, evaluateTrails(ctx.runtime, mapId));
   }
   return { moves, prunes };
+}
+
+/** "scouted 12 hexes, noticed 3 things" for report log lines. */
+function summarizeJournal(journal: { kind: string }[]): string {
+  const hexes = journal.filter((j) => j.kind === 'hex').length;
+  const clues = journal.filter((j) => j.kind === 'clue').length;
+  const parts: string[] = [];
+  if (hexes) parts.push(`scouted ${hexes} hex${hexes === 1 ? '' : 'es'}`);
+  if (clues) parts.push(`noticed ${clues} thing${clues === 1 ? '' : 's'}`);
+  return parts.join(', ') || 'nothing to tell';
 }
 
 function hexLocationLabel(

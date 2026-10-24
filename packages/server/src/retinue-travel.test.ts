@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { filterStateForViewer, seededRng, travelWindowMinutes } from '@hexcrawl/shared';
+import { filterStateForViewer, hexKey, seededRng, travelWindowMinutes } from '@hexcrawl/shared';
 import type { ClientCommand } from '@hexcrawl/shared';
 import { createTestDb } from './db/index.js';
 import { Store } from './state/store.js';
@@ -491,5 +491,104 @@ describe('tracks and presence', () => {
     expect([...runtime.discoveries.values()].filter((d) => d.characterId === charId)).toHaveLength(0);
     const full = runtime.buildFullState(mapId);
     expect(full.movers.find((m) => m.tokenId === tokenId)!.presence).toBe('Dust cloud');
+  });
+});
+
+describe('journals and reports', () => {
+  function pc(q: number, r: number): string {
+    const mapId = runtime.campaign.activeMapId!;
+    dm({
+      kind: 'character.create',
+      character: { name: 'Xanphina', color: '#aa2200', glyph: '', speed: 30, skills: {}, extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' } },
+    } as never);
+    const charId = [...runtime.characters.keys()].pop()!;
+    dm({ kind: 'token.create', mapId, q, r, tokenKind: 'pc', characterId: charId, label: '', color: '#aa2200', glyph: '', playerVisible: true } as never);
+    return charId;
+  }
+  function shrine(q: number, r: number, dc: number): string {
+    const mapId = runtime.campaign.activeMapId!;
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q, r, type: 'landmark', title: 'Wayside shrine', dmNotes: '', glyph: '', showLabel: false,
+        scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '',
+        clues: [{ text: 'Fresh offerings to Tiamat', gate: { kind: 'skill', skill: 'perception', dc, maxDistance: 1, mode: 'passive' }, indicatesDirection: false, indicatesDistance: false, revealsLocation: true, observeFrom: [] }],
+      },
+    } as never);
+    return [...runtime.requireMap(mapId).contents.values()].find((c) => c.title === 'Wayside shrine')!.id;
+  }
+
+  it('an observing mover journals hexes and the clues its score opens, and nothing reaches the party yet', () => {
+    const { mapId, tokenId } = rider();
+    shrine(12, 1, 14);
+    const charId = pc(0, 0);
+    dm({ kind: 'token.update', tokenId, patch: { observe: true, observation: 12 } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }] } as never);
+    dm({ kind: 'time.advance', minutes: 180 } as never);
+    let t = runtime.requireMap(mapId).tokens.get(tokenId)!;
+    expect(t.journal.filter((j) => j.kind === 'hex').map((j) => j.q)).toEqual([11, 12, 13]);
+    expect(t.journal.filter((j) => j.kind === 'clue')).toHaveLength(0); // passive 12 < DC 14
+    expect([...runtime.discoveries.values()].filter((d) => d.characterId === charId)).toHaveLength(0);
+    expect(runtime.requireMap(mapId).fog.get(hexKey(12, 0)) ?? 'hidden').toBe('hidden');
+    // Keener eyes on the way back.
+    dm({ kind: 'token.update', tokenId, patch: { observation: 15 } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 10, r: 0 }] } as never);
+    dm({ kind: 'time.advance', minutes: 180 } as never);
+    t = runtime.requireMap(mapId).tokens.get(tokenId)!;
+    const sightings = t.journal.filter((j) => j.kind === 'clue');
+    expect(sightings).toHaveLength(1);
+    expect(sightings[0]!.text).toBe('Fresh offerings to Tiamat');
+    expect(t.journal.filter((j) => j.kind === 'hex')).toHaveLength(4); // 10..13, no duplicates
+    const full = runtime.buildFullState(mapId);
+    const summary = full.movers.find((m) => m.tokenId === tokenId)!;
+    expect([summary.journalHexes, summary.journalClues, summary.withParty]).toEqual([4, 1, false]);
+    const player = runtime.createSeat('player', 'Alice');
+    const view = filterStateForViewer(full, { role: 'player', seatId: player.id, characterId: charId });
+    expect(view.mapState!.tokens.find((x) => x.id === tokenId)!.journal).toEqual([]);
+    expect(() => asSeat(player, { kind: 'token.report', tokenId } as never)).toThrow();
+  });
+
+  it('delivering a report explores the hexes, creates discoveries, logs it, and undo takes it all back', () => {
+    const { mapId, tokenId } = rider();
+    shrine(12, 1, 10);
+    const charId = pc(10, 0);
+    dm({ kind: 'token.update', tokenId, patch: { observe: true } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }, { q: 10, r: 0 }] } as never);
+    dm({ kind: 'time.advance', minutes: 360 } as never);
+    expect(runtime.buildFullState(mapId).movers.find((m) => m.tokenId === tokenId)!.withParty).toBe(true);
+    dm({ kind: 'token.report', tokenId } as never);
+    const rt = runtime.requireMap(mapId);
+    for (const q of [11, 12, 13]) expect(rt.fog.get(hexKey(q, 0))).toBe('explored');
+    const found = [...runtime.discoveries.values()].filter((d) => d.characterId === charId);
+    expect(found).toHaveLength(1);
+    expect(found[0]!.how.kind).toBe('manual');
+    expect(rt.tokens.get(tokenId)!.journal).toEqual([]);
+    const note = runtime.log.find((e) => e.kind === 'note' && e.text.includes('reports:'));
+    expect(note?.visibility).toBe('all');
+    expect(runtime.log.some((e) => e.kind === 'discovery' && e.text.includes('reported by Dorn Ackley'))).toBe(true);
+    expect(() => dm({ kind: 'token.report', tokenId } as never)).toThrow(/Nothing to report/);
+    dm({ kind: 'undo' } as never);
+    expect(runtime.requireMap(mapId).fog.get(hexKey(12, 0)) ?? 'hidden').toBe('hidden');
+    expect([...runtime.discoveries.values()].filter((d) => d.characterId === charId)).toHaveLength(0);
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.journal.length).toBeGreaterThan(0);
+    expect(runtime.log.some((e) => e.kind === 'note' && e.text.includes('reports:'))).toBe(false);
+  });
+
+  it('a lost report clears the journal without telling the party; a dead mover takes it with it', () => {
+    const { mapId, tokenId } = rider();
+    shrine(12, 1, 10);
+    const charId = pc(0, 0);
+    dm({ kind: 'token.update', tokenId, patch: { observe: true } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }] } as never);
+    dm({ kind: 'time.advance', minutes: 180 } as never);
+    dm({ kind: 'token.report', tokenId, discard: true } as never);
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.journal).toEqual([]);
+    expect([...runtime.discoveries.values()].filter((d) => d.characterId === charId)).toHaveLength(0);
+    expect(runtime.log.find((e) => e.text.includes('report is lost'))!.visibility).toBe('dm');
+    dm({ kind: 'undo' } as never);
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.journal.length).toBeGreaterThan(0);
+    dm({ kind: 'token.delete', tokenId } as never);
+    expect(runtime.findToken(tokenId)).toBeNull();
+    expect(runtime.requireMap(mapId).fog.get(hexKey(12, 0)) ?? 'hidden').toBe('hidden');
   });
 });

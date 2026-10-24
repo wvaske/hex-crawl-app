@@ -335,6 +335,8 @@ export const TokenUpdateCommand = z.object({
       tracksDcPerDay: z.number().min(0).max(30),
       tracksExpireDays: z.number().min(0.1).max(365),
       contentId: z.string().nullable(),
+      observe: z.boolean(),
+      observation: z.number().int().min(1).max(40),
       visibleThroughFog: z.boolean(),
       note: z.string().max(300),
     })
@@ -355,6 +357,20 @@ export const TokenRouteCommand = z.object({
   waypoints: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(50),
   /** Patrol: when the last waypoint is reached, route back through them again. */
   loop: z.boolean().optional(),
+});
+
+/**
+ * DM: deliver a mover's journal to the party — hexes it passed become
+ * explored, clues it noticed become discoveries for the target characters
+ * (every character with a PC token on its map when omitted) — or discard
+ * it (the courier never arrived). Either way the journal is cleared.
+ */
+export const TokenReportCommand = z.object({
+  ...base,
+  kind: z.literal('token.report'),
+  tokenId: z.string(),
+  discard: z.boolean().optional(),
+  characterIds: z.array(z.string()).max(50).optional(),
 });
 
 export const TokenMoveCommand = z.object({
@@ -850,6 +866,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   TokenCreateCommand,
   TokenUpdateCommand,
   TokenRouteCommand,
+  TokenReportCommand,
   TokenMoveCommand,
   MoveRequestCommand,
   MoveResolveCommand,

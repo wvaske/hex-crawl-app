@@ -901,6 +901,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     note: z.string().max(300).optional(),
     loop: z.boolean().optional(),
     layTracks: z.boolean().optional(),
+    observe: z.boolean().optional(),
+    observation: z.number().int().min(1).max(40).optional(),
     encounterEveryMiles: z.number().min(0.1).max(10000).nullable().optional(),
     /**
      * Journey to plan: hex coordinates or content titles, walked in order with
@@ -987,6 +989,9 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       tracksDcPerDay: existing?.tracksDcPerDay ?? 2,
       tracksExpireDays: existing?.tracksExpireDays ?? 7,
       contentId: existing?.contentId ?? null,
+      observe: input.observe ?? existing?.observe ?? false,
+      observation: input.observation ?? existing?.observation ?? 10,
+      journal: existing?.journal ?? [],
     };
     // A re-placed token starts fresh: its old journey no longer applies.
     const moved = existing && (existing.q !== q || existing.r !== r);

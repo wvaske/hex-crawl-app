@@ -496,6 +496,21 @@ filtered content snapshot. Keep both transports in sync when extending discoveri
   `evaluateTrails`) for every map a mover moved on, so a standing party can
   sense an approaching thing. `time.advance`'s undo revokes the discoveries
   and trail finds a tick produced, like `performTravel` always did.
+- **Journals and reports (step 4).** A mover with `observe` keeps
+  `token.journal` (`JournalEntry[]`, DM only): one `hex` entry per hex entered
+  and one `clue` entry per content clue its `observation` score opens there
+  (`observeFrom` in `engine/travellers.ts` runs the same `gateOpensPassively`
+  / `clueInRange` test as the knowledge engine, with a stand-in character
+  whose every passive score is `observation`, and records nothing on the
+  party). Nothing reaches players until `token.report`: hexes become
+  explored fog, clues become `manual` discoveries for the target characters
+  (PCs on the mover's map by default) attributed to the mover in the log,
+  and an `'all'` note says the report came in; `discard: true` clears the
+  journal instead ("the courier never arrived"). Both are one undo entry
+  (fog delta, revoked discoveries, journal, log lines). `MoverSummary`
+  carries `journalHexes`/`journalClues`/`withParty` so the panel can show a
+  pending report and whether the mover is standing with a PC — the DM, not
+  the code, decides whether a report can arrive from elsewhere.
 - **Seeding from the wiki:** `scripts/seed-retinues.mjs` + `scripts/retinues.json`
   upsert retinues (`POST /api/integration/.../retinues`) and members
   (`POST .../tokens`, matched by label; `at` / `routeTo` resolve content

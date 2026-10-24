@@ -336,6 +336,9 @@ export function migrate(d: DB): void {
   ensureColumn(d, 'token', 'tracks_dc_per_day', 'REAL NOT NULL DEFAULT 2');
   ensureColumn(d, 'token', 'tracks_expire_days', 'REAL NOT NULL DEFAULT 7');
   ensureColumn(d, 'token', 'content_id', 'TEXT');
+  ensureColumn(d, 'token', 'observe', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'token', 'observation', 'REAL NOT NULL DEFAULT 10');
+  ensureColumn(d, 'token', 'journal', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(d, 'trail', 'fade', 'TEXT');
   ensureColumn(d, 'trail', 'mover_id', 'TEXT');
   ensureColumn(d, 'token', 'visible_through_fog', 'INTEGER NOT NULL DEFAULT 0');

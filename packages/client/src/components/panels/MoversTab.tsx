@@ -164,6 +164,7 @@ function MoverRow({
         </span>
         {m.encounterEveryMiles && <span>🎲 every {m.encounterEveryMiles} mi</span>}
         {m.layTracks && <span>👣 leaves tracks</span>}
+        {m.withParty && <span className="text-brass-300" title="Shares a hex with a party member">with the party</span>}
         {m.presence && <span title="Presence content travelling with it">👁 {m.presence}</span>}
       </div>
       <div className="mt-0.5 pl-7 flex flex-wrap items-center gap-x-1 gap-y-0.5">
@@ -246,6 +247,7 @@ function MoverRow({
       </div>
       {token && <TracksControls token={token} />}
       {token && <PresenceControls token={token} />}
+      <ReportControls mover={m} token={token} />
       <div className="mt-0.5 pl-7">
         <input
           className="w-full bg-transparent border-b border-transparent focus:border-ink-600 px-0 py-0 text-[0.6875rem] text-ink-300 placeholder:text-ink-500"
@@ -410,6 +412,85 @@ function PresenceControls({ token }: { token: import('@hexcrawl/shared').Token }
         >
           + new
         </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Observation and reports: a mover that observes keeps a journal of hexes
+ * passed and clues its passive score opened. Nothing reaches the party until
+ * the DM delivers it — the fiction decides when a report can arrive (the
+ * mover is back with the party, with its leader, in a held settlement) —
+ * and a mover that dies on the road takes its report with it.
+ */
+function ReportControls({ mover: m, token }: { mover: MoverSummary; token: import('@hexcrawl/shared').Token | null }) {
+  const [score, setScore] = useState<string | null>(null);
+  const pending = m.journalHexes + m.journalClues;
+  const patch = (p: Record<string, unknown>) => send({ kind: 'token.update', tokenId: m.tokenId, patch: p as never });
+  return (
+    <div className="mt-0.5 pl-7 text-[0.6875rem] text-ink-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <label className="inline-flex items-center gap-1 cursor-pointer" title="Keep a journal of hexes passed and clues noticed; the party learns it when the report is delivered">
+        <input type="checkbox" checked={m.observe} onChange={(e) => patch({ observe: e.target.checked })} />
+        🔭 Observes
+      </label>
+      {m.observe && (
+        <label className="inline-flex items-center gap-1" title="Passive score used for every skill gate it meets (10 = untrained, 14 = keen eyes)">
+          passive
+          <input
+            type="number"
+            min={1}
+            max={40}
+            className="w-11 bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100"
+            value={score ?? m.observation}
+            onChange={(e) => setScore(e.target.value)}
+            onBlur={() => {
+              if (score === null) return;
+              const v = Math.round(Number(score));
+              if (v >= 1 && v <= 40 && v !== m.observation) patch({ observation: v });
+              setScore(null);
+            }}
+          />
+        </label>
+      )}
+      {pending > 0 && (
+        <>
+          <span className="text-ink-300">
+            📜 {m.journalHexes} hex{m.journalHexes === 1 ? '' : 'es'}, {m.journalClues} sighting{m.journalClues === 1 ? '' : 's'} unreported
+          </span>
+          <button
+            className="px-1.5 py-0 rounded border border-brass-500/60 text-brass-300 hover:bg-brass-500/15 cursor-pointer"
+            title={
+              m.withParty
+                ? 'Hand the report over: scouted hexes become explored, sightings become discoveries'
+                : 'Deliver the report (it is not with the party — a message, a leader, a held settlement)'
+            }
+            onClick={() => send({ kind: 'token.report', tokenId: m.tokenId })}
+          >
+            Deliver
+          </button>
+          <button
+            className="px-1.5 py-0 rounded border border-ink-600 hover:text-ember-500 cursor-pointer"
+            title="The report never arrives: clear the journal"
+            onClick={() => send({ kind: 'token.report', tokenId: m.tokenId, discard: true })}
+          >
+            Lost
+          </button>
+        </>
+      )}
+      {token && token.journal.some((j) => j.kind === 'clue') && (
+        <details className="w-full">
+          <summary className="cursor-pointer text-ink-400 hover:text-ink-200">what it has seen</summary>
+          <ul className="mt-0.5 space-y-0.5 pl-3">
+            {token.journal
+              .filter((j) => j.kind === 'clue')
+              .map((j, i) => (
+                <li key={`${j.clueId}-${i}`} className="text-ink-300">
+                  <span className="text-ink-400">{j.contentTitle}:</span> {j.text}
+                </li>
+              ))}
+          </ul>
+        </details>
       )}
     </div>
   );
