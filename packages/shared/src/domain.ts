@@ -280,9 +280,23 @@ export type TravelPace = z.infer<typeof TravelPaceSchema>;
  * `retinueId`; the group itself is campaign data because its members may be
  * spread over several maps.
  */
+export const GROUP_KINDS = ['retinue', 'army', 'band', 'caravan', 'beast', 'other'] as const;
+export const GroupKindSchema = z.enum(GROUP_KINDS);
+export type GroupKind = z.infer<typeof GroupKindSchema>;
+export const GROUP_KIND_LABEL: Record<GroupKind, string> = {
+  retinue: 'Retinue',
+  army: 'Army',
+  band: 'Band',
+  caravan: 'Caravan',
+  beast: 'Beast',
+  other: 'Other',
+};
+
 export const RetinueSchema = z.object({
   id: z.string().min(1).max(40),
   name: z.string().min(1).max(60),
+  /** What sort of group: a faction retinue, an army, a cultist band, a roaming beast… */
+  kind: GroupKindSchema.default('retinue'),
   /** Who commands it (a PC name, usually). Display only. */
   holder: z.string().max(60).default(''),
   faction: z.string().max(60).default(''),
@@ -643,13 +657,61 @@ export const TokenSchema = z.object({
   route: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(5000).default([]),
   /** DM only: clock minutes of travel banked toward the next hex of `route`. */
   travelCredit: z.number().min(0).default(0),
+  /** DM only: the waypoints the route was planned through (kept for looping). */
+  waypoints: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(50).default([]),
+  /** DM only: when the route ends, plan it again through the waypoints (a patrol). */
+  loop: z.boolean().default(false),
+  /** DM only: roll on the terrain's encounter table every this many miles; null = never. */
+  encounterEveryMiles: z.number().min(0.1).max(10000).nullable().default(null),
+  /** DM only: miles walked since the last encounter roll. */
+  encounterMiles: z.number().min(0).default(0),
 });
 export type Token = z.infer<typeof TokenSchema>;
 
 /** Token fields that never reach a player snapshot. */
 export function tokenPlayerView(token: Token): Token {
-  return { ...token, note: '', route: [], travelCredit: 0 };
+  return {
+    ...token,
+    note: '',
+    route: [],
+    travelCredit: 0,
+    waypoints: [],
+    loop: false,
+    encounterEveryMiles: null,
+    encounterMiles: 0,
+  };
 }
+
+/**
+ * One moving token as the DM's Movers panel sees it, across every map of
+ * the campaign (the snapshot otherwise carries only the viewed map).
+ */
+export const MoverSummarySchema = z.object({
+  tokenId: z.string(),
+  mapId: z.string(),
+  mapName: z.string(),
+  label: z.string(),
+  color: z.string(),
+  icon: z.string(),
+  glyph: z.string(),
+  retinueId: z.string().nullable(),
+  q: z.number().int(),
+  r: z.number().int(),
+  /** Content title at the hex, if any. */
+  where: z.string().nullable(),
+  routeLeft: z.number().int(),
+  loop: z.boolean(),
+  travelMode: z.string(),
+  pace: TravelPaceSchema,
+  mph: z.number(),
+  /** Travel-window minutes still needed to finish the route; null when idle. */
+  etaMinutes: z.number().nullable(),
+  note: z.string(),
+  playerVisible: z.boolean(),
+  visibleThroughFog: z.boolean(),
+  encounterEveryMiles: z.number().nullable(),
+});
+export type MoverSummary = z.infer<typeof MoverSummarySchema>;
 
 export const MarkerSchema = z.object({
   id: z.string(),
@@ -1170,6 +1232,8 @@ export const CampaignStateSchema = z.object({
   log: z.array(LogEntrySchema),
   /** DM only: the undo stack, newest first (issue #127). Empty for players. */
   undoHistory: z.array(UndoSummarySchema).default([]),
+  /** DM only: every NPC token on every map, with its journey status. */
+  movers: z.array(MoverSummarySchema).default([]),
   /** DM only: D&D Beyond game-log listener status (issue #146); null for players. */
   ddbGameLog: DdbGameLogStatusSchema.nullable().default(null),
 });

@@ -10,7 +10,9 @@ import {
   travelWindowMinutes,
   type TravelMode,
 } from '@hexcrawl/shared';
+import type { Rng } from '@hexcrawl/shared';
 import type { CampaignRuntime } from '../state/runtime.js';
+import { rollEncounter, type EncounterResult } from './encounters.js';
 
 /**
  * NPC travellers (retinue markers): tokens with a planned `route` advance
@@ -33,8 +35,13 @@ export interface TravellerMove {
   /** Route and credit as they stood before the advance — what undo restores. */
   routeBefore: HexCoord[];
   creditBefore: number;
+  encounterMilesBefore: number;
   /** The route is finished: the token stands at its destination. */
   arrived: boolean;
+  /** A looping route reached its end and was planned again through its waypoints. */
+  looped: boolean;
+  /** Encounter rolls made along the way (every `encounterEveryMiles`). */
+  encounters: { q: number; r: number; result: EncounterResult }[];
 }
 
 export function retinueOf(runtime: CampaignRuntime, token: Token): Retinue | null {
@@ -76,6 +83,7 @@ export function advanceTravellers(
   runtime: CampaignRuntime,
   fromMinutes: number,
   toMinutes: number,
+  rng: Rng | null = null,
 ): TravellerMove[] {
   const settings = runtime.campaign.settings;
   const banked = travelWindowMinutes(fromMinutes, toMinutes, settings);
@@ -90,10 +98,14 @@ export function advanceTravellers(
       if (!(perHex > 0)) continue;
       const routeBefore = token.route.map((h) => ({ q: h.q, r: h.r }));
       const creditBefore = token.travelCredit;
+      const encounterMilesBefore = token.encounterMiles;
       let credit = creditBefore + banked;
       let cur: HexCoord = { q: token.q, r: token.r };
-      const remaining = [...routeBefore];
+      let remaining = [...routeBefore];
       let stepped = 0;
+      let looped = false;
+      let miles = token.encounterMiles;
+      const encounters: TravellerMove['encounters'] = [];
       while (remaining.length) {
         const next = remaining[0]!;
         const cost = perHex * stepCost(rt.edges, cur, next, WALKED);
@@ -102,6 +114,33 @@ export function advanceTravellers(
         cur = next;
         remaining.shift();
         stepped++;
+        // Wandering-encounter cadence by distance: roll on the terrain table
+        // of the hex entered every N miles. The mover is not halted — the DM
+        // reads the log and decides what, if anything, it meets.
+        if (token.encounterEveryMiles && rng) {
+          miles += map.milesPerHex;
+          if (miles >= token.encounterEveryMiles) {
+            miles = 0;
+            encounters.push({
+              q: cur.q,
+              r: cur.r,
+              result: rollEncounter(
+                runtime,
+                { mapId, q: cur.q, r: cur.r, tableId: null, skipCheck: false },
+                rng,
+              ),
+            });
+          }
+        }
+        // A patrol: at the end of its route it plans the same waypoints again
+        // from where it stands and keeps walking on this very tick.
+        if (remaining.length === 0 && token.loop && token.waypoints.length && !looped) {
+          const again = planRoute(runtime, map, { ...token, q: cur.q, r: cur.r }, token.waypoints);
+          if (again.length) {
+            remaining = again;
+            looped = true;
+          }
+        }
       }
       const arrived = remaining.length === 0;
       if (stepped === 0 && !arrived) {
@@ -114,6 +153,7 @@ export function advanceTravellers(
         r: cur.r,
         route: remaining,
         travelCredit: arrived ? 0 : credit,
+        encounterMiles: miles,
       });
       if (stepped > 0) {
         moves.push({
@@ -124,7 +164,10 @@ export function advanceTravellers(
           to: cur,
           routeBefore,
           creditBefore,
+          encounterMilesBefore,
           arrived,
+          looped,
+          encounters,
         });
       }
     }
@@ -141,6 +184,7 @@ export function restoreTravellers(runtime: CampaignRuntime, moves: TravellerMove
       r: m.from.r,
       route: m.routeBefore,
       travelCredit: m.creditBefore,
+      encounterMiles: m.encounterMilesBefore,
     });
   }
 }

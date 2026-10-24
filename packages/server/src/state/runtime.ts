@@ -143,6 +143,9 @@ function parseRoute(raw: unknown): { q: number; r: number }[] {
   }
 }
 
+import { contentCoversHex, journeyMph as journeyMphRule } from '@hexcrawl/shared';
+import type { MoverSummary } from '@hexcrawl/shared';
+import { routeMinutesLeft, travellerMode } from '../engine/travellers.js';
 export class CampaignRuntime {
   readonly id: string;
   campaign: Campaign;
@@ -468,6 +471,10 @@ export class CampaignRuntime {
         note: (t.note as string | null) ?? '',
         route: parseRoute(t.route),
         travelCredit: (t.travel_credit as number | null) ?? 0,
+        waypoints: parseRoute(t.waypoints),
+        loop: Boolean(t.loop),
+        encounterEveryMiles: (t.encounter_every_miles as number | null) ?? null,
+        encounterMiles: (t.encounter_miles as number | null) ?? 0,
       });
     }
     for (const m of d.prepare('SELECT * FROM marker WHERE map_id = ?').all(mapId) as Array<
@@ -595,7 +602,46 @@ export class CampaignRuntime {
         .slice(0, UNDO_HISTORY_SHOWN)
         .map((u) => ({ at: u.at, kind: u.kind, description: u.description })),
       ddbGameLog: { ...this.ddbStatus, recent: [...this.ddbStatus.recent] },
+      movers: this.moverSummaries(),
     };
+  }
+
+  /** Every NPC token on every map with its journey status (DM Movers panel). */
+  moverSummaries(): MoverSummary[] {
+    const out: MoverSummary[] = [];
+    for (const [mapId, rt] of this.mapStates) {
+      const map = this.maps.get(mapId);
+      if (!map) continue;
+      for (const t of rt.tokens.values()) {
+        if (t.kind !== 'npc') continue;
+        const { mode, pace } = travellerMode(this, t);
+        const at = [...rt.contents.values()].find((c) => contentCoversHex(c, t));
+        out.push({
+          tokenId: t.id,
+          mapId,
+          mapName: map.name,
+          label: t.label,
+          color: t.color,
+          icon: t.icon,
+          glyph: t.glyph,
+          retinueId: t.retinueId,
+          q: t.q,
+          r: t.r,
+          where: at?.title ?? null,
+          routeLeft: t.route.length,
+          loop: t.loop,
+          travelMode: mode.id,
+          pace,
+          mph: journeyMphRule(mode, pace),
+          etaMinutes: routeMinutesLeft(this, t),
+          note: t.note,
+          playerVisible: t.playerVisible,
+          visibleThroughFog: t.visibleThroughFog,
+          encounterEveryMiles: t.encounterEveryMiles,
+        });
+      }
+    }
+    return out.sort((a, b) => a.label.localeCompare(b.label));
   }
 
   // -- integration secrets + imported rolls (issue #146) ---------------------
@@ -1378,7 +1424,7 @@ export class CampaignRuntime {
     rt.tokens.set(token.id, token);
     this.db
       .prepare(
-        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id, retinue_id, icon, travel_mode, pace, visible_through_fog, note, route, travel_credit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id, retinue_id, icon, travel_mode, pace, visible_through_fog, note, route, travel_credit, waypoints, loop, encounter_every_miles, encounter_miles) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         token.id,
@@ -1400,6 +1446,10 @@ export class CampaignRuntime {
         token.note,
         JSON.stringify(token.route),
         token.travelCredit,
+        JSON.stringify(token.waypoints),
+        token.loop ? 1 : 0,
+        token.encounterEveryMiles,
+        token.encounterMiles,
       );
   }
 
@@ -1411,7 +1461,7 @@ export class CampaignRuntime {
     rt.tokens.set(tokenId, updated);
     this.db
       .prepare(
-        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=?, retinue_id=?, icon=?, travel_mode=?, pace=?, visible_through_fog=?, note=?, route=?, travel_credit=? WHERE id=?',
+        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=?, retinue_id=?, icon=?, travel_mode=?, pace=?, visible_through_fog=?, note=?, route=?, travel_credit=?, waypoints=?, loop=?, encounter_every_miles=?, encounter_miles=? WHERE id=?',
       )
       .run(
         updated.q,
@@ -1430,6 +1480,10 @@ export class CampaignRuntime {
         updated.note,
         JSON.stringify(updated.route),
         updated.travelCredit,
+        JSON.stringify(updated.waypoints),
+        updated.loop ? 1 : 0,
+        updated.encounterEveryMiles,
+        updated.encounterMiles,
         tokenId,
       );
     return updated;

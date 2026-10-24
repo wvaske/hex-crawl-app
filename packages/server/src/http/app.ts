@@ -899,6 +899,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     playerVisible: z.boolean().optional(),
     visibleThroughFog: z.boolean().optional(),
     note: z.string().max(300).optional(),
+    loop: z.boolean().optional(),
+    encounterEveryMiles: z.number().min(0.1).max(10000).nullable().optional(),
     /**
      * Journey to plan: hex coordinates or content titles, walked in order with
      * the party's routing. An empty list cancels the current route; omitted
@@ -972,6 +974,13 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       note: input.note ?? existing?.note ?? '',
       route: existing?.route ?? [],
       travelCredit: existing?.travelCredit ?? 0,
+      waypoints: existing?.waypoints ?? [],
+      loop: input.loop ?? existing?.loop ?? false,
+      encounterEveryMiles:
+        input.encounterEveryMiles !== undefined
+          ? input.encounterEveryMiles
+          : (existing?.encounterEveryMiles ?? null),
+      encounterMiles: existing?.encounterMiles ?? 0,
     };
     // A re-placed token starts fresh: its old journey no longer applies.
     const moved = existing && (existing.q !== q || existing.r !== r);
@@ -981,15 +990,18 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     }
     if (input.routeTo) {
       const route: { q: number; r: number }[] = [];
+      const waypoints: { q: number; r: number }[] = [];
       let cur = { q, r };
       for (const stop of input.routeTo) {
         const dest = typeof stop === 'string' ? place(stop) : stop;
         if (!dest) return c.json({ error: `No content titled "${String(stop)}" on that map` }, 404);
         if (dest.q === cur.q && dest.r === cur.r) continue;
         route.push(...planRoute(runtime, map, { ...token, q: cur.q, r: cur.r }, [dest]));
+        waypoints.push(dest);
         cur = dest;
       }
       token.route = route;
+      token.waypoints = waypoints;
       token.travelCredit = 0;
     }
     if (existing) runtime.updateToken(input.mapId, id, token);

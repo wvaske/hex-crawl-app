@@ -26,7 +26,7 @@ export type Tool =
  * Exactly one is open at a time; clicking another heading swaps it, and
  * clicking the open one closes it (`null` = map only).
  */
-export type BuiltinPanelId = 'information' | 'character' | 'history' | 'build' | 'setup';
+export type BuiltinPanelId = 'information' | 'character' | 'movers' | 'history' | 'build' | 'setup';
 /** Built-in panels, plus `plugin:<pluginId>/<panelId>` for plugin panels (plugins/AGENTS.md). */
 export type PanelId = BuiltinPanelId | `plugin:${string}`;
 
@@ -192,7 +192,7 @@ const PANEL_WIDTH_KEY = 'hexcrawl.panelWidth';
 
 const PINNED_PANEL_KEY = 'hexcrawl.pinnedPanel';
 const PINNED_WIDTH_KEY = 'hexcrawl.pinnedWidth';
-const PANEL_IDS: BuiltinPanelId[] = ['information', 'character', 'history', 'build', 'setup'];
+const PANEL_IDS: BuiltinPanelId[] = ['information', 'character', 'movers', 'history', 'build', 'setup'];
 
 function initialPinnedPanel(): PanelId | null {
   try {

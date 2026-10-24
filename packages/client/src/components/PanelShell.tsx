@@ -20,6 +20,7 @@ import { InspectTab } from './panels/InspectTab.js';
 import { MapsTab } from './panels/MapsTab.js';
 import { CharactersTab } from './panels/CharactersTab.js';
 import { TokensTab } from './panels/TokensTab.js';
+import { MoversTab } from './panels/MoversTab.js';
 import { EncountersTab } from './panels/EncountersTab.js';
 import { LogTab } from './panels/LogTab.js';
 import { JournalTab } from './panels/JournalTab.js';
@@ -55,6 +56,12 @@ const PANEL_META: Record<BuiltinPanelId, PanelMeta> = {
     title: 'Character',
     hint: 'Your character sheet and the rest of the party',
   },
+  movers: {
+    icon: '🐎',
+    label: 'Movers',
+    title: 'Movers',
+    hint: 'Everything on the move: retinues, armies, bands and beasts, on every map',
+  },
   history: {
     icon: '📜',
     label: 'History',
@@ -76,7 +83,7 @@ const PANEL_META: Record<BuiltinPanelId, PanelMeta> = {
 };
 
 const PLAYER_PANELS: BuiltinPanelId[] = ['information', 'character', 'history'];
-const DM_PANELS: BuiltinPanelId[] = ['information', 'character', 'history', 'build', 'setup'];
+const DM_PANELS: BuiltinPanelId[] = ['information', 'character', 'movers', 'history', 'build', 'setup'];
 
 interface PluginPanelEntry {
   id: PanelId;
@@ -153,7 +160,9 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
     const builtin: PanelId[] = role === 'dm' ? DM_PANELS : PLAYER_PANELS;
     const ids = pluginPanels.map((p) => p.id);
     // Plugins follow the play panels; the DM's prep panels stay at the end.
-    return [...builtin.slice(0, 3), ...ids, ...builtin.slice(3)];
+    const prep = builtin.indexOf('build');
+    const cut = prep === -1 ? builtin.length : prep;
+    return [...builtin.slice(0, cut), ...ids, ...builtin.slice(cut)];
   }, [role, pluginPanels]);
   const metaFor = (id: PanelId): PanelMeta =>
     pluginPanels.find((p) => p.id === id)?.meta ?? PANEL_META[id as BuiltinPanelId];
@@ -272,6 +281,11 @@ export function PanelShell({ campaignId }: { campaignId: string }) {
     <div className="flex-1 min-h-0 flex flex-col">
       {id === 'information' && <InformationPanel />}
       {id === 'character' && <CharacterPanel />}
+      {id === 'movers' && (
+        <PanelBody>
+          <MoversTab />
+        </PanelBody>
+      )}
       {id === 'history' && <HistoryPanel />}
       {id === 'build' && <BuildPanel campaignId={campaignId} />}
       {id === 'setup' && <SetupPanel campaignId={campaignId} />}

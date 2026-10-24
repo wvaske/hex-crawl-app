@@ -125,6 +125,7 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
     senses: computeSenses(full, viewer.characterId),
     // Never: a pending reveal is a clue the DM has not decided to give yet.
     pendingReveals: [],
+    movers: [],
     encounterTables: [],
     log: full.log.filter((e) =>
       logEntryVisibleToPlayer(e, viewer, full.campaign.settings.rollVisibility),

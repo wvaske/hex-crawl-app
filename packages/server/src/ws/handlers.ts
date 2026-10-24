@@ -359,6 +359,10 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       note: cmd.note ?? '',
       route: [],
       travelCredit: 0,
+      waypoints: [],
+      loop: false,
+      encounterEveryMiles: null,
+      encounterMiles: 0,
     };
     // A retinue member wears its cell's colours unless told otherwise.
     const retinue = retinueOf(ctx.runtime, token);
@@ -542,9 +546,19 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     if (!token) throw new Error('Token not found');
     const map = ctx.runtime.maps.get(token.mapId);
     if (!map) throw new Error('Map not found');
-    const before = { route: token.route, travelCredit: token.travelCredit };
+    const before = {
+      route: token.route,
+      travelCredit: token.travelCredit,
+      waypoints: token.waypoints,
+      loop: token.loop,
+    };
     const route = planRoute(ctx.runtime, map, token, cmd.waypoints);
-    ctx.runtime.updateToken(token.mapId, token.id, { route, travelCredit: 0 });
+    ctx.runtime.updateToken(token.mapId, token.id, {
+      route,
+      travelCredit: 0,
+      waypoints: cmd.waypoints,
+      loop: cmd.waypoints.length ? (cmd.loop ?? token.loop) : false,
+    });
     const label = token.label || 'token';
     const mapId = token.mapId;
     const tokenId = token.id;
@@ -1607,12 +1621,36 @@ function logDailyWeather(ctx: Ctx, beforeMinutes: number): void {
  * the DM decides what the party hears of a courier reaching a city).
  */
 function runTravellers(ctx: Ctx, beforeMinutes: number, afterMinutes: number): TravellerMove[] {
-  const moves = advanceTravellers(ctx.runtime, beforeMinutes, afterMinutes);
+  const moves = advanceTravellers(ctx.runtime, beforeMinutes, afterMinutes, ctx.rng);
   for (const m of moves) {
+    for (const enc of m.encounters) {
+      const e = ctx.runtime.appendLog(
+        'encounter',
+        `${m.label} — check at hex ${enc.q},${enc.r}: ${enc.result.summary}`,
+        'dm',
+        {
+          triggered: enc.result.triggered,
+          terrain: enc.result.terrain,
+          tableId: enc.result.table?.id ?? null,
+          entryText: enc.result.entryText,
+          checkRoll: enc.result.checkRoll as unknown as Record<string, unknown> | null,
+          tableRoll: enc.result.tableRoll as unknown as Record<string, unknown> | null,
+          quantityRoll: enc.result.quantityRoll as unknown as Record<string, unknown> | null,
+          auto: true,
+          traveller: true,
+          tokenId: m.tokenId,
+          q: enc.q,
+          r: enc.r,
+        },
+      );
+      notifyLog(ctx, e);
+    }
     const where = hexLocationLabel(ctx.runtime, { mapId: m.mapId, q: m.to.q, r: m.to.r });
-    const text = m.arrived
-      ? `${m.label} arrives at ${where}`
-      : `${m.label} travels on to ${where}`;
+    const text = m.looped
+      ? `${m.label} completes a circuit and turns back along it, now at ${where}`
+      : m.arrived
+        ? `${m.label} arrives at ${where}`
+        : `${m.label} travels on to ${where}`;
     const entry = ctx.runtime.appendLog('travel', text, 'dm', {
       tokenId: m.tokenId,
       mapId: m.mapId,
@@ -2050,12 +2088,14 @@ function performTravel(
     r: m.r,
     route: m.route,
     travelCredit: m.travelCredit,
+    waypoints: m.waypoints,
+    loop: m.loop,
   }));
   const timeBefore = structuredClone(runtime.campaign.time);
   // A hand-moved token abandons any journey it was on: the DM has overruled it.
   for (const m of partyMembers(ctx, token)) {
-    if (m.route.length || m.travelCredit) {
-      runtime.updateToken(m.mapId, m.id, { route: [], travelCredit: 0 });
+    if (m.route.length || m.travelCredit || m.waypoints.length) {
+      runtime.updateToken(m.mapId, m.id, { route: [], travelCredit: 0, waypoints: [], loop: false });
     }
   }
   const counterBefore = map.encounterCheck.hexesSinceCheck;
@@ -2223,6 +2263,8 @@ function performTravel(
             r: p.r,
             route: p.route,
             travelCredit: p.travelCredit,
+            waypoints: p.waypoints,
+            loop: p.loop,
           });
         }
       }
