@@ -89,6 +89,7 @@ export function TableView({ campaignId }: { campaignId: string }) {
         ui.set('calibrateLine', null);
         ui.set('movingTokenId', null);
         ui.set('travelToTokenId', null);
+        ui.set('routeDraft', null);
         ui.set('routePreview', null);
         ui.set('senseHighlight', null);
         ui.set('trailHighlight', null);

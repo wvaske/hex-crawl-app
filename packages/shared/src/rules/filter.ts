@@ -10,7 +10,14 @@ import type {
   Token,
   TrailSign,
 } from '../domain.js';
-import { clueInRange, clueObservableCells, distanceToContent, isFullContent, nearestContentCell } from '../domain.js';
+import {
+  clueInRange,
+  clueObservableCells,
+  distanceToContent,
+  isFullContent,
+  nearestContentCell,
+  tokenPlayerView,
+} from '../domain.js';
 import { hexKey, hexNeighbor } from '../hex/coords.js';
 import { bearingAngle, compassDirection, withDirection, withDistance } from '../hex/direction.js';
 import type { HexOrientation } from '../hex/layout.js';
@@ -56,7 +63,9 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
             return fogAt(n.q, n.r) !== 'hidden';
           }),
           fog: mapState.fog.filter((f) => f.state !== 'hidden'),
-          tokens: mapState.tokens.filter((t) => tokenVisibleToPlayers(t, fogAt(t.q, t.r))),
+          tokens: mapState.tokens
+            .filter((t) => tokenVisibleToPlayers(t, fogAt(t.q, t.r)))
+            .map(tokenPlayerView),
           markers: mapState.markers.filter((m) => !m.dmOnly && fogAt(m.q, m.r) !== 'hidden'),
           contents: mapState.contents
             .filter(isFullContent)
@@ -192,8 +201,10 @@ function computeTrailSigns(full: CampaignState, characterId: string | null): Tra
 
 export function tokenVisibleToPlayers(token: Token, fogAtToken: FogState): boolean {
   if (token.kind === 'pc') return true;
-  // Dynamic entities only exist where the party can currently see.
-  return token.playerVisible && fogAtToken === 'visible';
+  if (!token.playerVisible) return false;
+  // A retinue member reports its own whereabouts; anything else only exists
+  // where the party can currently see.
+  return token.visibleThroughFog || fogAtToken === 'visible';
 }
 
 /**

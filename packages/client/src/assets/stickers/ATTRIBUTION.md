@@ -128,4 +128,17 @@ Icons made by [Caro Asercion](https://game-icons.net), [Delapouite](https://dela
 | `camp/mount` | Mount | [horse-head](https://game-icons.net/1x1/lorc/horse-head.html) | Lorc | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
 | `camp/rest` | Rest / time | [hourglass](https://game-icons.net/1x1/lorc/hourglass.html) | Lorc | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
 
-86 icons in total.
+### Crests
+
+Faction crests for retinue tokens (the party's own people on the map).
+
+| Sticker id | Name | Upstream icon | Author | Licence |
+| --- | --- | --- | --- | --- |
+| `crests/harp` | Harp | [harp](https://game-icons.net/1x1/delapouite/harp.html) | Delapouite | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| `crests/talon` | Talon | [bird-claw](https://game-icons.net/1x1/lorc/bird-claw.html) | Lorc | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| `crests/open-lock` | Open lock | [padlock-open](https://game-icons.net/1x1/delapouite/padlock-open.html) | Delapouite | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| `crests/hearth` | Hearth | [fireplace](https://game-icons.net/1x1/delapouite/fireplace.html) | Delapouite | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| `crests/sunrise` | Sunrise | [sunrise](https://game-icons.net/1x1/delapouite/sunrise.html) | Delapouite | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| `crests/eagle` | Eagle | [eagle-emblem](https://game-icons.net/1x1/lorc/eagle-emblem.html) | Lorc | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+
+92 icons in total.

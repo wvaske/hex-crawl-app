@@ -161,6 +161,18 @@ export const STICKER_CATEGORIES: StickerCategory[] = [
       { id: 'camp/rest', name: 'Rest / time' },
     ],
   },
+  {
+    id: 'crests',
+    label: 'Crests',
+    stickers: [
+      { id: 'crests/harp', name: 'Harp' },
+      { id: 'crests/talon', name: 'Talon' },
+      { id: 'crests/open-lock', name: 'Open lock' },
+      { id: 'crests/hearth', name: 'Hearth' },
+      { id: 'crests/sunrise', name: 'Sunrise' },
+      { id: 'crests/eagle', name: 'Eagle' },
+    ],
+  },
   // Emoji stay available so markers placed before the sticker library keep
   // working, and so a DM can reach for a glyph the icon set does not cover.
   {

@@ -100,6 +100,26 @@ export function SettingsTab({ campaignId }: { campaignId: string }) {
           send them on again next day. A party that sets out after dark is not stopped. Per-map
           routing is in the map manager ("Explored routes").
         </p>
+        <Field label="NPC travel hours per day" className="mt-3">
+          <Input
+            type="number"
+            min={1}
+            max={24}
+            step={1}
+            value={state.campaign.settings.npcTravelHoursPerDay}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v >= 1 && v <= 24) {
+                send({ kind: 'campaign.update', settings: { npcTravelHoursPerDay: v } });
+              }
+            }}
+          />
+        </Field>
+        <p className="text-xs text-ink-400 mt-1.5">
+          Retinue members and other routed NPCs travel this many hours a day, counted from sunrise.
+          Clock time outside that window moves nobody, so a night's camp does not carry a courier
+          across the coast. Set 24 to make every minute count.
+        </p>
       </Section>
 
       <PluginSettings campaignId={campaignId} />

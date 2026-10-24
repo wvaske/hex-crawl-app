@@ -1,0 +1,48 @@
+{
+  "$comment": "Roster from wiki.deeznuts.wiki: Faction Retinues + each cell page, postings as of Session 54 (2026-08-30). `at` is a list of content titles to try in order (first match wins; the last entry is the fallback and gets a 'place by hand' note). `routeTo` plans a journey; `arriveInDays` scales that member's speed so the walk takes about that long in travel days.",
+  "retinues": [
+    { "id": "anvil", "name": "The Anvil", "holder": "Xanphina", "faction": "Order of the Gauntlet", "color": "#9fb0c4", "icon": "objects/anvil", "glyph": "⚒", "mph": 6, "wikiPage": "The Anvil" },
+    { "id": "nightingales", "name": "The Nightingales", "holder": "Gootcha", "faction": "Harpers", "color": "#4f6fd6", "icon": "crests/harp", "glyph": "🎵", "mph": 3, "wikiPage": "The Nightingales" },
+    { "id": "talonfall", "name": "Talonfall", "holder": "Keyleth", "faction": "Talons of Veylan", "color": "#3f7d3a", "icon": "crests/talon", "glyph": "🦅", "mph": 3, "wikiPage": "Talonfall" },
+    { "id": "broken-latch", "name": "The Broken Latch", "holder": "Shade", "faction": "Zhentarim", "color": "#8a6d1f", "icon": "crests/open-lock", "glyph": "🔓", "mph": 4, "wikiPage": "The Broken Latch" },
+    { "id": "hearthwardens", "name": "The Hearthwardens", "holder": "Karma", "faction": "Scales of Eldath", "color": "#2e8b7a", "icon": "crests/hearth", "glyph": "🏠", "mph": 4, "wikiPage": "The Hearthwardens" },
+    { "id": "dawnwatch", "name": "The Dawnwatch", "holder": "Baelgrum", "faction": "Dawnbringers", "color": "#d97b2e", "icon": "crests/sunrise", "glyph": "🌅", "mph": 3, "wikiPage": "The Dawnwatch" }
+  ],
+  "members": [
+    { "retinueId": "anvil", "label": "Knight-Sergeant Bertrand Kell", "at": ["Nuts Deep"], "note": "Leader — relays Xanphina's orders from the fort; does not travel" },
+    { "retinueId": "anvil", "label": "Ithra Sunwell", "at": ["Nuts Deep"], "routeTo": ["Boareskyr Bridge"], "arriveInDays": 3, "note": "Hold Boareskyr Bridge (S54) — acolyte and field medic, in transit by horse" },
+    { "retinueId": "anvil", "label": "Dorn Ackley", "at": ["Nuts Deep"], "routeTo": ["Boareskyr Bridge"], "arriveInDays": 3, "note": "Hold Boareskyr Bridge (S54) — man-at-arms, in transit by horse" },
+    { "retinueId": "anvil", "label": "Yavena Storr", "at": ["Nuts Deep"], "routeTo": ["Boareskyr Bridge"], "arriveInDays": 3, "note": "Hold Boareskyr Bridge (S54) — man-at-arms and shield, in transit by horse" },
+    { "retinueId": "anvil", "label": "Peth", "at": ["Elturel"], "note": "Liaison to Elturel's paladin corps — banner-bearer" },
+
+    { "retinueId": "nightingales", "label": "Merrivet Ashcombe", "at": ["Nuts Deep"], "note": "Leader — cipher clerk; reads the notebook, does not travel" },
+    { "retinueId": "nightingales", "label": "Tam Ossley", "at": ["Waterdeep"], "note": "Watcher — on the Council of Waterdeep" },
+    { "retinueId": "nightingales", "label": "Hollis Renn", "at": ["Baldur's Gate", "Baldurs Gate"], "note": "Fixer — Baldur's Gate" },
+    { "retinueId": "nightingales", "label": "Sera Dunwick", "at": ["Luskan"], "note": "Face — working the Arcane Brotherhood connection" },
+    { "retinueId": "nightingales", "label": "Corvin Ashe", "at": ["Thornwild Court", "Misty Forest", "Nuts Deep"], "note": "Field scholar — travelling the Grove Burnings sites (route to set)" },
+
+    { "retinueId": "talonfall", "label": "Nettle", "at": ["Nuts Deep"], "note": "Leader — camps in the treeline outside the walls; does not travel" },
+    { "retinueId": "talonfall", "label": "Hessa Duncroft", "at": ["Boareskyr Bridge"], "note": "Watch — the eastern road ahead of the company's march (S54)" },
+    { "retinueId": "talonfall", "label": "Brannoc Yew", "at": ["Thornwild Court", "Misty Forest", "Nuts Deep"], "note": "Travelling the Grove Burnings sites — walking the ground his grandmother's people buried" },
+    { "retinueId": "talonfall", "label": "Immeril Stagwatch", "at": ["Misty Forest", "Nuts Deep"], "note": "Watch — the Misty Forest approaches" },
+    { "retinueId": "talonfall", "label": "Sildreth Yarrow", "at": ["Nuts Deep"], "note": "Watch — the northern sky over the fort (falconer)" },
+
+    { "retinueId": "broken-latch", "label": "Ollam Pryce", "at": ["Nuts Deep"], "note": "Leader — freight clerk at the fort; does not travel" },
+    { "retinueId": "broken-latch", "label": "Maskell Vane", "at": ["Trade Way", "Baldur's Gate", "Nuts Deep"], "note": "Move — caravan master working the Trade Way" },
+    { "retinueId": "broken-latch", "label": "Ysolde Crow", "at": ["Baldur's Gate", "Baldurs Gate"], "note": "Acquire — fence and buyer in Baldur's Gate" },
+    { "retinueId": "broken-latch", "label": "Petrin Quill", "at": ["Waterdeep"], "note": "Forger — Waterdeep" },
+    { "retinueId": "broken-latch", "label": "Sable", "at": ["Nuts Deep"], "note": "Between jobs at the fort — housebreaker, sent when leaning is called for" },
+
+    { "retinueId": "hearthwardens", "label": "Aldith Fenn", "at": ["Nuts Deep"], "note": "Leader — runs the yard and the wagon; does not travel" },
+    { "retinueId": "hearthwardens", "label": "Rilla Bexley", "at": ["Nuts Deep"], "routeTo": ["Neverwinter"], "arriveInDays": 7, "note": "Tend the razed village north of Neverwinter (S54) — carpenter, via Harper teleport relay (~1 week)" },
+    { "retinueId": "hearthwardens", "label": "Dunmar Holt", "at": ["Nuts Deep"], "routeTo": ["Neverwinter"], "arriveInDays": 7, "note": "Tend the razed village north of Neverwinter (S54) — mason and well-digger (~1 week)" },
+    { "retinueId": "hearthwardens", "label": "Brother Padrig", "at": ["Nuts Deep"], "routeTo": ["Neverwinter"], "arriveInDays": 7, "note": "Tend the razed village north of Neverwinter (S54) — the voice; the plain true thing, nightly (~1 week)" },
+    { "retinueId": "hearthwardens", "label": "Yessa Greenwold", "at": ["Chionthar", "Elturel", "Nuts Deep"], "note": "Forage — the Chionthar valley (herbalist)" },
+
+    { "retinueId": "dawnwatch", "label": "Brother Ovid Morningward", "at": ["Nuts Deep"], "playerVisible": false, "note": "NOT YET CONFERRED — leader, keeps the flame at the fort" },
+    { "retinueId": "dawnwatch", "label": "Perrin Unshuttered", "at": ["Elturel", "Nuts Deep"], "playerVisible": false, "note": "NOT YET CONFERRED — keeping watch on the Elturel road" },
+    { "retinueId": "dawnwatch", "label": "Ysanne Everdawn", "at": ["Nuts Deep"], "playerVisible": false, "note": "NOT YET CONFERRED — consecrating the ground where the Cult's dead fell" },
+    { "retinueId": "dawnwatch", "label": "Sister Cielle Dawnsong", "at": ["Nuts Deep"], "playerVisible": false, "note": "NOT YET CONFERRED — carrying the light to a village on the eastern road" },
+    { "retinueId": "dawnwatch", "label": "Torvin Reeve", "at": ["Nuts Deep"], "playerVisible": false, "note": "NOT YET CONFERRED — seeing to the dead in the field outside the walls" }
+  ]
+}

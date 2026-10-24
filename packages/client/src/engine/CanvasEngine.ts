@@ -116,6 +116,8 @@ interface TokenView {
   root: Container;
   body: Graphics;
   glyph: Text;
+  /** Crest sprite (retinue markers); null until the sticker texture lands. */
+  icon: Sprite | null;
   label: Text;
   token: Token;
   targetX: number;
@@ -157,6 +159,8 @@ export class CanvasEngine {
   private tintG = new Graphics();
   private tokensC = new Container();
   private pendingC = new Container();
+  /** Planned NPC journeys (DM only): dashed lines in each traveller's colour. */
+  private routesG = new Graphics();
   private senseG = new Graphics();
   // ❔ overlay: wash + glyphs over hexes with sensed-but-unlocated clues.
   private unresolvedC = new Container();
@@ -272,6 +276,7 @@ export class CanvasEngine {
     this.viewport.addChild(this.edgesG);
     this.viewport.addChild(this.pinsC);
     this.viewport.addChild(this.tintG);
+    this.viewport.addChild(this.routesG);
     this.viewport.addChild(this.tokensC);
     this.viewport.addChild(this.pendingC);
     this.viewport.addChild(this.exploredC);
@@ -293,6 +298,7 @@ export class CanvasEngine {
       this.edgesG,
       this.pinsC,
       this.tintG,
+      this.routesG,
       this.pendingC,
       this.exploredC,
       this.fogC,
@@ -339,9 +345,15 @@ export class CanvasEngine {
         this.updateDragMode();
         this.viewport.cursor = u.spacePan ? 'grab' : 'default';
       }
-      if (u.movingContentId !== prev.movingContentId || u.movingTokenId !== prev.movingTokenId) {
-        this.viewport.cursor = u.movingContentId || u.movingTokenId ? 'crosshair' : 'default';
+      if (
+        u.movingContentId !== prev.movingContentId ||
+        u.movingTokenId !== prev.movingTokenId ||
+        u.routeDraft !== prev.routeDraft
+      ) {
+        this.viewport.cursor =
+          u.movingContentId || u.movingTokenId || u.routeDraft ? 'crosshair' : 'default';
       }
+      if (u.routeDraft !== prev.routeDraft) this.drawRoutes();
       if (u.scaleLock !== prev.scaleLock) {
         this.updateScaleLevel();
       }
@@ -485,6 +497,7 @@ export class CanvasEngine {
 
     this.reconcileTokens(ms.tokens, layoutChanged);
     this.drawPendingMoves(ms.pendingMoves);
+    this.drawRoutes();
 
     if (
       layoutChanged ||
@@ -1310,6 +1323,10 @@ export class CanvasEngine {
         if (this.destroyed) return;
         this.stickerTextures.set(icon, texture);
         this.drawPins();
+        // A token wearing this crest can swap its glyph for the sprite now.
+        for (const view of this.tokens.values()) {
+          if (view.token.icon === icon) this.styleTokenView(view, view.token);
+        }
       })
       .catch(() => {
         /* leave the glyph fallback in place */
@@ -1776,6 +1793,76 @@ export class CanvasEngine {
     this.updatePinScales();
   }
 
+  /**
+   * Planned NPC journeys (retinue markers): every routed token's remaining
+   * path as a dashed line in its colour, plus the DM's route draft in
+   * progress (brighter, with the computed legs between the clicked
+   * waypoints). Players never receive routes, so for them this is a no-op.
+   */
+  private drawRoutes(): void {
+    const g = this.routesG;
+    g.clear();
+    if (!this.layout) return;
+    const size = this.layout.size;
+    const dashed = (pts: { x: number; y: number }[], color: number | string, alpha: number, w: number) => {
+      const dash = Math.max(4, size * 0.45);
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1]!;
+        const b = pts[i]!;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const n = Math.floor(dist / (dash * 1.7));
+        for (let k = 0; k <= n; k++) {
+          const t0 = (k * dash * 1.7) / dist;
+          const t1 = Math.min(1, t0 + dash / dist);
+          g.moveTo(a.x + dx * t0, a.y + dy * t0);
+          g.lineTo(a.x + dx * t1, a.y + dy * t1);
+        }
+      }
+      g.stroke({ width: w, color, alpha });
+    };
+    for (const view of this.tokens.values()) {
+      const t = view.token;
+      if (!t.route.length) continue;
+      const pts = [t, ...t.route].map((h) => hexToPixel(this.layout!, h));
+      dashed(pts, t.color, 0.85, Math.max(1.5, size * 0.1));
+      const end = pts[pts.length - 1]!;
+      g.circle(end.x, end.y, size * 0.22);
+      g.fill({ color: t.color, alpha: 0.9 });
+      g.circle(end.x, end.y, size * 0.22);
+      g.stroke({ width: Math.max(1, size * 0.05), color: 0xffffff, alpha: 0.9 });
+    }
+    const draft = useUi.getState().routeDraft;
+    if (draft) {
+      const view = this.tokens.get(draft.tokenId);
+      if (view) {
+        const cells = this.draftRouteCells(view.token, draft.waypoints);
+        const pts = cells.map((h) => hexToPixel(this.layout!, h));
+        dashed(pts, 0xd9b44f, 0.95, Math.max(2, size * 0.14));
+        for (const wp of draft.waypoints) {
+          const p = hexToPixel(this.layout!, wp);
+          g.circle(p.x, p.y, size * 0.26);
+          g.fill({ color: 0xd9b44f, alpha: 0.95 });
+        }
+      }
+    }
+  }
+
+  /** The hexes a route draft would walk, legs routed like the server will. */
+  draftRouteCells(token: Token, waypoints: HexCoord[]): HexCoord[] {
+    const cells: HexCoord[] = [{ q: token.q, r: token.r }];
+    let cur: HexCoord = { q: token.q, r: token.r };
+    for (const wp of waypoints) {
+      if (wp.q === cur.q && wp.r === cur.r) continue;
+      const far = hexDistance(cur, wp) > 1;
+      const leg = (far && this.lastMap?.routeExplored ? this.routeFor(cur, wp) : null) ?? hexLine(cur, wp);
+      cells.push(...leg.slice(1));
+      cur = wp;
+    }
+    return cells;
+  }
+
   /** Dashed declared-travel paths with a ghost token at the destination. */
   private drawPendingMoves(
     pending: {
@@ -1852,6 +1939,7 @@ export class CanvasEngine {
       root,
       body,
       glyph,
+      icon: null,
       label,
       token,
       targetX: 0,
@@ -1888,6 +1976,28 @@ export class CanvasEngine {
     view.glyph.text = text;
     view.glyph.style.fill = 0xffffff;
     view.glyph.scale.set((size * (token.glyph ? 1.0 : 0.75)) / PIN_BASE_FONT);
+    // A crest (retinue marker) replaces the glyph once its texture is loaded;
+    // until then — and for ids this client does not know — the glyph stands.
+    const crest = token.icon ? this.stickerTexture(token.icon) : null;
+    if (view.icon) {
+      view.icon.destroy();
+      view.icon = null;
+    }
+    if (crest) {
+      const sprite = new Sprite(crest);
+      sprite.anchor.set(0.5);
+      sprite.setSize(size * 1.3, size * 1.3);
+      view.root.addChildAt(sprite, view.root.getChildIndex(view.glyph) + 1);
+      view.icon = sprite;
+      view.glyph.visible = false;
+    } else {
+      view.glyph.visible = true;
+    }
+    if (token.route.length) {
+      // Travelling: a dashed-looking double ring says "on the road".
+      view.body.circle(0, 0, size * 1.32);
+      view.body.stroke({ width: size * 0.06, color: token.color, alpha: 0.9 });
+    }
     view.label.text = token.label;
     view.label.scale.set((size * 0.42) / PIN_BASE_FONT);
     view.label.position.set(0, size * 1.05);
@@ -1994,6 +2104,20 @@ export class CanvasEngine {
         useSession
           .getState()
           .pushToast({ kind: 'info', title: 'Moved', text: 'Location updated.' });
+        return;
+      }
+
+      // Route drafting (retinue markers): each click adds a waypoint to the
+      // journey being planned in the Tokens panel; Done there sends it.
+      if (ui.routeDraft && isDm) {
+        const draft = ui.routeDraft;
+        const last = draft.waypoints[draft.waypoints.length - 1];
+        if (!last || last.q !== hex.q || last.r !== hex.r) {
+          useUi.getState().set('routeDraft', {
+            tokenId: draft.tokenId,
+            waypoints: [...draft.waypoints, { q: hex.q, r: hex.r }],
+          });
+        }
         return;
       }
 
@@ -2686,7 +2810,9 @@ function visualChanged(a: Token, b: Token): boolean {
     a.glyph !== b.glyph ||
     a.kind !== b.kind ||
     a.playerVisible !== b.playerVisible ||
-    a.partyId !== b.partyId
+    a.partyId !== b.partyId ||
+    a.icon !== b.icon ||
+    (a.route.length > 0) !== (b.route.length > 0)
   );
 }
 

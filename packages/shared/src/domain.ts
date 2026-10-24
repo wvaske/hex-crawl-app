@@ -269,9 +269,42 @@ export const DdbGameLogStatusSchema = z.object({
 });
 export type DdbGameLogStatus = z.infer<typeof DdbGameLogStatusSchema>;
 
+/**
+ * A retinue (faction cell / lance / crew): a named group of NPC tokens that
+ * share a colour, a crest and a default travel speed. Tokens join one by
+ * `retinueId`; the group itself is campaign data because its members may be
+ * spread over several maps.
+ */
+export const RetinueSchema = z.object({
+  id: z.string().min(1).max(40),
+  name: z.string().min(1).max(60),
+  /** Who commands it (a PC name, usually). Display only. */
+  holder: z.string().max(60).default(''),
+  faction: z.string().max(60).default(''),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  /** Crest: sticker id (`<category>/<slug>`); `glyph` is the fallback. */
+  icon: z.string().max(120).default(''),
+  glyph: z.string().max(8).default(''),
+  /** Members' default travel speed in miles per hour; null = on foot (3 mph). */
+  mph: z.number().min(0.1).max(500).nullable().default(null),
+  wikiPage: z.string().max(300).default(''),
+});
+export type Retinue = z.infer<typeof RetinueSchema>;
+
+/** Travel speed of an NPC token with no speed of its own and no retinue default. */
+export const DEFAULT_NPC_MPH = 3;
+
 export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
   description: z.string().max(2000).default(''),
+  /** Retinues (faction cells) whose members travel on the campaign clock. */
+  retinues: z.array(RetinueSchema).max(50).default([]),
+  /**
+   * Hours per day an NPC on a route actually travels, counted from sunrise.
+   * Clock minutes outside that window bank no distance, so a party that
+   * camps for the night does not teleport every traveller across the map.
+   */
+  npcTravelHoursPerDay: z.number().min(1).max(24).default(8),
   /** Base URL for wiki links on content (page titles are appended). */
   wikiBaseUrl: z.string().max(300).default(''),
   /** Link to the campaign on D&D Beyond, shown to the party (Party tab). */
@@ -585,8 +618,35 @@ export const TokenSchema = z.object({
   playerVisible: z.boolean().default(true),
   /** Tokens sharing a partyId move together; any member's move shifts the group. */
   partyId: z.string().nullable().default(null),
+  /** Retinue (faction cell) this NPC belongs to; see `CampaignSettings.retinues`. */
+  retinueId: z.string().nullable().default(null),
+  /** Sticker id drawn in place of the glyph (a retinue crest, typically). */
+  icon: z.string().max(120).default(''),
+  /** Own travel speed in mph; null falls back to the retinue's, then on foot. */
+  mph: z.number().min(0.1).max(500).nullable().default(null),
+  /**
+   * Players see a `playerVisible` NPC only where the party can see (fog
+   * `visible`). A retinue member reports its own position, so it may be
+   * shown wherever it stands.
+   */
+  visibleThroughFog: z.boolean().default(false),
+  /** DM only: short posting / orders ("Hold Boareskyr Bridge"). */
+  note: z.string().max(300).default(''),
+  /**
+   * DM only: the hexes still to be walked, in order (the current hex is not
+   * included). An NPC with a route advances along it as the campaign clock
+   * runs — see `advanceTravellers` on the server.
+   */
+  route: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(5000).default([]),
+  /** DM only: clock minutes of travel banked toward the next hex of `route`. */
+  travelCredit: z.number().min(0).default(0),
 });
 export type Token = z.infer<typeof TokenSchema>;
+
+/** Token fields that never reach a player snapshot. */
+export function tokenPlayerView(token: Token): Token {
+  return { ...token, note: '', route: [], travelCredit: 0 };
+}
 
 export const MarkerSchema = z.object({
   id: z.string(),
