@@ -218,8 +218,9 @@ function NpcCreator({
   );
 }
 
-function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }) {
-  const setUi = useUi((s) => s.set);
+export function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }) {
+  const focusToken = useUi((s) => s.focusToken);
+  const selected = useUi((s) => s.selectedTokenId === token.id);
   const draft = useUi((s) => s.routeDraft);
   const state = useSession((s) => s.state);
   const map = activeMap(state);
@@ -233,7 +234,12 @@ function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }) {
   const routeDays = routeMinutes > 0 ? routeMinutes / (hoursPerDay * 60) : 0;
 
   return (
-    <div className={cx('bg-ink-850 border rounded-md px-2 py-1.5', drafting ? 'border-brass-500' : 'border-ink-700')}>
+    <div
+      className={cx(
+        'bg-ink-850 border rounded-md px-2 py-1.5',
+        drafting ? 'border-brass-500' : selected ? 'border-brass-500/60 bg-brass-500/5' : 'border-ink-700',
+      )}
+    >
       <div className="flex items-center gap-2">
         {retinue ? (
           <Crest retinue={{ color: token.color, icon: token.icon, glyph: token.glyph || retinue.glyph }} size="sm" />
@@ -245,12 +251,8 @@ function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }) {
         )}
         <button
           className="text-sm text-ink-100 truncate flex-1 text-left cursor-pointer hover:text-brass-300"
-          onClick={() => {
-            setUi('selectedHex', { q: token.q, r: token.r });
-            setUi('selectedTokenId', token.id);
-            setUi('openPanel', 'information');
-          }}
-          title="Jump to token"
+          onClick={() => focusToken(token)}
+          title="Select this token and fly the map to it"
         >
           {token.label || '(unnamed)'}
           <span className="text-ink-400 text-xs ml-1.5">

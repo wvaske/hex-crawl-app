@@ -105,6 +105,14 @@ interface UiStore {
    */
   routeDraft: { tokenId: string; waypoints: HexCoord[] } | null;
   /**
+   * Ask the engine to pan and zoom to a hex (a sidebar row was clicked). The
+   * engine consumes it and clears it; `nonce` makes repeated clicks on the
+   * same hex fire again.
+   */
+  focusRequest: { q: number; r: number; nonce: number } | null;
+  /** Select a token: its hex opens the Information panel and the map flies to it. */
+  focusToken(token: { id: string; q: number; r: number }): void;
+  /**
    * Route preview while a token is being dragged or sent (issue #130): the
    * explored route the server would walk, or `null` cells when the map has
    * no such route and the move would be a straight line. Written by the
@@ -326,6 +334,7 @@ export const useUi = create<UiStore>((set) => ({
   movingTokenId: null,
   travelToTokenId: null,
   routeDraft: null,
+  focusRequest: null,
   routePreview: null,
   senseHighlight: null,
   encounterDialogEntry: null,
@@ -351,6 +360,13 @@ export const useUi = create<UiStore>((set) => ({
   // Selecting a hex is the deep link into the Information panel: a map click
   // (or a journal row) pops it open. Clearing the selection — Escape, mostly —
   // deliberately leaves the panels as they were, so Escape never opens one.
+  focusToken: (token) =>
+    set((s) => ({
+      selectedHex: { q: token.q, r: token.r },
+      selectedTokenId: token.id,
+      openPanel: 'information',
+      focusRequest: { q: token.q, r: token.r, nonce: (s.focusRequest?.nonce ?? 0) + 1 },
+    })),
   selectHex: (hex) =>
     set((s) => ({
       selectedHex: hex,

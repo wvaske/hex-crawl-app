@@ -35,12 +35,14 @@ import { useUi } from '../../stores/ui.js';
 import { send } from '../../ws.js';
 import { Button, EmptyNote, Section, cx, Lbl } from '../../ui/kit.js';
 import { stickerName, stickerUrl } from '../../stickers.js';
+import { TokenRow } from './TokensTab.js';
 
 export function InspectTab() {
   const state = useSession((s) => s.state);
   const role = useSession((s) => s.role);
   const seatId = useSession((s) => s.seatId);
   const hex = useUi((s) => s.selectedHex);
+  const selectedTokenId = useUi((s) => s.selectedTokenId);
   const setUi = useUi((s) => s.set);
   const map = activeMap(state);
 
@@ -149,7 +151,22 @@ export function InspectTab() {
         </Section>
       )}
 
-      {tokens.length > 0 && (
+      {tokens.length > 0 && isDm && (
+        <Section title={tokens.length === 1 ? 'Token here' : 'Tokens here'}>
+          <div className="space-y-1.5">
+            {[...tokens]
+              .sort((a, b) => (a.id === selectedTokenId ? -1 : b.id === selectedTokenId ? 1 : 0))
+              .map((t) => (
+                <TokenRow
+                  key={t.id}
+                  token={t}
+                  retinue={state.campaign.settings.retinues.find((rn) => rn.id === t.retinueId)}
+                />
+              ))}
+          </div>
+        </Section>
+      )}
+      {tokens.length > 0 && !isDm && (
         <Section title="Tokens here">
           {/* auto-fill: one column in a narrow sidebar, more as it widens */}
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-3 gap-y-1">
