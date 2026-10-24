@@ -404,7 +404,15 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
         throw new Error('You can only change whether your own character travels with the party');
       }
     }
-    ctx.runtime.updateToken(token.mapId, cmd.tokenId, cmd.patch);
+    const patch: Partial<Token> = { ...cmd.patch };
+    // Looping a journey that was planned before waypoints were kept (or sent
+    // over the integration API as a bare route): make it an out-and-back
+    // patrol between where it stands and where the route ends.
+    if (patch.loop && !token.waypoints.length && token.route.length) {
+      const end = token.route[token.route.length - 1]!;
+      patch.waypoints = [{ q: token.q, r: token.r }, { q: end.q, r: end.r }];
+    }
+    ctx.runtime.updateToken(token.mapId, cmd.tokenId, patch);
   }) as Handler,
 
   'token.move': ((cmd: Extract<ClientCommand, { kind: 'token.move' }>, ctx: Ctx) => {

@@ -319,6 +319,16 @@ describe('journey routing', () => {
 });
 
 describe('movers: loops, encounter cadence, summaries', () => {
+  it('looping a route that kept no waypoints turns it into an out-and-back patrol', () => {
+    const { mapId, tokenId } = rider();
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 12, r: 0 }] } as never);
+    runtime.updateToken(mapId, tokenId, { waypoints: [] }); // as an older or API-planned route
+    dm({ kind: 'token.update', tokenId, patch: { loop: true } } as never);
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.waypoints).toEqual([{ q: 10, r: 0 }, { q: 12, r: 0 }]);
+    dm({ kind: 'time.advance', minutes: 180 } as never); // 2 out, then 1 back
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.q).toBe(11);
+  });
+
   it('a looping route plans itself again at the end and keeps walking on the same tick', () => {
     const { mapId, tokenId } = rider();
     dm({ kind: 'token.route', tokenId, waypoints: [{ q: 12, r: 0 }, { q: 10, r: 0 }], loop: true } as never);
