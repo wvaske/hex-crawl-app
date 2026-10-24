@@ -18,6 +18,7 @@ import {
   EdgeDifficultySchema,
   TokenKindSchema,
   TrailSchema,
+  RetinueSchema,
 } from '../domain.js';
 
 /**
@@ -72,6 +73,9 @@ const CampaignSettingsPatchSchema = z
     stopTravelAtNight: z.boolean(),
     rollVisibility: z.enum(['own', 'all']),
     customTravelModes: z.array(CustomTravelModeSchema),
+    /** Whole-list replacement: the client sends the edited list back. */
+    retinues: z.array(RetinueSchema).max(50),
+    npcTravelHoursPerDay: z.number().min(1).max(24),
     sunriseHour: z.number().min(0).max(23),
     sunsetHour: z.number().min(0).max(24),
     mapDefaults: MapDefaultsPatchSchema,
@@ -297,6 +301,13 @@ export const TokenCreateCommand = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#e05555'),
   glyph: z.string().max(8).default(''),
   playerVisible: z.boolean().default(true),
+  // Retinue fields (optional, not defaulted: a default here would be required
+  // in CommandInput and break every existing call site).
+  retinueId: z.string().nullable().optional(),
+  icon: z.string().max(120).optional(),
+  mph: z.number().min(0.1).max(500).nullable().optional(),
+  visibleThroughFog: z.boolean().optional(),
+  note: z.string().max(300).optional(),
 });
 
 export const TokenUpdateCommand = z.object({
@@ -311,8 +322,27 @@ export const TokenUpdateCommand = z.object({
       playerVisible: z.boolean(),
       characterId: z.string().nullable(),
       partyId: z.string().nullable(),
+      retinueId: z.string().nullable(),
+      icon: z.string().max(120),
+      mph: z.number().min(0.1).max(500).nullable(),
+      visibleThroughFog: z.boolean(),
+      note: z.string().max(300),
     })
     .partial(),
+});
+
+/**
+ * DM: plan an NPC's journey. The server strings the waypoints together with
+ * the same routing a party move uses (explored route when the map has one,
+ * straight line otherwise) and stores the hexes still to walk on the token;
+ * the token then advances as the campaign clock runs. Empty waypoints cancel
+ * the journey where it stands.
+ */
+export const TokenRouteCommand = z.object({
+  ...base,
+  kind: z.literal('token.route'),
+  tokenId: z.string(),
+  waypoints: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(50),
 });
 
 export const TokenMoveCommand = z.object({
@@ -804,6 +834,7 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
   FogSetCommand,
   TokenCreateCommand,
   TokenUpdateCommand,
+  TokenRouteCommand,
   TokenMoveCommand,
   MoveRequestCommand,
   MoveResolveCommand,

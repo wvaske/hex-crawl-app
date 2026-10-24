@@ -56,6 +56,13 @@ import { evaluateTrails, trailBearings, type TrailFind } from '../engine/trails.
 import { generateSettlementClues } from '../engine/settlements.js';
 import { rollEncounter } from '../engine/encounters.js';
 import { rerollWeatherForNewDay, setWeather, weatherLogText } from '../engine/weather.js';
+import {
+  advanceTravellers,
+  planRoute,
+  restoreTravellers,
+  retinueOf,
+  type TravellerMove,
+} from '../engine/travellers.js';
 import { startConnector, stopConnector } from '../engine/ddbGameLog.js';
 import { DDB_GAMELOG } from '../config.js';
 import { sanitizePluginSettingsPatch } from '../plugins/host.js';
@@ -342,7 +349,20 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       glyph: cmd.glyph,
       playerVisible: cmd.playerVisible,
       partyId: null,
+      retinueId: cmd.retinueId ?? null,
+      icon: cmd.icon ?? '',
+      mph: cmd.mph ?? null,
+      visibleThroughFog: cmd.visibleThroughFog ?? false,
+      note: cmd.note ?? '',
+      route: [],
+      travelCredit: 0,
     };
+    // A retinue member wears its cell's colours unless told otherwise.
+    const retinue = retinueOf(ctx.runtime, token);
+    if (retinue) {
+      if (!cmd.icon) token.icon = retinue.icon;
+      if (!token.glyph) token.glyph = retinue.glyph;
+    }
     if (token.characterId) {
       const character = ctx.runtime.characters.get(token.characterId);
       if (!character) throw new Error('Character not found');
@@ -504,6 +524,36 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       },
       { all: true },
     );
+  }) as Handler,
+
+  /**
+   * Plan an NPC's journey (retinue markers): waypoints are strung together
+   * with the party's own routing — the explored route when the map has one,
+   * the straight line otherwise — and stored as the hexes still to walk. The
+   * token then moves as the clock runs (`runTravellers`). Empty waypoints
+   * cancel the journey where the token stands.
+   */
+  'token.route': ((cmd: Extract<ClientCommand, { kind: 'token.route' }>, ctx: Ctx) => {
+    requireDm(ctx);
+    const token = ctx.runtime.findToken(cmd.tokenId);
+    if (!token) throw new Error('Token not found');
+    const map = ctx.runtime.maps.get(token.mapId);
+    if (!map) throw new Error('Map not found');
+    const before = { route: token.route, travelCredit: token.travelCredit };
+    const route = planRoute(ctx.runtime, map, token, cmd.waypoints);
+    ctx.runtime.updateToken(token.mapId, token.id, { route, travelCredit: 0 });
+    const label = token.label || 'token';
+    const mapId = token.mapId;
+    const tokenId = token.id;
+    ctx.runtime.pushUndo({
+      at: Date.now(),
+      kind: 'token.route',
+      mapId,
+      description: route.length ? `cancel ${label}'s planned route` : `restore ${label}'s route`,
+      run: (rt) => {
+        if (rt.findToken(tokenId)) rt.updateToken(mapId, tokenId, before);
+      },
+    });
   }) as Handler,
 
   'token.delete': ((cmd: Extract<ClientCommand, { kind: 'token.delete' }>, ctx: Ctx) => {
@@ -1393,6 +1443,24 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     });
     notifyLog(ctx, entry);
     logDailyWeather(ctx, before);
+    // Travellers on a route keep walking while the clock runs. Their move is
+    // undoable together with the time it took.
+    const logBefore = new Set(ctx.runtime.log.map((e) => e.id));
+    const moves = runTravellers(ctx, before, time.minutes);
+    if (moves.length) {
+      const newLog = ctx.runtime.log.filter((e) => !logBefore.has(e.id)).map((e) => e.id);
+      const timeBefore = before;
+      ctx.runtime.pushUndo({
+        at: Date.now(),
+        kind: 'time.advance',
+        description: `rewind ${formatDuration(cmd.minutes)} and move ${moves.length} traveller${moves.length === 1 ? '' : 's'} back`,
+        run: (rt) => {
+          rt.setTime(timeBefore);
+          restoreTravellers(rt, moves);
+          rt.deleteLogEntries(newLog);
+        },
+      });
+    }
   }) as Handler,
 
   'time.set': ((cmd: Extract<ClientCommand, { kind: 'time.set' }>, ctx: Ctx) => {
@@ -1531,6 +1599,30 @@ function logDailyWeather(ctx: Ctx, beforeMinutes: number): void {
  * A human-readable label for a party-hex reference: the title of enabled
  * content sitting on that hex (a town, a dungeon), or a bare hex coordinate.
  */
+/**
+ * Move every routed NPC for a clock advance and log the arrivals (DM only:
+ * the DM decides what the party hears of a courier reaching a city).
+ */
+function runTravellers(ctx: Ctx, beforeMinutes: number, afterMinutes: number): TravellerMove[] {
+  const moves = advanceTravellers(ctx.runtime, beforeMinutes, afterMinutes);
+  for (const m of moves) {
+    const where = hexLocationLabel(ctx.runtime, { mapId: m.mapId, q: m.to.q, r: m.to.r });
+    const text = m.arrived
+      ? `${m.label} arrives at ${where}`
+      : `${m.label} travels on to ${where}`;
+    const entry = ctx.runtime.appendLog('travel', text, 'dm', {
+      tokenId: m.tokenId,
+      mapId: m.mapId,
+      from: m.from,
+      to: m.to,
+      arrived: m.arrived,
+      traveller: true,
+    });
+    notifyLog(ctx, entry);
+  }
+  return moves;
+}
+
 function hexLocationLabel(
   runtime: CampaignRuntime,
   hex: { mapId: string; q: number; r: number },
@@ -1940,8 +2032,20 @@ function performTravel(
   const isParty = token.kind === 'pc';
 
   // -- before: everything the undo will need -------------------------------
-  const prior = partyMembers(ctx, token).map((m) => ({ id: m.id, q: m.q, r: m.r }));
+  const prior = partyMembers(ctx, token).map((m) => ({
+    id: m.id,
+    q: m.q,
+    r: m.r,
+    route: m.route,
+    travelCredit: m.travelCredit,
+  }));
   const timeBefore = structuredClone(runtime.campaign.time);
+  // A hand-moved token abandons any journey it was on: the DM has overruled it.
+  for (const m of partyMembers(ctx, token)) {
+    if (m.route.length || m.travelCredit) {
+      runtime.updateToken(m.mapId, m.id, { route: [], travelCredit: 0 });
+    }
+  }
   const counterBefore = map.encounterCheck.hexesSinceCheck;
   const discoveriesBefore = new Set(runtime.discoveries.keys());
   const locatesBefore = new Map([...runtime.discoveries.values()].map((d) => [d.id, d.locates]));
@@ -2015,6 +2119,7 @@ function performTravel(
 
   // -- 3. the clock ----------------------------------------------------------
   let minutes = 0;
+  let travellerMoves: TravellerMove[] = [];
   if (isParty) {
     const time = runtime.campaign.time;
     const mode = resolveTravelMode(time.travelMode, runtime.campaign.settings.customTravelModes);
@@ -2029,6 +2134,8 @@ function performTravel(
     runtime.updateTime({ partyHex: { mapId: map.id, q: to.q, r: to.r, arrivedMinutes } });
     // Travel that crosses midnight brings a new day's weather with it (#79).
     logDailyWeather(ctx, before);
+    // The player tick: NPCs on a route cover the same stretch of clock.
+    travellerMoves = runTravellers(ctx, before, arrivedMinutes);
   }
 
   // -- 4. the travel line ----------------------------------------------------
@@ -2096,8 +2203,16 @@ function performTravel(
       `move ${label} back to ${from.q},${from.r}` +
       (details.length ? ` (${details.join(', ')})` : ''),
     run: (rt) => {
+      restoreTravellers(rt, travellerMoves);
       for (const p of prior) {
-        if (rt.findToken(p.id)) rt.updateToken(mapId, p.id, { q: p.q, r: p.r });
+        if (rt.findToken(p.id)) {
+          rt.updateToken(mapId, p.id, {
+            q: p.q,
+            r: p.r,
+            route: p.route,
+            travelCredit: p.travelCredit,
+          });
+        }
       }
       restoreFogDelta(rt, mapId, fogDelta);
       if (isParty) {

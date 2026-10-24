@@ -319,6 +319,15 @@ export function migrate(d: DB): void {
   ensureColumn(d, 'image_layer', 'visible', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn(d, 'map', 'move_approval', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'token', 'party_id', 'TEXT');
+  // Retinue markers: NPC tokens that belong to a faction cell and travel on
+  // the campaign clock along a planned route.
+  ensureColumn(d, 'token', 'retinue_id', 'TEXT');
+  ensureColumn(d, 'token', 'icon', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(d, 'token', 'mph', 'REAL');
+  ensureColumn(d, 'token', 'visible_through_fog', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'token', 'note', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(d, 'token', 'route', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(d, 'token', 'travel_credit', 'REAL NOT NULL DEFAULT 0');
   ensureColumn(d, 'clue', 'indicates_direction', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'clue', 'indicates_distance', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'discovery', 'distance', 'INTEGER');

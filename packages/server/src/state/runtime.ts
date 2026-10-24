@@ -125,6 +125,24 @@ export interface UndoEntry {
  * SQLite writes are durable when `run` returns, Postgres queues them in order.
  * Every read after boot comes from memory — the runtime IS the cache.
  */
+/** Stored route column → hex list; anything malformed is an empty route. */
+function parseRoute(raw: unknown): { q: number; r: number }[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (h): h is { q: number; r: number } =>
+          typeof h === 'object' && h !== null && Number.isInteger((h as { q: unknown }).q) &&
+          Number.isInteger((h as { r: unknown }).r),
+      )
+      .map((h) => ({ q: h.q, r: h.r }));
+  } catch {
+    return [];
+  }
+}
+
 export class CampaignRuntime {
   readonly id: string;
   campaign: Campaign;
@@ -441,6 +459,13 @@ export class CampaignRuntime {
         glyph: t.glyph as string,
         playerVisible: Boolean(t.player_visible),
         partyId: (t.party_id as string | null) ?? null,
+        retinueId: (t.retinue_id as string | null) ?? null,
+        icon: (t.icon as string | null) ?? '',
+        mph: (t.mph as number | null) ?? null,
+        visibleThroughFog: Boolean(t.visible_through_fog),
+        note: (t.note as string | null) ?? '',
+        route: parseRoute(t.route),
+        travelCredit: (t.travel_credit as number | null) ?? 0,
       });
     }
     for (const m of d.prepare('SELECT * FROM marker WHERE map_id = ?').all(mapId) as Array<
@@ -1351,7 +1376,7 @@ export class CampaignRuntime {
     rt.tokens.set(token.id, token);
     this.db
       .prepare(
-        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id, retinue_id, icon, mph, visible_through_fog, note, route, travel_credit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         token.id,
@@ -1365,6 +1390,13 @@ export class CampaignRuntime {
         token.glyph,
         token.playerVisible ? 1 : 0,
         token.partyId,
+        token.retinueId,
+        token.icon,
+        token.mph,
+        token.visibleThroughFog ? 1 : 0,
+        token.note,
+        JSON.stringify(token.route),
+        token.travelCredit,
       );
   }
 
@@ -1376,7 +1408,7 @@ export class CampaignRuntime {
     rt.tokens.set(tokenId, updated);
     this.db
       .prepare(
-        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=? WHERE id=?',
+        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=?, retinue_id=?, icon=?, mph=?, visible_through_fog=?, note=?, route=?, travel_credit=? WHERE id=?',
       )
       .run(
         updated.q,
@@ -1387,6 +1419,13 @@ export class CampaignRuntime {
         updated.glyph,
         updated.playerVisible ? 1 : 0,
         updated.partyId,
+        updated.retinueId,
+        updated.icon,
+        updated.mph,
+        updated.visibleThroughFog ? 1 : 0,
+        updated.note,
+        JSON.stringify(updated.route),
+        updated.travelCredit,
         tokenId,
       );
     return updated;

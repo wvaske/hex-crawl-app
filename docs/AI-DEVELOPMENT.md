@@ -411,6 +411,47 @@ filtered content snapshot. Keep both transports in sync when extending discoveri
 - `applySearchRoll` / `deliverCheckEntry` in `ws/handlers.ts` are the shared
   tail of `check.roll`; any new source of rolls should go through them.
 
+## Retinue markers (NPC tokens that travel on the clock)
+
+- **A retinue is campaign data, a member is a token.** `CampaignSettings.retinues`
+  (`RetinueSchema`: name, holder, faction, colour, crest `icon`, default `mph`)
+  is edited whole-list from Build → Tokens → Retinues. A token joins one by
+  `retinueId`; `token.create` copies the crest/glyph from the retinue when the
+  command sends none. Tokens grew `icon`, `mph`, `visibleThroughFog`, `note`,
+  `route`, `travelCredit` (columns via `ensureColumn`; the `route` column is a
+  JSON array, parsed by `parseRoute` on load).
+- **Players see a `visibleThroughFog` NPC anywhere** (`tokenVisibleToPlayers`),
+  never its `note`, `route` or `travelCredit` (`tokenPlayerView` in
+  `filterStateForViewer`). A retinue reports its own position; a monster does
+  not — leave the flag off for ordinary NPCs.
+- **Routes walk on the clock, not on a timer.** `token.route {waypoints}` strings
+  the waypoints with `planRoute` (`engine/travellers.ts`: explored route when
+  the map routes that way, else `hexLine`) and stores the hexes still to walk.
+  `runTravellers(ctx, before, after)` in `handlers.ts` is called after every
+  clock advance — `performTravel` (the player tick) and `time.advance` — and
+  banks only the minutes inside the daily travel window
+  (`travelWindowMinutes`: `settings.npcTravelHoursPerDay` hours from sunrise),
+  buying hexes at `minutesPerHex(map.milesPerHex, speed) × stepCost`. Speed is
+  token `mph` → retinue `mph` → `DEFAULT_NPC_MPH` (3). A new path that moves
+  the clock must call `runTravellers` too. `time.set` deliberately does not.
+- **Undo covers travellers.** `performTravel` captures `TravellerMove[]` and
+  restores them with `restoreTravellers`; a hand-moved token abandons its route
+  (captured in `prior`). `time.advance` pushes an undo entry only when a
+  traveller moved (it rewinds the clock with them). Arrivals log a DM-only
+  `travel` line (`data.traveller: true`).
+- **Client:** the engine draws routes in `routesG` (dashed, token colour; the
+  DM's `ui.routeDraft` in brass) and swaps the token glyph for the crest sprite
+  once `stickerTexture` resolves (`visualChanged` diffs `icon` and route
+  presence). Route drafting is a `ui.routeDraft` the map click appends to and
+  the Tokens panel's Done sends; Escape clears it. Crest stickers live in
+  `assets/stickers/crests/` (attribution in `ATTRIBUTION.md`, same two-edit
+  rule as other stickers).
+- **Seeding from the wiki:** `scripts/seed-retinues.mjs` + `scripts/retinues.json`
+  upsert retinues (`POST /api/integration/.../retinues`) and members
+  (`POST .../tokens`, matched by label; `at` / `routeTo` resolve content
+  titles on the map; `arriveInDays` scales a member's speed to the wiki's
+  stated transit time). Re-run after editing the roster.
+
 ## Plugins (sidebar extensions)
 
 Campaign-specific features — a house-rule dice pool, letters that get filed on

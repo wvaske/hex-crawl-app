@@ -60,6 +60,8 @@ export function InspectTab() {
   const cell = ms.hexes.find((h) => hexKey(h.q, h.r) === key);
   const fog: FogState = ms.fog.find((f) => hexKey(f.q, f.r) === key)?.state ?? 'hidden';
   const tokens = ms.tokens.filter((t) => t.q === hex.q && t.r === hex.r);
+  const retinueName = (id: string | null): string | null =>
+    id ? (state.campaign.settings.retinues.find((rn) => rn.id === id)?.name ?? null) : null;
   const markers = ms.markers.filter((m) => m.q === hex.q && m.r === hex.r);
   // A multi-hex region belongs to every hex of its footprint, not just the
   // anchor — inspecting any of its hexes shows it (issue #69).
@@ -158,7 +160,19 @@ export function InspectTab() {
                   style={{ background: t.color }}
                 />
                 <span className="truncate">{t.label || '(unnamed)'}</span>
-                <span className="text-xs text-ink-400">{t.kind.toUpperCase()}</span>
+                <span className="text-xs text-ink-400">
+                  {retinueName(t.retinueId) ?? t.kind.toUpperCase()}
+                </span>
+                {isDm && t.note && (
+                  <span className="text-xs text-ink-400 truncate" title={t.note}>
+                    — {t.note}
+                  </span>
+                )}
+                {isDm && t.route.length > 0 && (
+                  <span className="text-xs text-brass-300" title="On a planned route">
+                    en route
+                  </span>
+                )}
                 {isDm && !t.playerVisible && t.kind === 'npc' && (
                   <span className="text-xs text-ember-500" title="Hidden from players">
                     hidden

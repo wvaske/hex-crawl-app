@@ -175,3 +175,37 @@ export function minutesOnCurrentHex(time: CampaignTime): number {
   if (!time.partyHex) return 0;
   return Math.max(0, time.minutes - time.partyHex.arrivedMinutes);
 }
+
+/**
+ * Clock minutes between `from` and `to` that fall inside the daily travel
+ * window — `hoursPerDay` hours starting at sunrise. An NPC on a route banks
+ * only these minutes (issue: retinue markers), so an eight-hour night camp
+ * moves nobody and a long rest does not carry a courier across the coast.
+ * A window of 24 hours makes every minute count.
+ */
+export function travelWindowMinutes(
+  from: number,
+  to: number,
+  settings: DaylightSettings & { npcTravelHoursPerDay?: number } = {},
+): number {
+  const a = Math.max(0, Math.floor(from));
+  const b = Math.max(0, Math.floor(to));
+  if (b <= a) return 0;
+  const hours = Math.min(24, Math.max(0, settings.npcTravelHoursPerDay ?? 8));
+  if (hours >= 24) return b - a;
+  const sunrise = ((settings.sunriseHour ?? 6) * 60) % MINUTES_PER_DAY;
+  const span = hours * 60;
+  let total = 0;
+  // Walk day by day: the window on day D is [D*1440 + sunrise, +span), which
+  // may spill over midnight into day D+1 — so consider the day before too.
+  const firstDay = Math.floor(a / MINUTES_PER_DAY) - 1;
+  const lastDay = Math.floor(b / MINUTES_PER_DAY);
+  for (let day = firstDay; day <= lastDay; day++) {
+    const start = day * MINUTES_PER_DAY + sunrise;
+    const end = start + span;
+    const lo = Math.max(a, start);
+    const hi = Math.min(b, end);
+    if (hi > lo) total += hi - lo;
+  }
+  return total;
+}

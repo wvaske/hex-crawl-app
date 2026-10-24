@@ -100,6 +100,11 @@ interface UiStore {
   /** Token the "Travel to…" settlement picker is open for (issue #130). */
   travelToTokenId: string | null;
   /**
+   * DM: an NPC journey being drawn (retinue markers). Each map click appends
+   * a waypoint; Done sends `token.route`, Escape drops the draft.
+   */
+  routeDraft: { tokenId: string; waypoints: HexCoord[] } | null;
+  /**
    * Route preview while a token is being dragged or sent (issue #130): the
    * explored route the server would walk, or `null` cells when the map has
    * no such route and the move would be a straight line. Written by the
@@ -320,6 +325,7 @@ export const useUi = create<UiStore>((set) => ({
   movingContentId: null,
   movingTokenId: null,
   travelToTokenId: null,
+  routeDraft: null,
   routePreview: null,
   senseHighlight: null,
   encounterDialogEntry: null,

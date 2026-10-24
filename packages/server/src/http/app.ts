@@ -8,14 +8,22 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-import type { Content, ImageLayer } from '@hexcrawl/shared';
-import { ContentTypeSchema, GateSchema, pixelToHex, seededRng, type Rng } from '@hexcrawl/shared';
+import type { Content, ImageLayer, Token } from '@hexcrawl/shared';
+import {
+  ContentTypeSchema,
+  GateSchema,
+  RetinueSchema,
+  pixelToHex,
+  seededRng,
+  type Rng,
+} from '@hexcrawl/shared';
 import { evaluateKnowledge } from '../engine/knowledge.js';
 import { deliverDiscoveries } from '../engine/deliver.js';
 import { evaluateTrails } from '../engine/trails.js';
 import { discoverCampaigns, mintToken, stopConnector } from '../engine/ddbGameLog.js';
 import { fetchDdbCharacter, parseDdbId } from '../engine/ddb.js';
 import { generateSettlementClues } from '../engine/settlements.js';
+import { planRoute } from '../engine/travellers.js';
 import {
   CREATE_PASSWORD,
   MAX_UPLOAD_BYTES,
@@ -837,6 +845,155 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     deliverDiscoveries(runtime, hub, evaluateKnowledge(runtime, input.mapId));
     hub.scheduleSync(runtime);
     return c.json({ contentId: id, q, r, updated: Boolean(existing) });
+  });
+
+  // -- retinues ----------------------------------------------------------------
+
+  /** Upsert retinues by id (the seed script's first step). */
+  app.post('/api/integration/campaigns/:id/retinues', async (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    const body = z
+      .object({ retinues: z.array(RetinueSchema).max(50) })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success)
+      return c.json({ error: body.error.issues[0]?.message ?? 'Invalid body' }, 400);
+    const merged = [...runtime.campaign.settings.retinues];
+    for (const rn of body.data.retinues) {
+      const i = merged.findIndex((x) => x.id === rn.id);
+      if (i >= 0) merged[i] = rn;
+      else merged.push(rn);
+    }
+    if (merged.length > 50) return c.json({ error: 'Too many retinues' }, 400);
+    runtime.updateCampaign({ settings: { retinues: merged } });
+    hub.scheduleSync(runtime);
+    return c.json({ retinues: merged });
+  });
+
+  // -- tokens (retinue markers) ------------------------------------------------
+
+  app.get('/api/integration/campaigns/:id/maps/:mapId/tokens', (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    const rt = runtime.mapStates.get(c.req.param('mapId'));
+    if (!rt) return c.json({ error: 'Map not found' }, 404);
+    return c.json({ tokens: [...rt.tokens.values()] });
+  });
+
+  const IntegrationTokenSchema = z.object({
+    mapId: z.string(),
+    label: z.string().min(1).max(60),
+    /** Hex coordinates, or the title of a content item on the map to stand on. */
+    q: z.number().int().optional(),
+    r: z.number().int().optional(),
+    at: z.string().max(120).optional(),
+    color: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/)
+      .optional(),
+    glyph: z.string().max(8).optional(),
+    icon: z.string().max(120).optional(),
+    retinueId: z.string().nullable().optional(),
+    mph: z.number().min(0.1).max(500).nullable().optional(),
+    playerVisible: z.boolean().optional(),
+    visibleThroughFog: z.boolean().optional(),
+    note: z.string().max(300).optional(),
+    /**
+     * Journey to plan: hex coordinates or content titles, walked in order with
+     * the party's routing. An empty list cancels the current route; omitted
+     * leaves it alone.
+     */
+    routeTo: z
+      .array(z.union([z.string().max(120), z.object({ q: z.number().int(), r: z.number().int() })]))
+      .max(50)
+      .optional(),
+  });
+
+  /**
+   * Upsert an NPC token by (mapId, label) — how a seed script places a
+   * retinue roster from the wiki. `at` / `routeTo` names resolve against
+   * content titles on the map (case-insensitive), so the script never needs
+   * hex coordinates for places the map already knows.
+   */
+  app.post('/api/integration/campaigns/:id/tokens', async (c) => {
+    const runtime = integrationAuth(c);
+    if (!runtime) return c.json({ error: 'Unauthorized' }, 401);
+    const body = IntegrationTokenSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success)
+      return c.json({ error: body.error.issues[0]?.message ?? 'Invalid body' }, 400);
+    const input = body.data;
+    const map = runtime.maps.get(input.mapId);
+    const rt = runtime.mapStates.get(input.mapId);
+    if (!map || !rt) return c.json({ error: 'Map not found' }, 404);
+    const place = (name: string): { q: number; r: number } | null => {
+      const hit = [...rt.contents.values()].find(
+        (ct) => ct.title.toLowerCase() === name.toLowerCase(),
+      );
+      return hit ? { q: hit.q, r: hit.r } : null;
+    };
+    const existing = [...rt.tokens.values()].find(
+      (t) => t.kind === 'npc' && t.label.toLowerCase() === input.label.toLowerCase(),
+    );
+    let q = input.q;
+    let r = input.r;
+    if ((q === undefined || r === undefined) && input.at) {
+      const hit = place(input.at);
+      if (!hit) return c.json({ error: `No content titled "${input.at}" on that map` }, 404);
+      q = hit.q;
+      r = hit.r;
+    }
+    if (q === undefined || r === undefined) {
+      if (!existing) return c.json({ error: 'Provide q/r or `at` (a content title)' }, 400);
+      q = existing.q;
+      r = existing.r;
+    }
+    const retinue = runtime.campaign.settings.retinues.find(
+      (rn) => rn.id === (input.retinueId ?? existing?.retinueId ?? null),
+    );
+    const id = existing?.id ?? nanoid(10);
+    const token: Token = {
+      id,
+      mapId: input.mapId,
+      q,
+      r,
+      kind: 'npc',
+      characterId: null,
+      label: input.label,
+      color: input.color ?? existing?.color ?? retinue?.color ?? '#8d4a4a',
+      glyph: input.glyph ?? existing?.glyph ?? retinue?.glyph ?? '',
+      icon: input.icon ?? existing?.icon ?? retinue?.icon ?? '',
+      playerVisible: input.playerVisible ?? existing?.playerVisible ?? true,
+      partyId: existing?.partyId ?? null,
+      retinueId: input.retinueId !== undefined ? input.retinueId : (existing?.retinueId ?? null),
+      mph: input.mph !== undefined ? input.mph : (existing?.mph ?? null),
+      visibleThroughFog: input.visibleThroughFog ?? existing?.visibleThroughFog ?? Boolean(retinue),
+      note: input.note ?? existing?.note ?? '',
+      route: existing?.route ?? [],
+      travelCredit: existing?.travelCredit ?? 0,
+    };
+    // A re-placed token starts fresh: its old journey no longer applies.
+    const moved = existing && (existing.q !== q || existing.r !== r);
+    if (moved) {
+      token.route = [];
+      token.travelCredit = 0;
+    }
+    if (input.routeTo) {
+      const route: { q: number; r: number }[] = [];
+      let cur = { q, r };
+      for (const stop of input.routeTo) {
+        const dest = typeof stop === 'string' ? place(stop) : stop;
+        if (!dest) return c.json({ error: `No content titled "${String(stop)}" on that map` }, 404);
+        if (dest.q === cur.q && dest.r === cur.r) continue;
+        route.push(...planRoute(runtime, map, cur, [dest]));
+        cur = dest;
+      }
+      token.route = route;
+      token.travelCredit = 0;
+    }
+    if (existing) runtime.updateToken(input.mapId, id, token);
+    else runtime.createToken(token);
+    hub.scheduleSync(runtime);
+    return c.json({ tokenId: id, q, r, routeHexes: token.route.length, updated: Boolean(existing) });
   });
 
   /** Upsert a trail by (mapId, name): an ordered path of push-direction cells. */
