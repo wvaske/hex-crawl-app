@@ -317,3 +317,71 @@ describe('journey routing', () => {
     expect(view.mapState!.trailSigns).toEqual([]);
   });
 });
+
+describe('movers: loops, encounter cadence, summaries', () => {
+  it('looping a route that kept no waypoints turns it into an out-and-back patrol', () => {
+    const { mapId, tokenId } = rider();
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 12, r: 0 }] } as never);
+    runtime.updateToken(mapId, tokenId, { waypoints: [] }); // as an older or API-planned route
+    dm({ kind: 'token.update', tokenId, patch: { loop: true } } as never);
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.waypoints).toEqual([{ q: 10, r: 0 }, { q: 12, r: 0 }]);
+    dm({ kind: 'time.advance', minutes: 180 } as never); // 2 out, then 1 back
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.q).toBe(11);
+  });
+
+  it('a looping route plans itself again at the end and keeps walking on the same tick', () => {
+    const { mapId, tokenId } = rider();
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 12, r: 0 }, { q: 10, r: 0 }], loop: true } as never);
+    let t = runtime.requireMap(mapId).tokens.get(tokenId)!;
+    expect(t.loop).toBe(true);
+    expect(t.waypoints).toHaveLength(2);
+    expect(t.route).toHaveLength(4); // 10→12 (2) and back (2)
+    // 6 mph on 6-mile hexes = 1 hex/hour; 5 hours walks the 4-hex circuit and one hex more.
+    dm({ kind: 'time.advance', minutes: 300 } as never);
+    t = runtime.requireMap(mapId).tokens.get(tokenId)!;
+    expect([t.q, t.r]).toEqual([11, 0]);
+    expect(t.route.length).toBeGreaterThan(0);
+    expect(runtime.log.some((e) => e.text.includes('completes a circuit'))).toBe(true);
+    dm({ kind: 'undo' } as never);
+    t = runtime.requireMap(mapId).tokens.get(tokenId)!;
+    expect([t.q, t.r]).toEqual([10, 0]);
+    expect(t.route).toHaveLength(4);
+  });
+
+  it('rolls on the encounter table every N miles and logs it DM-only without halting', () => {
+    const { mapId, tokenId } = rider();
+    dm({ kind: 'map.update', mapId, patch: { encounterCheck: { die: '1d20', threshold: 1, autoEvery: 0 } } } as never);
+    dm({ kind: 'token.update', tokenId, patch: { encounterEveryMiles: 12 } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 14, r: 0 }] } as never);
+    dm({ kind: 'time.advance', minutes: 240 } as never); // 4 hexes = 24 miles → 2 rolls
+    const rolls = runtime.log.filter((e) => e.kind === 'encounter' && e.data.traveller === true);
+    expect(rolls).toHaveLength(2);
+    expect(rolls.every((e) => e.visibility === 'dm')).toBe(true);
+    const t = runtime.requireMap(mapId).tokens.get(tokenId)!;
+    expect([t.q, t.r]).toEqual([14, 0]);
+    expect(t.encounterMiles).toBe(0);
+    dm({ kind: 'undo' } as never);
+    expect(runtime.log.filter((e) => e.kind === 'encounter' && e.data.traveller === true)).toHaveLength(0);
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.encounterMiles).toBe(0);
+  });
+
+  it('summarises every NPC across maps for the DM and nothing for players', () => {
+    const { mapId, tokenId } = rider();
+    dm({ kind: 'map.create', name: 'Far North', orientation: 'flat', hexSize: 48 } as never);
+    const north = [...runtime.maps.values()].find((m) => m.name === 'Far North')!;
+    dm({ kind: 'token.create', mapId: north.id, q: 1, r: 1, tokenKind: 'npc', characterId: null, label: 'Sera Dunwick', color: '#4f6fd6', glyph: '', playerVisible: true, retinueId: 'anvil' } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 12, r: 0 }] } as never);
+    const full = runtime.buildFullState(mapId);
+    expect(full.movers.map((m) => m.label).sort()).toEqual(['Dorn Ackley', 'Sera Dunwick']);
+    const dorn = full.movers.find((m) => m.label === 'Dorn Ackley')!;
+    expect(dorn.routeLeft).toBe(2);
+    expect(dorn.travelMode).toBe('horse');
+    expect(dorn.mph).toBe(6);
+    expect(dorn.etaMinutes).toBe(120);
+    expect(full.movers.find((m) => m.label === 'Sera Dunwick')!.mapName).toBe('Far North');
+    const player = runtime.createSeat('player', 'Alice');
+    const view = filterStateForViewer(full, { role: 'player', seatId: player.id, characterId: null });
+    expect(view.movers).toEqual([]);
+    expect(view.mapState!.tokens.find((t) => t.id === tokenId)!.waypoints).toEqual([]);
+  });
+});

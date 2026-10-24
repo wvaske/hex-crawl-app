@@ -327,6 +327,10 @@ export function migrate(d: DB): void {
   ensureColumn(d, 'token', 'travel_mode', 'TEXT');
   ensureColumn(d, 'token', 'pace', 'TEXT');
   ensureColumn(d, 'trail', 'kind', "TEXT NOT NULL DEFAULT 'tracks'");
+  ensureColumn(d, 'token', 'waypoints', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(d, 'token', 'loop', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'token', 'encounter_every_miles', 'REAL');
+  ensureColumn(d, 'token', 'encounter_miles', 'REAL NOT NULL DEFAULT 0');
   ensureColumn(d, 'token', 'visible_through_fog', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'token', 'note', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(d, 'token', 'route', "TEXT NOT NULL DEFAULT '[]'");

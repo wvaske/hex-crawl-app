@@ -461,6 +461,23 @@ filtered content snapshot. Keep both transports in sync when extending discoveri
   the Tokens panel's Done sends; Escape clears it. Crest stickers live in
   `assets/stickers/crests/` (attribution in `ATTRIBUTION.md`, same two-edit
   rule as other stickers).
+- **Movers panel (step 2).** DM-only panel `movers` between Party and
+  History (`PanelShell` `DM_PANELS`; plugin panels now slot in before
+  `build` by index). It reads `CampaignState.movers`, a DM-only summary of
+  every NPC token on every map built by `runtime.moverSummaries()` (players
+  get `[]`), so a row can act on a token on another map — commands find
+  tokens by id — and `view.map` + `ui.focusToken` jump to it. Retinues carry
+  a `kind` (`GROUP_KINDS`: retinue, army, band, caravan, beast, other); the
+  storage key stays `settings.retinues`.
+- **Loops and encounter cadence.** `token.route` stores `waypoints` and
+  `loop`; when a looping route runs out, `advanceTravellers` plans the same
+  waypoints again from where the mover stands and keeps walking on that tick
+  (logged as "completes a circuit"). `encounterEveryMiles` rolls
+  `rollEncounter` on the terrain table of each hex entered once
+  `encounterMiles` reaches the cadence — logged DM-only as an `encounter`
+  entry with `data.traveller: true`; the mover is never halted. Both
+  counters ride in `TravellerMove` so undo restores them. A hand-moved token
+  drops its waypoints and loop along with its route.
 - **Seeding from the wiki:** `scripts/seed-retinues.mjs` + `scripts/retinues.json`
   upsert retinues (`POST /api/integration/.../retinues`) and members
   (`POST .../tokens`, matched by label; `at` / `routeTo` resolve content

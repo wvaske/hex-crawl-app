@@ -202,6 +202,10 @@ function fullState(): CampaignState {
           note: '',
           route: [],
           travelCredit: 0,
+          waypoints: [],
+          loop: false,
+          encounterEveryMiles: null,
+          encounterMiles: 0,
         },
         {
           id: 't2',
@@ -223,6 +227,10 @@ function fullState(): CampaignState {
           note: '',
           route: [],
           travelCredit: 0,
+          waypoints: [],
+          loop: false,
+          encounterEveryMiles: null,
+          encounterMiles: 0,
         },
         {
           id: 't3',
@@ -244,6 +252,10 @@ function fullState(): CampaignState {
           note: '',
           route: [],
           travelCredit: 0,
+          waypoints: [],
+          loop: false,
+          encounterEveryMiles: null,
+          encounterMiles: 0,
         },
         {
           id: 't4',
@@ -265,6 +277,10 @@ function fullState(): CampaignState {
           note: '',
           route: [],
           travelCredit: 0,
+          waypoints: [],
+          loop: false,
+          encounterEveryMiles: null,
+          encounterMiles: 0,
         },
       ],
       markers: [
@@ -489,6 +505,7 @@ function fullState(): CampaignState {
       { id: 'l4', at: 4, kind: 'discovery', text: 'bob private', visibility: 's2', data: {} },
     ],
     undoHistory: [{ at: 5, kind: 'fog', description: 'fog change (3 hexes)' }],
+    movers: [],
     ddbGameLog: null,
   };
 }

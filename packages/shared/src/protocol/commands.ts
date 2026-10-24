@@ -327,6 +327,8 @@ export const TokenUpdateCommand = z.object({
       icon: z.string().max(120),
       travelMode: z.string().max(40).nullable(),
       pace: TravelPaceSchema.nullable(),
+      loop: z.boolean(),
+      encounterEveryMiles: z.number().min(0.1).max(10000).nullable(),
       visibleThroughFog: z.boolean(),
       note: z.string().max(300),
     })
@@ -345,6 +347,8 @@ export const TokenRouteCommand = z.object({
   kind: z.literal('token.route'),
   tokenId: z.string(),
   waypoints: z.array(z.object({ q: z.number().int(), r: z.number().int() })).max(50),
+  /** Patrol: when the last waypoint is reached, route back through them again. */
+  loop: z.boolean().optional(),
 });
 
 export const TokenMoveCommand = z.object({

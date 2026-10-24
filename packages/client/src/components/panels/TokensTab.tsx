@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import type { CustomTravelMode, Retinue, Token, TravelPace } from '@hexcrawl/shared';
+import type { CustomTravelMode, GroupKind, Retinue, Token, TravelPace } from '@hexcrawl/shared';
 import {
+  GROUP_KINDS,
+  GROUP_KIND_LABEL,
   PACE_LABEL,
   TRAVEL_PACES,
   formatDuration,
@@ -113,7 +115,7 @@ function RetinueHeading({ retinue, count }: { retinue: Retinue; count: number })
 }
 
 /** A retinue's crest on its colour — the same look the map token wears. */
-function Crest({ retinue, size }: { retinue: Pick<Retinue, 'color' | 'icon' | 'glyph'>; size: 'sm' | 'md' }) {
+export function Crest({ retinue, size }: { retinue: Pick<Retinue, 'color' | 'icon' | 'glyph'>; size: 'sm' | 'md' }) {
   const url = retinue.icon ? stickerUrl(retinue.icon) : undefined;
   const px = size === 'sm' ? 'w-5 h-5' : 'w-8 h-8';
   return (
@@ -321,7 +323,7 @@ export function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }
           {token.note && <span className="text-ink-300 truncate max-w-full">{token.note}</span>}
           {token.route.length > 0 && (
             <span className="text-brass-300">
-              En route · {token.route.length} hex{token.route.length === 1 ? '' : 'es'} left
+              {token.loop ? '↻ Patrol' : 'En route'} · {token.route.length} hex{token.route.length === 1 ? '' : 'es'} left
               {routeMinutes > 0 && ` · ≈ ${routeDays >= 1 ? `${routeDays.toFixed(1)} days` : formatDuration(routeMinutes)}`}
             </span>
           )}
@@ -395,8 +397,9 @@ function RouteButton({ token, drafting }: { token: Token; drafting: boolean }) {
   );
 }
 
-function RouteDraftBar({ token, waypoints, perHex }: { token: Token; waypoints: { q: number; r: number }[]; perHex: number }) {
+export function RouteDraftBar({ token, waypoints, perHex }: { token: Token; waypoints: { q: number; r: number }[]; perHex: number }) {
   const setUi = useUi((s) => s.set);
+  const [loop, setLoop] = useState(token.loop);
   // Straight-line estimate; the server routes each leg through explored ground
   // when the map allows, so the real walk may be a little longer.
   let hexes = 0;
@@ -422,6 +425,10 @@ function RouteDraftBar({ token, waypoints, perHex }: { token: Token; waypoints: 
           Undo
         </Button>
       )}
+      <label className="inline-flex items-center gap-1 cursor-pointer" title="Patrol: at the last waypoint, route through them again">
+        <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} />
+        Loop
+      </label>
       <Button size="sm" variant="ghost" onClick={() => setUi('routeDraft', null)}>
         Cancel
       </Button>
@@ -430,7 +437,7 @@ function RouteDraftBar({ token, waypoints, perHex }: { token: Token; waypoints: 
         variant="primary"
         disabled={waypoints.length === 0}
         onClick={() => {
-          send({ kind: 'token.route', tokenId: token.id, waypoints });
+          send({ kind: 'token.route', tokenId: token.id, waypoints, loop });
           setUi('routeDraft', null);
         }}
       >
@@ -448,11 +455,11 @@ function RetinueManager({ retinues }: { retinues: Retinue[] }) {
   const [open, setOpen] = useState(false);
   const save = (list: Retinue[]) => send({ kind: 'campaign.update', settings: { retinues: list } });
   return (
-    <Section title="Retinues">
+    <Section title="Retinues & groups">
       <p className="text-xs text-ink-400 mb-2">
-        A retinue is a faction cell whose members are NPC tokens that share a colour, a crest and a
-        travel speed. Give a member a route and it travels as the campaign clock runs — every party
-        move is a tick.
+        A group — a faction retinue, an army, a cultist band, a roaming beast — is a set of NPC
+        tokens sharing a colour, a crest and a travel mode. Give a member a route and it travels as
+        the campaign clock runs; the Movers panel lists all of them across every map.
       </p>
       {retinues.length === 0 && !open && <EmptyNote>No retinues yet.</EmptyNote>}
       <div className="space-y-1.5">
@@ -476,7 +483,7 @@ function RetinueManager({ retinues }: { retinues: Retinue[] }) {
         />
       ) : (
         <Button size="sm" className="mt-2" onClick={() => setOpen(true)}>
-          + Add retinue
+          + Add group
         </Button>
       )}
     </Section>
@@ -501,7 +508,7 @@ function RetinueRow({
         <div className="min-w-0 flex-1">
           <p className="text-sm text-ink-100 truncate">{retinue.name}</p>
           <p className="text-[0.6875rem] text-ink-400 truncate">
-            {[retinue.holder, retinue.faction].filter(Boolean).join(' · ')}
+            {[GROUP_KIND_LABEL[retinue.kind], retinue.holder, retinue.faction].filter(Boolean).join(' · ')}
             {` · ${resolveTravelMode(retinue.travelMode ?? 'foot', custom).label}, ${PACE_LABEL[retinue.pace ?? 'normal']}`}
           </p>
         </div>
@@ -524,7 +531,16 @@ function RetinueRow({
           <Field label="Name">
             <Input value={retinue.name} maxLength={60} onChange={(e) => onChange({ name: e.target.value || retinue.name })} />
           </Field>
-          <Field label="Held by">
+          <Field label="Kind">
+            <Select value={retinue.kind} onChange={(e) => onChange({ kind: e.target.value as GroupKind })}>
+              {GROUP_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {GROUP_KIND_LABEL[k]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Held by / led by">
             <Input value={retinue.holder} maxLength={60} onChange={(e) => onChange({ holder: e.target.value })} />
           </Field>
           <Field label="Faction">
@@ -583,6 +599,7 @@ function RetinueForm({
   const [faction, setFaction] = useState('');
   const [color, setColor] = useState('#b08d57');
   const [icon, setIcon] = useState('crests/eagle');
+  const [kind, setKind] = useState<GroupKind>('retinue');
   const [travelMode, setTravelMode] = useState<string | null>(null);
   const [pace, setPace] = useState<TravelPace | null>(null);
   const custom = useSession((s) => s.state?.campaign.settings.customTravelModes ?? []);
@@ -594,6 +611,7 @@ function RetinueForm({
     onSave({
       id,
       name: name.trim(),
+      kind,
       holder: holder.trim(),
       faction: faction.trim(),
       color,
@@ -609,7 +627,16 @@ function RetinueForm({
       <Field label="Name" className="col-span-2">
         <Input value={name} maxLength={60} placeholder="The Anvil" onChange={(e) => setName(e.target.value)} autoFocus />
       </Field>
-      <Field label="Held by">
+      <Field label="Kind">
+        <Select value={kind} onChange={(e) => setKind(e.target.value as GroupKind)}>
+          {GROUP_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {GROUP_KIND_LABEL[k]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Held by / led by">
         <Input value={holder} maxLength={60} placeholder="Xanphina" onChange={(e) => setHolder(e.target.value)} />
       </Field>
       <Field label="Faction">
@@ -648,7 +675,7 @@ function RetinueForm({
           Cancel
         </Button>
         <Button size="sm" variant="primary" disabled={!canSave} onClick={submit}>
-          Add retinue
+          Add group
         </Button>
       </div>
     </div>
@@ -664,7 +691,7 @@ function RetinueForm({
  * "Custom…" opens a small form that adds a campaign travel mode — defined
  * once, reusable by every mover and by the party clock.
  */
-function TravelPicker({
+export function TravelPicker({
   mode,
   pace,
   inheritLabel,
