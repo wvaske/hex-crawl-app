@@ -38,6 +38,10 @@ import {
   TERRAINS,
   exploredPassable,
   findRoute,
+  journeyStepCost,
+  planJourney,
+  resolveTravelMode,
+  roadIndex,
   hexEdgeCorners,
   hexLine,
   indexEdges,
@@ -1634,8 +1638,29 @@ export class CanvasEngine {
       forwardAngle: number | null;
       backwardAngle: number | null;
     }[] = [];
+    // Roads: a travel way, drawn for everyone as a solid line (players hold
+    // only the stretch on ground they know, so gaps in the fog stay gaps).
+    for (const trail of this.lastTrails) {
+      if (trail.kind !== 'road') continue;
+      const line = new Graphics();
+      const pts = trail.cells.map((c) => hexToPixel(this.layout!, c));
+      for (let i = 0; i < pts.length; i++) {
+        const adjacent = i > 0 && hexDistance(trail.cells[i - 1]!, trail.cells[i]!) === 1;
+        if (i === 0 || !adjacent) line.moveTo(pts[i]!.x, pts[i]!.y);
+        else line.lineTo(pts[i]!.x, pts[i]!.y);
+      }
+      line.stroke({ width: Math.max(2, size * 0.16), color: 0x2a2217, alpha: 0.55 });
+      for (let i = 0; i < pts.length; i++) {
+        const adjacent = i > 0 && hexDistance(trail.cells[i - 1]!, trail.cells[i]!) === 1;
+        if (i === 0 || !adjacent) line.moveTo(pts[i]!.x, pts[i]!.y);
+        else line.lineTo(pts[i]!.x, pts[i]!.y);
+      }
+      line.stroke({ width: Math.max(1, size * 0.09), color: 0xd9c08a, alpha: 0.9 });
+      this.pinsC.addChild(line);
+    }
     if (this.role === 'dm') {
       for (const trail of this.lastTrails) {
+        if (trail.kind === 'road') continue;
         // Connecting line for the DM only.
         const line = new Graphics();
         const pts = trail.cells.map((c) => hexToPixel(this.layout!, c));
@@ -1855,16 +1880,16 @@ export class CanvasEngine {
 
   /** The hexes a route draft would walk, legs routed like the server will. */
   draftRouteCells(token: Token, waypoints: HexCoord[]): HexCoord[] {
-    const cells: HexCoord[] = [{ q: token.q, r: token.r }];
-    let cur: HexCoord = { q: token.q, r: token.r };
-    for (const wp of waypoints) {
-      if (wp.q === cur.q && wp.r === cur.r) continue;
-      const far = hexDistance(cur, wp) > 1;
-      const leg = (far && this.lastMap?.routeExplored ? this.routeFor(cur, wp) : null) ?? hexLine(cur, wp);
-      cells.push(...leg.slice(1));
-      cur = wp;
-    }
-    return cells;
+    const settings = useSession.getState().state?.campaign.settings;
+    const retinue = settings?.retinues.find((rn) => rn.id === token.retinueId);
+    const mode = resolveTravelMode(
+      token.travelMode ?? retinue?.travelMode ?? 'foot',
+      settings?.customTravelModes ?? [],
+    );
+    return [
+      { q: token.q, r: token.r },
+      ...planJourney(this.journeyWorld(), mode.medium, token, waypoints),
+    ];
   }
 
   /** Dashed declared-travel paths with a ghost token at the destination. */
@@ -2585,15 +2610,48 @@ export class CanvasEngine {
    * exactly what the server would route over for them.
    */
   routeFor(from: HexCoord, to: HexCoord): HexCoord[] | null {
+    const world = this.journeyWorld();
+    return findRoute(from, to, exploredPassable(world.fogAt), {
+      stepCost: (a, b) => journeyStepCost(world, a, b),
+    });
+  }
+
+  private terrainIndex: { source: HexCell[]; terrain: Map<string, HexCell['terrain']> } | null = null;
+  private roadsIndex: { source: Trail[]; roads: Set<string> } | null = null;
+
+  /**
+   * The map as the journey planner sees it (shared `rules/journey.ts`):
+   * fog, terrain and roads indexed by hex key, cached against the snapshot
+   * arrays they came from — the same weights the server routes with.
+   */
+  private journeyWorld(): {
+    terrainAt: (h: HexCoord) => HexCell['terrain'] | undefined;
+    fogAt: (h: HexCoord) => FogCell['state'] | undefined;
+    roadAt: (h: HexCoord) => boolean;
+    edges: ReturnType<CanvasEngine['edges']>;
+  } {
     if (!this.fogIndex || this.fogIndex.source !== this.lastFog) {
       const states = new Map<string, FogCell['state']>();
       for (const f of this.lastFog) states.set(hexKey(f.q, f.r), f.state);
       this.fogIndex = { source: this.lastFog, states };
     }
-    const states = this.fogIndex.states;
-    return findRoute(from, to, exploredPassable((h) => states.get(hexKey(h.q, h.r))), {
-      stepCost: (a, b) => stepCost(this.edges(), a, b),
-    });
+    if (!this.terrainIndex || this.terrainIndex.source !== this.lastHexes) {
+      const terrain = new Map<string, HexCell['terrain']>();
+      for (const h of this.lastHexes) terrain.set(hexKey(h.q, h.r), h.terrain);
+      this.terrainIndex = { source: this.lastHexes, terrain };
+    }
+    if (!this.roadsIndex || this.roadsIndex.source !== this.lastTrails) {
+      this.roadsIndex = { source: this.lastTrails, roads: roadIndex(this.lastTrails) };
+    }
+    const fog = this.fogIndex.states;
+    const terrain = this.terrainIndex.terrain;
+    const roads = this.roadsIndex.roads;
+    return {
+      terrainAt: (h) => terrain.get(hexKey(h.q, h.r)),
+      fogAt: (h) => fog.get(hexKey(h.q, h.r)),
+      roadAt: (h) => roads.has(hexKey(h.q, h.r)),
+      edges: this.edges(),
+    };
   }
 
   /** Publish the route a drop on `hex` would walk (or that there is none). */

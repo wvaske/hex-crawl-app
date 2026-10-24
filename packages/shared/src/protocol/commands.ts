@@ -305,7 +305,8 @@ export const TokenCreateCommand = z.object({
   // in CommandInput and break every existing call site).
   retinueId: z.string().nullable().optional(),
   icon: z.string().max(120).optional(),
-  mph: z.number().min(0.1).max(500).nullable().optional(),
+  travelMode: z.string().max(40).nullable().optional(),
+  pace: TravelPaceSchema.nullable().optional(),
   visibleThroughFog: z.boolean().optional(),
   note: z.string().max(300).optional(),
 });
@@ -324,7 +325,8 @@ export const TokenUpdateCommand = z.object({
       partyId: z.string().nullable(),
       retinueId: z.string().nullable(),
       icon: z.string().max(120),
-      mph: z.number().min(0.1).max(500).nullable(),
+      travelMode: z.string().max(40).nullable(),
+      pace: TravelPaceSchema.nullable(),
       visibleThroughFog: z.boolean(),
       note: z.string().max(300),
     })
@@ -619,7 +621,10 @@ export const ViewMapCommand = z.object({
 export const TrailUpsertCommand = z.object({
   ...base,
   kind: z.literal('trail.upsert'),
-  trail: TrailSchema.extend({ id: z.string().nullable() }),
+  trail: TrailSchema.omit({ kind: true }).extend({
+    id: z.string().nullable(),
+    kind: z.enum(['tracks', 'road']).optional(),
+  }),
 });
 
 export const TrailDeleteCommand = z.object({

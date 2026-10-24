@@ -40,9 +40,11 @@ import {
   hexKey,
   hexLine,
   isNight,
+  journeyStepCost,
   minutesPerHex,
   parseHexKey,
   resolveTravelMode,
+  roadIndex,
   rollCheck,
   formatCheck,
 } from '@hexcrawl/shared';
@@ -351,7 +353,8 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       partyId: null,
       retinueId: cmd.retinueId ?? null,
       icon: cmd.icon ?? '',
-      mph: cmd.mph ?? null,
+      travelMode: cmd.travelMode ?? null,
+      pace: cmd.pace ?? null,
       visibleThroughFog: cmd.visibleThroughFog ?? false,
       note: cmd.note ?? '',
       route: [],
@@ -959,7 +962,7 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 
   'trail.upsert': ((cmd: Extract<ClientCommand, { kind: 'trail.upsert' }>, ctx: Ctx) => {
     requireDm(ctx);
-    const trail = { ...cmd.trail, id: cmd.trail.id ?? nanoid(10) };
+    const trail = { ...cmd.trail, id: cmd.trail.id ?? nanoid(10), kind: cmd.trail.kind ?? 'tracks' };
     if (!ctx.runtime.maps.has(trail.mapId)) throw new Error('Map not found');
     ctx.runtime.upsertTrail(trail);
     deliverTrailFinds(ctx, evaluateTrails(ctx.runtime, trail.mapId));
@@ -1976,9 +1979,18 @@ export function exploredRoute(
 ): HexCoord[] | null {
   const rt = runtime.mapStates.get(mapId);
   if (!rt) return null;
+  // Roads are preferred within known ground (a road hex costs 1, open ground
+  // 2, plus the edge extra) — same weights the NPC journey planner uses.
+  const roads = roadIndex(rt.trails.values());
+  const world = {
+    terrainAt: (h: HexCoord) => rt.hexes.get(hexKey(h.q, h.r)),
+    fogAt: (h: HexCoord) => rt.fog.get(hexKey(h.q, h.r)),
+    roadAt: (h: HexCoord) => roads.has(hexKey(h.q, h.r)),
+    edges: rt.edges,
+  };
   return findRoute(from, to, exploredPassable((h) => rt.fog.get(hexKey(h.q, h.r))), {
     // Terrain difficulty: around the canyon wall, never across a cliff.
-    stepCost: (a, b) => stepCost(rt.edges, a, b),
+    stepCost: (a, b) => journeyStepCost(world, a, b),
   });
 }
 

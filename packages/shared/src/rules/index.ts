@@ -9,3 +9,4 @@ export * from './calendar.js';
 export * from './recap.js';
 export * from './route.js';
 export * from './scale.js';
+export * from './journey.js';

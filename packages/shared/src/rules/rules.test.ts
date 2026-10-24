@@ -196,7 +196,8 @@ function fullState(): CampaignState {
           partyId: null,
           retinueId: null,
           icon: '',
-          mph: null,
+          travelMode: null,
+          pace: null,
           visibleThroughFog: false,
           note: '',
           route: [],
@@ -216,7 +217,8 @@ function fullState(): CampaignState {
           partyId: null,
           retinueId: null,
           icon: '',
-          mph: null,
+          travelMode: null,
+          pace: null,
           visibleThroughFog: false,
           note: '',
           route: [],
@@ -236,7 +238,8 @@ function fullState(): CampaignState {
           partyId: null,
           retinueId: null,
           icon: '',
-          mph: null,
+          travelMode: null,
+          pace: null,
           visibleThroughFog: false,
           note: '',
           route: [],
@@ -256,7 +259,8 @@ function fullState(): CampaignState {
           partyId: null,
           retinueId: null,
           icon: '',
-          mph: null,
+          travelMode: null,
+          pace: null,
           visibleThroughFog: false,
           note: '',
           route: [],
@@ -620,7 +624,7 @@ describe('campaign clock', () => {
   });
 
   it('resolves custom travel modes and falls back to foot', () => {
-    const custom = [{ id: 'griffon', name: 'Griffon', mph: 12 }];
+    const custom = [{ id: 'griffon', name: 'Griffon', mph: 12, medium: 'air' as const }];
     expect(resolveTravelMode('griffon', custom).mph).toBe(12);
     expect(travelModes(custom)).toHaveLength(TRAVEL_MODES.length + 1);
     expect(resolveTravelMode('nonsense', custom).id).toBe('foot');

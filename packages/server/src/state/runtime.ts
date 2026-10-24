@@ -424,6 +424,7 @@ export class CampaignRuntime {
         dmNotes: t.dm_notes as string,
         gate: GateSchema.parse(safeJson(t.gate as string, { kind: 'auto' })),
         cells: safeJson(t.cells as string, []) as Trail['cells'],
+        kind: t.kind === 'road' ? 'road' : 'tracks',
       });
     }
     for (const h of d.prepare('SELECT * FROM hex WHERE map_id = ?').all(mapId) as Array<
@@ -461,7 +462,8 @@ export class CampaignRuntime {
         partyId: (t.party_id as string | null) ?? null,
         retinueId: (t.retinue_id as string | null) ?? null,
         icon: (t.icon as string | null) ?? '',
-        mph: (t.mph as number | null) ?? null,
+        travelMode: (t.travel_mode as string | null) ?? null,
+        pace: (t.pace as Token['pace']) ?? null,
         visibleThroughFog: Boolean(t.visible_through_fog),
         note: (t.note as string | null) ?? '',
         route: parseRoute(t.route),
@@ -1376,7 +1378,7 @@ export class CampaignRuntime {
     rt.tokens.set(token.id, token);
     this.db
       .prepare(
-        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id, retinue_id, icon, mph, visible_through_fog, note, route, travel_credit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id, retinue_id, icon, travel_mode, pace, visible_through_fog, note, route, travel_credit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         token.id,
@@ -1392,7 +1394,8 @@ export class CampaignRuntime {
         token.partyId,
         token.retinueId,
         token.icon,
-        token.mph,
+        token.travelMode,
+        token.pace,
         token.visibleThroughFog ? 1 : 0,
         token.note,
         JSON.stringify(token.route),
@@ -1408,7 +1411,7 @@ export class CampaignRuntime {
     rt.tokens.set(tokenId, updated);
     this.db
       .prepare(
-        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=?, retinue_id=?, icon=?, mph=?, visible_through_fog=?, note=?, route=?, travel_credit=? WHERE id=?',
+        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=?, retinue_id=?, icon=?, travel_mode=?, pace=?, visible_through_fog=?, note=?, route=?, travel_credit=? WHERE id=?',
       )
       .run(
         updated.q,
@@ -1421,7 +1424,8 @@ export class CampaignRuntime {
         updated.partyId,
         updated.retinueId,
         updated.icon,
-        updated.mph,
+        updated.travelMode,
+        updated.pace,
         updated.visibleThroughFog ? 1 : 0,
         updated.note,
         JSON.stringify(updated.route),
@@ -1800,8 +1804,8 @@ export class CampaignRuntime {
     rt.trails.set(trail.id, trail);
     this.db
       .prepare(
-        `INSERT INTO trail (id, map_id, name, glyph, dm_notes, gate, cells) VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, glyph=excluded.glyph, dm_notes=excluded.dm_notes, gate=excluded.gate, cells=excluded.cells`,
+        `INSERT INTO trail (id, map_id, name, glyph, dm_notes, gate, cells, kind) VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, glyph=excluded.glyph, dm_notes=excluded.dm_notes, gate=excluded.gate, cells=excluded.cells, kind=excluded.kind`,
       )
       .run(
         trail.id,
@@ -1811,6 +1815,7 @@ export class CampaignRuntime {
         trail.dmNotes,
         JSON.stringify(trail.gate),
         JSON.stringify(trail.cells),
+        trail.kind,
       );
   }
 

@@ -11,20 +11,24 @@ import type { CampaignTime, CustomTravelMode, TravelPace } from '../domain.js';
 
 export const MINUTES_PER_DAY = 1440;
 
+/** What a travel mode moves through: decides which terrain a route may cross. */
+export type TravelMedium = 'land' | 'water' | 'air';
+
 export interface TravelMode {
   id: string;
   label: string;
   /** Miles covered per hour at normal pace. */
   mph: number;
+  medium: TravelMedium;
 }
 
 /** Built-in travel modes. Campaigns may add their own in settings. */
 export const TRAVEL_MODES: TravelMode[] = [
-  { id: 'foot', label: 'On foot', mph: 3 },
-  { id: 'horse', label: 'Horseback', mph: 6 },
-  { id: 'wagon', label: 'Wagon', mph: 4 },
-  { id: 'ship', label: 'Ship', mph: 5 },
-  { id: 'flying', label: 'Flying', mph: 9 },
+  { id: 'foot', label: 'On foot', mph: 3, medium: 'land' },
+  { id: 'horse', label: 'Horseback', mph: 6, medium: 'land' },
+  { id: 'wagon', label: 'Wagon', mph: 4, medium: 'land' },
+  { id: 'ship', label: 'Ship', mph: 5, medium: 'water' },
+  { id: 'flying', label: 'Flying', mph: 9, medium: 'air' },
 ];
 
 export const TRAVEL_PACES = ['fast', 'normal', 'careful'] as const;
@@ -44,7 +48,10 @@ export const PACE_LABEL: Record<TravelPace, string> = {
 
 /** Every mode available to a campaign: the built-ins plus its custom ones. */
 export function travelModes(custom: CustomTravelMode[] = []): TravelMode[] {
-  return [...TRAVEL_MODES, ...custom.map((m) => ({ id: m.id, label: m.name, mph: m.mph }))];
+  return [
+    ...TRAVEL_MODES,
+    ...custom.map((m) => ({ id: m.id, label: m.name, mph: m.mph, medium: m.medium ?? 'land' })),
+  ];
 }
 
 /** Look up a mode by id; falls back to the first built-in (on foot). */

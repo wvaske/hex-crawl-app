@@ -12,7 +12,7 @@
  * Usage:
  *   node scripts/seed-retinues.mjs --base https://hex.example --campaign <id> \
  *        --secret <dm key> --map "<map name or id>" [--roster scripts/retinues.json] \
- *        [--hours-per-day 8] [--dry-run]
+ *        [--dry-run]
  *
  * The DM key is the campaign's DM invite secret (Setup → Invite links); it is
  * the Bearer token for /api/integration. Dependency-free (Node 22+).
@@ -38,7 +38,6 @@ const campaign = need('campaign');
 const secret = need('secret');
 const mapArg = need('map');
 const rosterPath = args.roster ?? path.join(path.dirname(new URL(import.meta.url).pathname), 'retinues.json');
-const hoursPerDay = Number(args['hours-per-day'] ?? 8);
 const dryRun = args['dry-run'] === 'true';
 
 const roster = JSON.parse(fs.readFileSync(rosterPath, 'utf8'));
@@ -106,15 +105,10 @@ for (const m of roster.members) {
     console.log(`  (dry) ${m.label} @ ${place.title}${routeTo ? ` → ${routeTo.join(' → ')}` : ''}`);
     continue;
   }
+  if (m.travelMode !== undefined) body.travelMode = m.travelMode;
+  if (m.pace !== undefined) body.pace = m.pace;
   const res = await api('POST', '/tokens', body);
-  let extra = '';
-  if (routeTo && m.arriveInDays && res.routeHexes > 0) {
-    // Scale this member's speed so the walk takes about `arriveInDays` travel days.
-    const miles = res.routeHexes * map.milesPerHex;
-    const mph = Math.max(0.1, Math.round((miles / (m.arriveInDays * hoursPerDay)) * 10) / 10);
-    await api('POST', '/tokens', { mapId: map.id, label: m.label, mph });
-    extra = ` · ${res.routeHexes} hexes, ${mph} mph ≈ ${m.arriveInDays} days`;
-  }
+  const extra = routeTo ? ` · ${res.routeHexes} hexes` : '';
   console.log(`  ${res.updated ? 'updated' : 'placed '} ${m.label} @ ${place.title} (${res.q},${res.r})${routeTo ? ` → ${routeTo.join(' → ')}` : ''}${extra}`);
 }
 if (problems.length) {

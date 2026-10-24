@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import type { Retinue, Token } from '@hexcrawl/shared';
+import type { CustomTravelMode, Retinue, Token, TravelPace } from '@hexcrawl/shared';
 import {
-  DEFAULT_NPC_MPH,
+  PACE_LABEL,
+  TRAVEL_PACES,
   formatDuration,
   hexDistance,
+  journeyMph,
   minutesPerHex,
+  resolveTravelMode,
+  travelModes,
 } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
@@ -225,8 +229,10 @@ export function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }
   const state = useSession((s) => s.state);
   const map = activeMap(state);
   const drafting = draft?.tokenId === token.id;
-  const mph = token.mph ?? retinue?.mph ?? DEFAULT_NPC_MPH;
-  const perHex = map ? minutesPerHex(map.milesPerHex, mph) : 0;
+  const custom = state?.campaign.settings.customTravelModes ?? [];
+  const mode = resolveTravelMode(token.travelMode ?? retinue?.travelMode ?? 'foot', custom);
+  const pace: TravelPace = token.pace ?? retinue?.pace ?? 'normal';
+  const perHex = map ? minutesPerHex(map.milesPerHex, journeyMph(mode, pace)) : 0;
   const routeMinutes = token.route.length
     ? Math.max(0, token.route.length * perHex - token.travelCredit)
     : 0;
@@ -319,28 +325,17 @@ export function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }
               {routeMinutes > 0 && ` · ≈ ${routeDays >= 1 ? `${routeDays.toFixed(1)} days` : formatDuration(routeMinutes)}`}
             </span>
           )}
-          {retinue && (
-            <label className="inline-flex items-center gap-1 whitespace-nowrap">
-              <span>Speed</span>
-              <input
-                type="number"
-                min={0.1}
-                max={500}
-                step={0.5}
-                className="w-12 bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100"
-                value={token.mph ?? ''}
-                placeholder={String(retinue.mph ?? DEFAULT_NPC_MPH)}
-                title="Travel speed in miles per hour (blank = the retinue's default)"
-                onChange={(e) => {
-                  const v = e.target.value === '' ? null : Number(e.target.value);
-                  if (v === null || (Number.isFinite(v) && v > 0)) {
-                    send({ kind: 'token.update', tokenId: token.id, patch: { mph: v } });
-                  }
-                }}
-              />
-              <span>mph</span>
-            </label>
-          )}
+          <TravelPicker
+            mode={token.travelMode}
+            pace={token.pace}
+            inheritLabel={
+              retinue
+                ? `${resolveTravelMode(retinue.travelMode ?? 'foot', custom).label}, ${PACE_LABEL[retinue.pace ?? 'normal']} (retinue)`
+                : 'On foot, Normal'
+            }
+            custom={custom}
+            onChange={(patch) => send({ kind: 'token.update', tokenId: token.id, patch })}
+          />
           {retinue && (
             <button
               className="cursor-pointer hover:text-brass-300"
@@ -498,6 +493,7 @@ function RetinueRow({
   onRemove: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const custom = useSession((s) => s.state?.campaign.settings.customTravelModes ?? []);
   return (
     <div className="bg-ink-850 border border-ink-700 rounded-md px-2 py-1.5">
       <div className="flex items-center gap-2">
@@ -506,7 +502,7 @@ function RetinueRow({
           <p className="text-sm text-ink-100 truncate">{retinue.name}</p>
           <p className="text-[0.6875rem] text-ink-400 truncate">
             {[retinue.holder, retinue.faction].filter(Boolean).join(' · ')}
-            {` · ${retinue.mph ?? DEFAULT_NPC_MPH} mph`}
+            {` · ${resolveTravelMode(retinue.travelMode ?? 'foot', custom).label}, ${PACE_LABEL[retinue.pace ?? 'normal']}`}
           </p>
         </div>
         <input
@@ -534,18 +530,13 @@ function RetinueRow({
           <Field label="Faction">
             <Input value={retinue.faction} maxLength={60} onChange={(e) => onChange({ faction: e.target.value })} />
           </Field>
-          <Field label="Speed (mph)">
-            <Input
-              type="number"
-              min={0.1}
-              max={500}
-              step={0.5}
-              value={retinue.mph ?? ''}
-              placeholder={String(DEFAULT_NPC_MPH)}
-              onChange={(e) => {
-                const v = e.target.value === '' ? null : Number(e.target.value);
-                if (v === null || (Number.isFinite(v) && v > 0)) onChange({ mph: v });
-              }}
+          <Field label="Travel" className="col-span-2">
+            <TravelPicker
+              mode={retinue.travelMode}
+              pace={retinue.pace}
+              inheritLabel="On foot, Normal"
+              custom={custom}
+              onChange={onChange}
             />
           </Field>
           <Field label="Crest" className="col-span-2">
@@ -592,13 +583,14 @@ function RetinueForm({
   const [faction, setFaction] = useState('');
   const [color, setColor] = useState('#b08d57');
   const [icon, setIcon] = useState('crests/eagle');
-  const [mph, setMph] = useState('3');
+  const [travelMode, setTravelMode] = useState<string | null>(null);
+  const [pace, setPace] = useState<TravelPace | null>(null);
+  const custom = useSession((s) => s.state?.campaign.settings.customTravelModes ?? []);
   const canSave = name.trim().length > 0;
   const submit = () => {
     if (!canSave) return;
     let id = slugify(name) || 'retinue';
     while (existing.some((r) => r.id === id)) id = `${id}-${Math.floor(Math.random() * 1000)}`;
-    const speed = Number(mph);
     onSave({
       id,
       name: name.trim(),
@@ -607,7 +599,8 @@ function RetinueForm({
       color,
       icon,
       glyph: '',
-      mph: Number.isFinite(speed) && speed > 0 ? speed : null,
+      travelMode,
+      pace,
       wikiPage: name.trim(),
     });
   };
@@ -625,8 +618,17 @@ function RetinueForm({
       <Field label="Colour">
         <input type="color" className="w-full h-8 rounded cursor-pointer bg-transparent border border-ink-600" value={color} onChange={(e) => setColor(e.target.value)} />
       </Field>
-      <Field label="Speed (mph)">
-        <Input type="number" min={0.1} max={500} step={0.5} value={mph} onChange={(e) => setMph(e.target.value)} />
+      <Field label="Travel" className="col-span-2">
+        <TravelPicker
+          mode={travelMode}
+          pace={pace}
+          inheritLabel="On foot, Normal"
+          custom={custom}
+          onChange={(patch) => {
+            if (patch.travelMode !== undefined) setTravelMode(patch.travelMode);
+            if (patch.pace !== undefined) setPace(patch.pace);
+          }}
+        />
       </Field>
       <Field label="Crest" className="col-span-2">
         <div className="flex items-center gap-2">
@@ -650,5 +652,124 @@ function RetinueForm({
         </Button>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Travel mode + pace picker (tokens and retinues)
+// ---------------------------------------------------------------------------
+
+/**
+ * Mode (built-in or campaign custom, or inherit) and pace (or inherit).
+ * "Custom…" opens a small form that adds a campaign travel mode — defined
+ * once, reusable by every mover and by the party clock.
+ */
+function TravelPicker({
+  mode,
+  pace,
+  inheritLabel,
+  custom,
+  onChange,
+}: {
+  mode: string | null;
+  pace: TravelPace | null;
+  /** What "inherit" resolves to, shown in the option. */
+  inheritLabel: string;
+  custom: CustomTravelMode[];
+  onChange: (patch: { travelMode?: string | null; pace?: TravelPace | null }) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [cName, setCName] = useState('');
+  const [cMph, setCMph] = useState('5');
+  const [cMedium, setCMedium] = useState<CustomTravelMode['medium']>('land');
+  const modes = travelModes(custom);
+  const addCustom = () => {
+    const mph = Number(cMph);
+    if (!cName.trim() || !Number.isFinite(mph) || mph <= 0) return;
+    let id = cName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'custom';
+    while (modes.some((m) => m.id === id)) id = `${id}-${Math.floor(Math.random() * 100)}`;
+    send({
+      kind: 'campaign.update',
+      settings: { customTravelModes: [...custom, { id, name: cName.trim(), mph, medium: cMedium }] },
+    });
+    onChange({ travelMode: id });
+    setAdding(false);
+    setCName('');
+  };
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <select
+        className="bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100 cursor-pointer"
+        value={adding ? '__custom' : (mode ?? '')}
+        title="Travel mode: decides speed and what terrain the route may cross"
+        onChange={(e) => {
+          if (e.target.value === '__custom') setAdding(true);
+          else {
+            setAdding(false);
+            onChange({ travelMode: e.target.value || null });
+          }
+        }}
+      >
+        <option value="">Inherit ({inheritLabel})</option>
+        {modes.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label} · {m.mph} mph
+          </option>
+        ))}
+        <option value="__custom">Custom…</option>
+      </select>
+      <select
+        className="bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100 cursor-pointer"
+        value={pace ?? ''}
+        title="Pace: fast ×4/3, normal, careful ×2/3"
+        onChange={(e) => onChange({ pace: (e.target.value || null) as TravelPace | null })}
+      >
+        <option value="">Inherit pace</option>
+        {TRAVEL_PACES.map((p) => (
+          <option key={p} value={p}>
+            {PACE_LABEL[p]}
+          </option>
+        ))}
+      </select>
+      {adding && (
+        <span className="inline-flex items-center gap-1 w-full mt-1">
+          <input
+            className="flex-1 min-w-0 bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100"
+            placeholder="Mode name (Griffon)"
+            maxLength={60}
+            value={cName}
+            onChange={(e) => setCName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addCustom()}
+          />
+          <input
+            type="number"
+            min={0.1}
+            max={500}
+            step={0.5}
+            className="w-12 bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100"
+            value={cMph}
+            title="Miles per hour at normal pace"
+            onChange={(e) => setCMph(e.target.value)}
+          />
+          <span>mph</span>
+          <select
+            className="bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100 cursor-pointer"
+            value={cMedium}
+            title="Land cannot cross water; water only water and coast; air anything"
+            onChange={(e) => setCMedium(e.target.value as CustomTravelMode['medium'])}
+          >
+            <option value="land">Land</option>
+            <option value="water">Water</option>
+            <option value="air">Air</option>
+          </select>
+          <Button size="sm" variant="primary" onClick={addCustom} disabled={!cName.trim()}>
+            Add
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+            ✕
+          </Button>
+        </span>
+      )}
+    </span>
   );
 }

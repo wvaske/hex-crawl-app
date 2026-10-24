@@ -894,7 +894,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     glyph: z.string().max(8).optional(),
     icon: z.string().max(120).optional(),
     retinueId: z.string().nullable().optional(),
-    mph: z.number().min(0.1).max(500).nullable().optional(),
+    travelMode: z.string().max(40).nullable().optional(),
+    pace: z.enum(['fast', 'normal', 'careful']).nullable().optional(),
     playerVisible: z.boolean().optional(),
     visibleThroughFog: z.boolean().optional(),
     note: z.string().max(300).optional(),
@@ -965,7 +966,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       playerVisible: input.playerVisible ?? existing?.playerVisible ?? true,
       partyId: existing?.partyId ?? null,
       retinueId: input.retinueId !== undefined ? input.retinueId : (existing?.retinueId ?? null),
-      mph: input.mph !== undefined ? input.mph : (existing?.mph ?? null),
+      travelMode: input.travelMode !== undefined ? input.travelMode : (existing?.travelMode ?? null),
+      pace: input.pace !== undefined ? input.pace : (existing?.pace ?? null),
       visibleThroughFog: input.visibleThroughFog ?? existing?.visibleThroughFog ?? Boolean(retinue),
       note: input.note ?? existing?.note ?? '',
       route: existing?.route ?? [],
@@ -984,7 +986,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
         const dest = typeof stop === 'string' ? place(stop) : stop;
         if (!dest) return c.json({ error: `No content titled "${String(stop)}" on that map` }, 404);
         if (dest.q === cur.q && dest.r === cur.r) continue;
-        route.push(...planRoute(runtime, map, cur, [dest]));
+        route.push(...planRoute(runtime, map, { ...token, q: cur.q, r: cur.r }, [dest]));
         cur = dest;
       }
       token.route = route;
@@ -1007,6 +1009,8 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       dmNotes: z.string().max(10000).default(''),
       gate: GateSchema.default({ kind: 'auto' }),
       cells: z.array(z.object({ q: z.number().int(), r: z.number().int() })).min(2),
+      /** `road` makes it a travel way the router prefers (and players see on known ground). */
+      kind: z.enum(['tracks', 'road']).default('tracks'),
     });
     const body = schema.safeParse(await c.req.json().catch(() => null));
     if (!body.success)

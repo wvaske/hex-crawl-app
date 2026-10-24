@@ -72,8 +72,12 @@ export function filterStateForViewer(full: CampaignState, viewer: Viewer): Campa
             .map((c) => contentPlayerView(c, viewer.characterId, full))
             .filter((v): v is ContentPlayerView => v !== null),
           pendingMoves: mapState.pendingMoves,
-          // Trail definitions never reach players; only discovered signs do.
-          trails: [],
+          // Track definitions never reach players (only discovered signs do),
+          // but a road is terrain: players get the stretch on hexes they know.
+          trails: mapState.trails
+            .filter((t) => t.kind === 'road')
+            .map((t) => ({ ...t, dmNotes: '', cells: t.cells.filter((c) => fogAt(c.q, c.r) !== 'hidden') }))
+            .filter((t) => t.cells.length > 0),
           trailSigns: computeTrailSigns(full, viewer.characterId),
           // The party's own travel history (#66): where they've been, when
           // they last arrived, and how long they lingered — no DM-only data
@@ -171,7 +175,7 @@ function computeTrailSigns(full: CampaignState, characterId: string | null): Tra
     full.maps.find((m) => m.id === full.campaign.activeMapId)?.orientation ?? 'flat';
   const mine = full.trailDiscoveries.filter((d) => d.characterId === characterId);
   if (mine.length === 0) return [];
-  const trails = new Map(mapState.trails.map((t) => [t.id, t]));
+  const trails = new Map(mapState.trails.filter((t) => t.kind !== 'road').map((t) => [t.id, t]));
 
   const signs: TrailSign[] = [];
   const seen = new Set<string>();
