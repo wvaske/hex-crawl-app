@@ -1,5 +1,7 @@
-import type { HexCoord, MapInfo, Retinue, Token, TravelPace } from '@hexcrawl/shared';
+import type { Content, HexCoord, MapInfo, Retinue, Token, Trail, TrailDiscovery, TravelPace } from '@hexcrawl/shared';
+import { nanoid } from 'nanoid';
 import {
+  MINUTES_PER_DAY,
   hexKey,
   journeyMph,
   minutesPerHex,
@@ -42,6 +44,29 @@ export interface TravellerMove {
   looped: boolean;
   /** Encounter rolls made along the way (every `encounterEveryMiles`). */
   encounters: { q: number; r: number; result: EncounterResult }[];
+  /** Its tracks trail before this tick (null: none existed — undo deletes it). */
+  trailBefore: Trail | null;
+  /** Whether tracks were laid this tick (so undo knows to touch the trail). */
+  laidTracks: boolean;
+  /** The attached presence content before it followed the mover. */
+  contentBefore: Content | null;
+}
+
+/** A tracks trail before expired cells were pruned, with the finds on it. */
+export interface TrackPrune {
+  trail: Trail;
+  discoveries: TrailDiscovery[];
+}
+
+/** Everything one clock advance did to movers, for one undo entry. */
+export interface TravellerTick {
+  moves: TravellerMove[];
+  prunes: TrackPrune[];
+}
+
+/** The id of the tracks trail a mover lays. */
+export function tracksTrailId(tokenId: string): string {
+  return `tracks:${tokenId}`;
 }
 
 export function retinueOf(runtime: CampaignRuntime, token: Token): Retinue | null {
@@ -99,6 +124,17 @@ export function advanceTravellers(
       const routeBefore = token.route.map((h) => ({ q: h.q, r: h.r }));
       const creditBefore = token.travelCredit;
       const encounterMilesBefore = token.encounterMiles;
+      const existingTrail = rt.trails.get(tracksTrailId(token.id)) ?? null;
+      const trailBefore = existingTrail ? structuredClone(existingTrail) : null;
+      const contentBefore = token.contentId
+        ? structuredClone(rt.contents.get(token.contentId) ?? null)
+        : null;
+      const laid: { q: number; r: number; at: number }[] = [];
+      // Clock minute a step lands on: window-minutes consumed, scaled onto
+      // the real clock span (the window may be a fraction of the advance).
+      const span = toMinutes - fromMinutes;
+      const stamp = (left: number) =>
+        Math.round(fromMinutes + ((creditBefore + banked - left) / (creditBefore + banked)) * span);
       let credit = creditBefore + banked;
       let cur: HexCoord = { q: token.q, r: token.r };
       let remaining = [...routeBefore];
@@ -114,6 +150,7 @@ export function advanceTravellers(
         cur = next;
         remaining.shift();
         stepped++;
+        if (token.layTracks) laid.push({ q: cur.q, r: cur.r, at: stamp(credit) });
         // Wandering-encounter cadence by distance: roll on the terrain table
         // of the hex entered every N miles. The mover is not halted — the DM
         // reads the log and decides what, if anything, it meets.
@@ -155,6 +192,37 @@ export function advanceTravellers(
         travelCredit: arrived ? 0 : credit,
         encounterMiles: miles,
       });
+      // Tracks: the trail grows by the hexes walked this tick. A new trail
+      // starts from where the mover stood, so the first sign already points
+      // onward. The gate and fade follow the token's current settings.
+      if (laid.length) {
+        const cells = existingTrail
+          ? [...existingTrail.cells, ...laid]
+          : [{ q: token.q, r: token.r, at: fromMinutes }, ...laid];
+        runtime.upsertTrail({
+          id: tracksTrailId(token.id),
+          mapId,
+          name: `${token.label || 'A traveller'}'s tracks`,
+          glyph: existingTrail?.glyph ?? '👣',
+          dmNotes: existingTrail?.dmNotes ?? '',
+          gate: token.tracksGate,
+          cells,
+          kind: 'tracks',
+          fade: { dcPerDay: token.tracksDcPerDay, expireDays: token.tracksExpireDays },
+          moverId: token.id,
+        });
+      }
+      // Presence: the attached content (and its footprint) rides along.
+      if (contentBefore && stepped > 0) {
+        const dq = cur.q - token.q;
+        const dr = cur.r - token.r;
+        runtime.upsertContent({
+          ...contentBefore,
+          q: cur.q,
+          r: cur.r,
+          area: contentBefore.area.map((h) => ({ q: h.q + dq, r: h.r + dr })),
+        });
+      }
       if (stepped > 0) {
         moves.push({
           tokenId: token.id,
@@ -168,6 +236,9 @@ export function advanceTravellers(
           arrived,
           looped,
           encounters,
+          trailBefore,
+          laidTracks: laid.length > 0,
+          contentBefore,
         });
       }
     }
@@ -175,17 +246,69 @@ export function advanceTravellers(
   return moves;
 }
 
-/** Put travellers back where an advance found them (undo). */
-export function restoreTravellers(runtime: CampaignRuntime, moves: TravellerMove[]): void {
-  for (const m of moves) {
-    if (!runtime.findToken(m.tokenId)) continue;
-    runtime.updateToken(m.mapId, m.tokenId, {
-      q: m.from.q,
-      r: m.from.r,
-      route: m.routeBefore,
-      travelCredit: m.creditBefore,
-      encounterMiles: m.encounterMilesBefore,
-    });
+/**
+ * Drop tracks older than their trail's `expireDays`. Tracks are appended in
+ * walking order, so the expired cells are a prefix; the finds on the trail
+ * are re-indexed to match (and finds on dropped cells are gone with them).
+ * Returns what was pruned, for undo.
+ */
+export function pruneTracks(runtime: CampaignRuntime, nowMinutes: number): TrackPrune[] {
+  const prunes: TrackPrune[] = [];
+  for (const [mapId, rt] of runtime.mapStates) {
+    for (const trail of [...rt.trails.values()]) {
+      if (!trail.fade || trail.kind !== 'tracks') continue;
+      const horizon = nowMinutes - trail.fade.expireDays * MINUTES_PER_DAY;
+      let drop = 0;
+      while (drop < trail.cells.length) {
+        const at = trail.cells[drop]!.at;
+        if (at !== undefined && at < horizon) drop++;
+        else break;
+      }
+      if (drop === 0) continue;
+      const discoveries = [...runtime.trailDiscoveries.values()].filter((d) => d.trailId === trail.id);
+      prunes.push({ trail: structuredClone(trail), discoveries: structuredClone(discoveries) });
+      for (const d of discoveries) runtime.deleteTrailDiscovery(d.id);
+      if (drop >= trail.cells.length) {
+        runtime.deleteTrail(mapId, trail.id);
+        continue;
+      }
+      runtime.upsertTrail({ ...trail, cells: trail.cells.slice(drop) });
+      for (const d of discoveries) {
+        if (d.cellIndex < drop) continue;
+        runtime.addTrailDiscovery({ ...d, id: nanoid(12), cellIndex: d.cellIndex - drop });
+      }
+    }
+  }
+  return prunes;
+}
+
+/** Put travellers, their tracks and their presence back where an advance found them (undo). */
+export function restoreTravellers(runtime: CampaignRuntime, tick: TravellerTick): void {
+  for (const m of tick.moves) {
+    if (runtime.findToken(m.tokenId)) {
+      runtime.updateToken(m.mapId, m.tokenId, {
+        q: m.from.q,
+        r: m.from.r,
+        route: m.routeBefore,
+        travelCredit: m.creditBefore,
+        encounterMiles: m.encounterMilesBefore,
+      });
+    }
+    if (m.laidTracks) {
+      const id = tracksTrailId(m.tokenId);
+      if (m.trailBefore) runtime.upsertTrail(m.trailBefore);
+      else if (runtime.findTrail(id)) runtime.deleteTrail(m.mapId, id);
+    }
+    if (m.contentBefore && runtime.mapStates.get(m.mapId)?.contents.has(m.contentBefore.id)) {
+      runtime.upsertContent(m.contentBefore);
+    }
+  }
+  for (const p of tick.prunes) {
+    runtime.upsertTrail(p.trail);
+    for (const d of [...runtime.trailDiscoveries.values()]) {
+      if (d.trailId === p.trail.id) runtime.deleteTrailDiscovery(d.id);
+    }
+    for (const d of p.discoveries) runtime.addTrailDiscovery(d);
   }
 }
 

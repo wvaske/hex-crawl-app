@@ -61,9 +61,10 @@ import { rerollWeatherForNewDay, setWeather, weatherLogText } from '../engine/we
 import {
   advanceTravellers,
   planRoute,
+  pruneTracks,
   restoreTravellers,
   retinueOf,
-  type TravellerMove,
+  type TravellerTick,
 } from '../engine/travellers.js';
 import { startConnector, stopConnector } from '../engine/ddbGameLog.js';
 import { DDB_GAMELOG } from '../config.js';
@@ -363,6 +364,11 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
       loop: false,
       encounterEveryMiles: null,
       encounterMiles: 0,
+      layTracks: false,
+      tracksGate: { kind: 'auto' },
+      tracksDcPerDay: 2,
+      tracksExpireDays: 7,
+      contentId: null,
     };
     // A retinue member wears its cell's colours unless told otherwise.
     const retinue = retinueOf(ctx.runtime, token);
@@ -984,7 +990,14 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
 
   'trail.upsert': ((cmd: Extract<ClientCommand, { kind: 'trail.upsert' }>, ctx: Ctx) => {
     requireDm(ctx);
-    const trail = { ...cmd.trail, id: cmd.trail.id ?? nanoid(10), kind: cmd.trail.kind ?? 'tracks' };
+    const prior = cmd.trail.id ? ctx.runtime.findTrail(cmd.trail.id) : null;
+    const trail = {
+      ...cmd.trail,
+      id: cmd.trail.id ?? nanoid(10),
+      kind: cmd.trail.kind ?? 'tracks',
+      fade: prior?.fade ?? null,
+      moverId: prior?.moverId ?? null,
+    };
     if (!ctx.runtime.maps.has(trail.mapId)) throw new Error('Map not found');
     ctx.runtime.upsertTrail(trail);
     deliverTrailFinds(ctx, evaluateTrails(ctx.runtime, trail.mapId));
@@ -1471,17 +1484,24 @@ export const handlers: Record<ClientCommand['kind'], Handler> = {
     // Travellers on a route keep walking while the clock runs. Their move is
     // undoable together with the time it took.
     const logBefore = new Set(ctx.runtime.log.map((e) => e.id));
-    const moves = runTravellers(ctx, before, time.minutes);
-    if (moves.length) {
+    const discoveriesBefore = new Set(ctx.runtime.discoveries.keys());
+    const trailFindsBefore = new Set(ctx.runtime.trailDiscoveries.keys());
+    const tick = runTravellers(ctx, before, time.minutes);
+    if (tick.moves.length || tick.prunes.length) {
       const newLog = ctx.runtime.log.filter((e) => !logBefore.has(e.id)).map((e) => e.id);
+      const newDiscoveries = [...ctx.runtime.discoveries.keys()].filter((id) => !discoveriesBefore.has(id));
+      const newTrailFinds = [...ctx.runtime.trailDiscoveries.keys()].filter((id) => !trailFindsBefore.has(id));
       const timeBefore = before;
+      const n = tick.moves.length;
       ctx.runtime.pushUndo({
         at: Date.now(),
         kind: 'time.advance',
-        description: `rewind ${formatDuration(cmd.minutes)} and move ${moves.length} traveller${moves.length === 1 ? '' : 's'} back`,
+        description: `rewind ${formatDuration(cmd.minutes)} and move ${n} traveller${n === 1 ? '' : 's'} back`,
         run: (rt) => {
           rt.setTime(timeBefore);
-          restoreTravellers(rt, moves);
+          for (const id of newDiscoveries) rt.revokeDiscovery(id);
+          for (const id of newTrailFinds) rt.deleteTrailDiscovery(id);
+          restoreTravellers(rt, tick);
           rt.deleteLogEntries(newLog);
         },
       });
@@ -1628,8 +1648,9 @@ function logDailyWeather(ctx: Ctx, beforeMinutes: number): void {
  * Move every routed NPC for a clock advance and log the arrivals (DM only:
  * the DM decides what the party hears of a courier reaching a city).
  */
-function runTravellers(ctx: Ctx, beforeMinutes: number, afterMinutes: number): TravellerMove[] {
+function runTravellers(ctx: Ctx, beforeMinutes: number, afterMinutes: number): TravellerTick {
   const moves = advanceTravellers(ctx.runtime, beforeMinutes, afterMinutes, ctx.rng);
+  const prunes = pruneTracks(ctx.runtime, afterMinutes);
   for (const m of moves) {
     for (const enc of m.encounters) {
       const e = ctx.runtime.appendLog(
@@ -1669,7 +1690,14 @@ function runTravellers(ctx: Ctx, beforeMinutes: number, afterMinutes: number): T
     });
     notifyLog(ctx, entry);
   }
-  return moves;
+  // A mover that came closer (or its presence content, or fresh tracks) can
+  // open gates for a party that never moved: re-run both engines for every
+  // map something moved on.
+  for (const mapId of new Set(moves.map((m) => m.mapId))) {
+    deliverDiscoveries(ctx, evaluateKnowledge(ctx.runtime, mapId));
+    deliverTrailFinds(ctx, evaluateTrails(ctx.runtime, mapId));
+  }
+  return { moves, prunes };
 }
 
 function hexLocationLabel(
@@ -2179,7 +2207,7 @@ function performTravel(
 
   // -- 3. the clock ----------------------------------------------------------
   let minutes = 0;
-  let travellerMoves: TravellerMove[] = [];
+  let travellerTick: TravellerTick = { moves: [], prunes: [] };
   if (isParty) {
     const time = runtime.campaign.time;
     const mode = resolveTravelMode(time.travelMode, runtime.campaign.settings.customTravelModes);
@@ -2195,7 +2223,7 @@ function performTravel(
     // Travel that crosses midnight brings a new day's weather with it (#79).
     logDailyWeather(ctx, before);
     // The player tick: NPCs on a route cover the same stretch of clock.
-    travellerMoves = runTravellers(ctx, before, arrivedMinutes);
+    travellerTick = runTravellers(ctx, before, arrivedMinutes);
   }
 
   // -- 4. the travel line ----------------------------------------------------
@@ -2263,7 +2291,7 @@ function performTravel(
       `move ${label} back to ${from.q},${from.r}` +
       (details.length ? ` (${details.join(', ')})` : ''),
     run: (rt) => {
-      restoreTravellers(rt, travellerMoves);
+      restoreTravellers(rt, travellerTick);
       for (const p of prior) {
         if (rt.findToken(p.id)) {
           rt.updateToken(mapId, p.id, {

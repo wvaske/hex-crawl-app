@@ -5,6 +5,7 @@ import {
   computeSessions,
   contentCells,
   isFullContent,
+  formatRelativeGameTime,
   recapHighlights,
   type ContentPlayerView,
 } from '@hexcrawl/shared';
@@ -26,15 +27,23 @@ export function JournalTab() {
   // scanning the map.
   const partyNotes = (state.mapState?.markers ?? []).filter((m) => m.playerPlaced);
   const trailSigns = state.mapState?.trailSigns ?? [];
-  const trails: { trailId: string; glyph: string; cells: { q: number; r: number }[] }[] = [];
+  const trails: {
+    trailId: string;
+    glyph: string;
+    cells: { q: number; r: number }[];
+    /** Freshest sign's clock time (tracks laid by a mover); null for hand-drawn trails. */
+    newest: number | null;
+  }[] = [];
   for (const s of trailSigns) {
     let entry = trails.find((t) => t.trailId === s.trailId);
     if (!entry) {
-      entry = { trailId: s.trailId, glyph: s.glyph, cells: [] };
+      entry = { trailId: s.trailId, glyph: s.glyph, cells: [], newest: null };
       trails.push(entry);
     }
     entry.cells.push({ q: s.q, r: s.r });
+    if (s.at !== null && (entry.newest === null || s.at > entry.newest)) entry.newest = s.at;
   }
+  const clock = state.campaign.time.minutes;
 
   return (
     <div>
@@ -92,7 +101,7 @@ export function JournalTab() {
         )}
         <div className="space-y-2">
           {trails.map((t) => (
-            <TrackRow key={t.trailId} trail={t} />
+            <TrackRow key={t.trailId} trail={t} clock={clock} />
           ))}
         </div>
       </Section>
@@ -206,8 +215,10 @@ function PreviouslyOnCard() {
  */
 function TrackRow({
   trail,
+  clock,
 }: {
-  trail: { trailId: string; glyph: string; cells: { q: number; r: number }[] };
+  trail: { trailId: string; glyph: string; cells: { q: number; r: number }[]; newest: number | null };
+  clock: number;
 }) {
   const highlighted = useUi((u) => u.trailHighlight?.trailId === trail.trailId);
   const toggle = () => {
@@ -233,6 +244,9 @@ function TrackRow({
         <span>{trail.glyph}</span>
         <span className="text-sm font-medium text-ink-100 flex-1">
           {trail.cells.length} place{trail.cells.length === 1 ? '' : 's'} spotted
+          {trail.newest !== null && (
+            <span className="text-ink-400 font-normal"> · freshest {formatRelativeGameTime(trail.newest, clock)}</span>
+          )}
         </span>
       </div>
       {highlighted && (

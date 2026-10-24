@@ -58,8 +58,8 @@ describe('journey planner', () => {
 
   it('indexes only road trails and knows every built-in mode\'s medium', () => {
     const idx = roadIndex([
-      { id: 'a', mapId: 'm', name: 'r', glyph: '', dmNotes: '', gate: { kind: 'auto' }, cells: [{ q: 0, r: 0 }, { q: 1, r: 0 }], kind: 'road' },
-      { id: 'b', mapId: 'm', name: 't', glyph: '', dmNotes: '', gate: { kind: 'auto' }, cells: [{ q: 5, r: 5 }, { q: 6, r: 5 }], kind: 'tracks' },
+      { id: 'a', mapId: 'm', name: 'r', glyph: '', dmNotes: '', gate: { kind: 'auto' }, cells: [{ q: 0, r: 0 }, { q: 1, r: 0 }], kind: 'road', fade: null, moverId: null },
+      { id: 'b', mapId: 'm', name: 't', glyph: '', dmNotes: '', gate: { kind: 'auto' }, cells: [{ q: 5, r: 5 }, { q: 6, r: 5 }], kind: 'tracks', fade: null, moverId: null },
     ]);
     expect([...idx].sort()).toEqual(['0,0', '1,0']);
     expect(TRAVEL_MODES.find((m) => m.id === 'ship')!.medium).toBe('water');

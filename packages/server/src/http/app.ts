@@ -900,6 +900,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
     visibleThroughFog: z.boolean().optional(),
     note: z.string().max(300).optional(),
     loop: z.boolean().optional(),
+    layTracks: z.boolean().optional(),
     encounterEveryMiles: z.number().min(0.1).max(10000).nullable().optional(),
     /**
      * Journey to plan: hex coordinates or content titles, walked in order with
@@ -981,6 +982,11 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
           ? input.encounterEveryMiles
           : (existing?.encounterEveryMiles ?? null),
       encounterMiles: existing?.encounterMiles ?? 0,
+      layTracks: input.layTracks ?? existing?.layTracks ?? false,
+      tracksGate: existing?.tracksGate ?? { kind: 'auto' },
+      tracksDcPerDay: existing?.tracksDcPerDay ?? 2,
+      tracksExpireDays: existing?.tracksExpireDays ?? 7,
+      contentId: existing?.contentId ?? null,
     };
     // A re-placed token starts fresh: its old journey no longer applies.
     const moved = existing && (existing.q !== q || existing.r !== r);
@@ -1034,7 +1040,7 @@ export function createApp(store: Store, hub: Hub, security: SecurityOptions = {}
       (t) => t.name.toLowerCase() === input.name.toLowerCase(),
     );
     const id = existing?.id ?? nanoid(10);
-    runtime.upsertTrail({ ...input, id });
+    runtime.upsertTrail({ ...input, id, fade: existing?.fade ?? null, moverId: existing?.moverId ?? null });
     evaluateTrails(runtime, input.mapId);
     hub.scheduleSync(runtime);
     return c.json({ trailId: id, cells: input.cells.length, updated: Boolean(existing) });

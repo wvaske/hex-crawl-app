@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
-import type { Trail } from '@hexcrawl/shared';
-import { compassDirection, gateOpensPassively, hexDistance } from '@hexcrawl/shared';
+import type { Gate, Trail } from '@hexcrawl/shared';
+import { MINUTES_PER_DAY, compassDirection, gateOpensPassively, hexDistance } from '@hexcrawl/shared';
 import type { CampaignRuntime } from '../state/runtime.js';
 
 export interface TrailFind {
@@ -29,6 +29,18 @@ export function trailBearings(
 }
 
 /**
+ * Tracks fade: a skill gate's DC climbs by `fade.dcPerDay` for every full
+ * day since the cell was made. Hand-drawn trails (no fade) and obvious
+ * tracks (auto gates) are unchanged.
+ */
+export function agedGate(trail: Trail, cell: Trail['cells'][number], nowMinutes: number): Gate {
+  if (!trail.fade || cell.at === undefined || trail.gate.kind !== 'skill') return trail.gate;
+  const days = Math.max(0, Math.floor((nowMinutes - cell.at) / MINUTES_PER_DAY));
+  if (days === 0) return trail.gate;
+  return { ...trail.gate, dc: Math.min(40, trail.gate.dc + days * trail.fade.dcPerDay) };
+}
+
+/**
  * Evaluate trail gates for characters on a map: any trail cell within the
  * gate's reach of a PC becomes known to that character (passive/auto gates
  * only — active gates open via hex searches). Returns the new finds.
@@ -49,6 +61,7 @@ export function evaluateTrails(
     }
   }
 
+  const now = runtime.campaign.time.minutes;
   const finds: TrailFind[] = [];
   for (const [characterId, pos] of positions) {
     if (characterIds && !characterIds.includes(characterId)) continue;
@@ -60,7 +73,7 @@ export function evaluateTrails(
         if (runtime.hasTrailDiscovery(trail.id, i, characterId)) continue;
         const cell = trail.cells[i]!;
         const distance = hexDistance(pos, cell);
-        if (!gateOpensPassively(trail.gate, character, distance).opens) continue;
+        if (!gateOpensPassively(agedGate(trail, cell, now), character, distance).opens) continue;
         if (
           runtime.addTrailDiscovery({
             id: nanoid(12),
