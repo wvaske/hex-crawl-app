@@ -354,6 +354,10 @@ export class CanvasEngine {
           u.movingContentId || u.movingTokenId || u.routeDraft ? 'crosshair' : 'default';
       }
       if (u.routeDraft !== prev.routeDraft) this.drawRoutes();
+      if (u.focusRequest && u.focusRequest !== prev.focusRequest) {
+        this.centerOnHex(u.focusRequest);
+        useUi.getState().set('focusRequest', null);
+      }
       if (u.scaleLock !== prev.scaleLock) {
         this.updateScaleLevel();
       }
@@ -2022,8 +2026,8 @@ export class CanvasEngine {
       if (!this.canMove(view.token)) {
         // Still allow selecting it.
         e.stopPropagation();
+        useUi.getState().selectHex({ q: view.token.q, r: view.token.r });
         useUi.getState().set('selectedTokenId', view.token.id);
-        useUi.getState().set('selectedHex', { q: view.token.q, r: view.token.r });
         return;
       }
       e.stopPropagation();
@@ -2467,8 +2471,13 @@ export class CanvasEngine {
 
   private endTokenDrag(): void {
     if (this.drag && !this.drag.active) {
-      // A tap: the token is selected (done on pointerdown), nothing moves.
+      // A tap: select the token and open its hex in the Information panel;
+      // nothing moves.
+      const token = this.drag.view.token;
       this.cancelTokenDrag();
+      const ui = useUi.getState();
+      ui.selectHex({ q: token.q, r: token.r });
+      ui.set('selectedTokenId', token.id);
       return;
     }
     const drag = this.drag;
@@ -2635,8 +2644,13 @@ export class CanvasEngine {
   }
 
   private centerOnToken(token: Token): void {
+    this.centerOnHex(token);
+  }
+
+  /** Pan and zoom to a hex at a playable scale (sidebar "jump to" rows). */
+  centerOnHex(hex: HexCoord): void {
     if (!this.layout) return;
-    const p = hexToPixel(this.layout, token);
+    const p = hexToPixel(this.layout, hex);
     const selectedScale = useUi.getState().scaleLock;
     const level = selectedScale === 'auto' ? 0 : selectedScale;
     // The selected hex spans 120px. Auto deliberately starts at the finest
