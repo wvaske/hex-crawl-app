@@ -1,8 +1,25 @@
-import type { Content, HexCoord, MapInfo, Retinue, Token, Trail, TrailDiscovery, TravelPace } from '@hexcrawl/shared';
+import type {
+  Character,
+  Content,
+  HexCoord,
+  JournalEntry,
+  MapInfo,
+  Retinue,
+  Token,
+  Trail,
+  TrailDiscovery,
+  TravelPace,
+} from '@hexcrawl/shared';
 import { nanoid } from 'nanoid';
 import {
+  CORE_SKILLS,
   MINUTES_PER_DAY,
+  clueInRange,
+  compassDirection,
+  distanceToContent,
+  gateOpensPassively,
   hexKey,
+  nearestContentCell,
   journeyMph,
   minutesPerHex,
   planJourney,
@@ -50,6 +67,69 @@ export interface TravellerMove {
   laidTracks: boolean;
   /** The attached presence content before it followed the mover. */
   contentBefore: Content | null;
+  /** The journal before this tick (observation appends to it). */
+  journalBefore: JournalEntry[];
+}
+
+/** A stand-in character whose every passive score is the mover's observation. */
+function observer(observation: number): Character {
+  return {
+    id: 'observer',
+    name: 'observer',
+    color: '#000000',
+    glyph: '',
+    speed: 30,
+    skills: Object.fromEntries(CORE_SKILLS.map((sk) => [sk, observation - 10])),
+    proficiencies: [],
+    ddbId: null,
+    extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' },
+  };
+}
+
+/**
+ * What a mover standing on `pos` would notice: every enabled content clue
+ * its observation score opens from there, less what its journal already
+ * holds. Mirrors `evaluateKnowledge` for a character, without recording a
+ * discovery — the party learns it only when the report is delivered.
+ */
+export function observeFrom(
+  runtime: CampaignRuntime,
+  mapId: string,
+  token: Token,
+  pos: HexCoord,
+  at: number,
+  known: Set<string>,
+): JournalEntry[] {
+  const rt = runtime.mapStates.get(mapId);
+  const map = runtime.maps.get(mapId);
+  if (!rt || !map) return [];
+  const who = observer(token.observation);
+  const out: JournalEntry[] = [];
+  for (const content of rt.contents.values()) {
+    if (!content.enabled || content.id === token.contentId) continue;
+    const distance = distanceToContent(content, pos);
+    for (const clue of content.clues) {
+      if (known.has(clue.id)) continue;
+      if (!gateOpensPassively(clue.gate, who, distance, clueInRange(clue, content, pos)).opens) continue;
+      known.add(clue.id);
+      out.push({
+        at,
+        q: pos.q,
+        r: pos.r,
+        kind: 'clue',
+        clueId: clue.id,
+        contentId: content.id,
+        contentTitle: content.title,
+        text: clue.text,
+        direction: clue.indicatesDirection
+          ? compassDirection(pos, nearestContentCell(content, pos), map.orientation)
+          : null,
+        distance: clue.indicatesDistance ? distance : null,
+        locates: distance === 0 && clue.revealsLocation,
+      });
+    }
+  }
+  return out;
 }
 
 /** A tracks trail before expired cells were pruned, with the finds on it. */
@@ -130,6 +210,10 @@ export function advanceTravellers(
         ? structuredClone(rt.contents.get(token.contentId) ?? null)
         : null;
       const laid: { q: number; r: number; at: number }[] = [];
+      const journalBefore = token.journal;
+      const journal = [...token.journal];
+      const knownClues = new Set(journal.filter((j) => j.kind === 'clue').map((j) => j.clueId!));
+      const seenHexes = new Set(journal.filter((j) => j.kind === 'hex').map((j) => hexKey(j.q, j.r)));
       // Clock minute a step lands on: window-minutes consumed, scaled onto
       // the real clock span (the window may be a fraction of the advance).
       const span = toMinutes - fromMinutes;
@@ -151,6 +235,14 @@ export function advanceTravellers(
         remaining.shift();
         stepped++;
         if (token.layTracks) laid.push({ q: cur.q, r: cur.r, at: stamp(credit) });
+        if (token.observe) {
+          const at = stamp(credit);
+          if (!seenHexes.has(hexKey(cur.q, cur.r))) {
+            seenHexes.add(hexKey(cur.q, cur.r));
+            journal.push({ at, q: cur.q, r: cur.r, kind: 'hex' });
+          }
+          journal.push(...observeFrom(runtime, mapId, token, cur, at, knownClues));
+        }
         // Wandering-encounter cadence by distance: roll on the terrain table
         // of the hex entered every N miles. The mover is not halted — the DM
         // reads the log and decides what, if anything, it meets.
@@ -191,6 +283,7 @@ export function advanceTravellers(
         route: remaining,
         travelCredit: arrived ? 0 : credit,
         encounterMiles: miles,
+        journal: journal.slice(-5000),
       });
       // Tracks: the trail grows by the hexes walked this tick. A new trail
       // starts from where the mover stood, so the first sign already points
@@ -239,6 +332,7 @@ export function advanceTravellers(
           trailBefore,
           laidTracks: laid.length > 0,
           contentBefore,
+          journalBefore,
         });
       }
     }
@@ -292,6 +386,7 @@ export function restoreTravellers(runtime: CampaignRuntime, tick: TravellerTick)
         route: m.routeBefore,
         travelCredit: m.creditBefore,
         encounterMiles: m.encounterMilesBefore,
+        journal: m.journalBefore,
       });
     }
     if (m.laidTracks) {

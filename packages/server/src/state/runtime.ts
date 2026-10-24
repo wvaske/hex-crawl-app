@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid';
+import { z } from 'zod';
 import type {
   Campaign,
   PendingMove,
@@ -144,8 +145,16 @@ function parseRoute(raw: unknown): { q: number; r: number }[] {
 }
 
 import { contentCoversHex, journeyMph as journeyMphRule } from '@hexcrawl/shared';
-import type { MoverSummary } from '@hexcrawl/shared';
+import type { JournalEntry, MoverSummary } from '@hexcrawl/shared';
+import { JournalEntrySchema } from '@hexcrawl/shared';
 import { routeMinutesLeft, travellerMode } from '../engine/travellers.js';
+/** Stored journal column → entries; anything malformed is an empty journal. */
+function parseJournal(raw: unknown): JournalEntry[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  const parsed = z.array(JournalEntrySchema).safeParse(safeJson(raw, []));
+  return parsed.success ? parsed.data : [];
+}
+
 export class CampaignRuntime {
   readonly id: string;
   campaign: Campaign;
@@ -482,6 +491,9 @@ export class CampaignRuntime {
         tracksDcPerDay: (t.tracks_dc_per_day as number | null) ?? 2,
         tracksExpireDays: (t.tracks_expire_days as number | null) ?? 7,
         contentId: (t.content_id as string | null) ?? null,
+        observe: Boolean(t.observe),
+        observation: (t.observation as number | null) ?? 10,
+        journal: parseJournal(t.journal),
       });
     }
     for (const m of d.prepare('SELECT * FROM marker WHERE map_id = ?').all(mapId) as Array<
@@ -647,6 +659,11 @@ export class CampaignRuntime {
           encounterEveryMiles: t.encounterEveryMiles,
           layTracks: t.layTracks,
           presence: t.contentId ? (rt.contents.get(t.contentId)?.title ?? null) : null,
+          observe: t.observe,
+          observation: t.observation,
+          journalHexes: t.journal.filter((j) => j.kind === 'hex').length,
+          journalClues: t.journal.filter((j) => j.kind === 'clue').length,
+          withParty: [...rt.tokens.values()].some((p) => p.kind === 'pc' && p.q === t.q && p.r === t.r),
         });
       }
     }
@@ -1433,7 +1450,7 @@ export class CampaignRuntime {
     rt.tokens.set(token.id, token);
     this.db
       .prepare(
-        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id, retinue_id, icon, travel_mode, pace, visible_through_fog, note, route, travel_credit, waypoints, loop, encounter_every_miles, encounter_miles, lay_tracks, tracks_gate, tracks_dc_per_day, tracks_expire_days, content_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO token (id, map_id, q, r, kind, character_id, label, color, glyph, player_visible, party_id, retinue_id, icon, travel_mode, pace, visible_through_fog, note, route, travel_credit, waypoints, loop, encounter_every_miles, encounter_miles, lay_tracks, tracks_gate, tracks_dc_per_day, tracks_expire_days, content_id, observe, observation, journal) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         token.id,
@@ -1464,6 +1481,9 @@ export class CampaignRuntime {
         token.tracksDcPerDay,
         token.tracksExpireDays,
         token.contentId,
+        token.observe ? 1 : 0,
+        token.observation,
+        JSON.stringify(token.journal),
       );
   }
 
@@ -1475,7 +1495,7 @@ export class CampaignRuntime {
     rt.tokens.set(tokenId, updated);
     this.db
       .prepare(
-        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=?, retinue_id=?, icon=?, travel_mode=?, pace=?, visible_through_fog=?, note=?, route=?, travel_credit=?, waypoints=?, loop=?, encounter_every_miles=?, encounter_miles=?, lay_tracks=?, tracks_gate=?, tracks_dc_per_day=?, tracks_expire_days=?, content_id=? WHERE id=?',
+        'UPDATE token SET q=?, r=?, character_id=?, label=?, color=?, glyph=?, player_visible=?, party_id=?, retinue_id=?, icon=?, travel_mode=?, pace=?, visible_through_fog=?, note=?, route=?, travel_credit=?, waypoints=?, loop=?, encounter_every_miles=?, encounter_miles=?, lay_tracks=?, tracks_gate=?, tracks_dc_per_day=?, tracks_expire_days=?, content_id=?, observe=?, observation=?, journal=? WHERE id=?',
       )
       .run(
         updated.q,
@@ -1503,6 +1523,9 @@ export class CampaignRuntime {
         updated.tracksDcPerDay,
         updated.tracksExpireDays,
         updated.contentId,
+        updated.observe ? 1 : 0,
+        updated.observation,
+        JSON.stringify(updated.journal),
         tokenId,
       );
     return updated;
