@@ -19,6 +19,7 @@ import {
   TokenKindSchema,
   TrailSchema,
   RetinueSchema,
+  GateSchema,
 } from '../domain.js';
 
 /**
@@ -329,6 +330,11 @@ export const TokenUpdateCommand = z.object({
       pace: TravelPaceSchema.nullable(),
       loop: z.boolean(),
       encounterEveryMiles: z.number().min(0.1).max(10000).nullable(),
+      layTracks: z.boolean(),
+      tracksGate: GateSchema,
+      tracksDcPerDay: z.number().min(0).max(30),
+      tracksExpireDays: z.number().min(0.1).max(365),
+      contentId: z.string().nullable(),
       visibleThroughFog: z.boolean(),
       note: z.string().max(300),
     })
@@ -625,7 +631,7 @@ export const ViewMapCommand = z.object({
 export const TrailUpsertCommand = z.object({
   ...base,
   kind: z.literal('trail.upsert'),
-  trail: TrailSchema.omit({ kind: true }).extend({
+  trail: TrailSchema.omit({ kind: true, fade: true, moverId: true }).extend({
     id: z.string().nullable(),
     kind: z.enum(['tracks', 'road']).optional(),
   }),

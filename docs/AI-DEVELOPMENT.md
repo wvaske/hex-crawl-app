@@ -478,6 +478,24 @@ filtered content snapshot. Keep both transports in sync when extending discoveri
   entry with `data.traveller: true`; the mover is never halted. Both
   counters ride in `TravellerMove` so undo restores them. A hand-moved token
   drops its waypoints and loop along with its route.
+- **Tracks (step 3).** A mover with `layTracks` grows a trail `tracks:<tokenId>`
+  (`kind: 'tracks'`, `moverId`, `fade: {dcPerDay, expireDays}`) by one cell per
+  hex walked, each cell stamped `at` (clock minutes, interpolated across the
+  tick). `agedGate` in `engine/trails.ts` raises a skill gate's DC by
+  `dcPerDay` per full day of age; `pruneTracks` (every traveller tick) drops
+  cells past `expireDays` from the front of the trail and re-indexes the
+  trail discoveries on it. Hand-drawn trails have `fade: null` and never age.
+  Players' `trailSigns` carry `at` so the Journal can say how fresh a find is.
+  `TravellerTick {moves, prunes}` is what `restoreTravellers` undoes — trail
+  before/after and pruned finds included — so add new per-tick side effects
+  there, not in the handlers.
+- **Presence (step 3).** `token.contentId` attaches a content item that
+  `advanceTravellers` moves with the mover (anchor and area). Nothing else is
+  new: its clues, distance gates and direction/distance indicators go through
+  the ordinary knowledge engine, which `runTravellers` now re-runs (with
+  `evaluateTrails`) for every map a mover moved on, so a standing party can
+  sense an approaching thing. `time.advance`'s undo revokes the discoveries
+  and trail finds a tick produced, like `performTravel` always did.
 - **Seeding from the wiki:** `scripts/seed-retinues.mjs` + `scripts/retinues.json`
   upsert retinues (`POST /api/integration/.../retinues`) and members
   (`POST .../tokens`, matched by label; `at` / `routeTo` resolve content

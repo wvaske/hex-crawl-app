@@ -613,6 +613,26 @@ export const FogCellSchema = z.object({
 });
 export type FogCell = z.infer<typeof FogCellSchema>;
 
+export const GateSchema = z.discriminatedUnion('kind', [
+  /** Revealed to any character whose token enters the content hex. */
+  z.object({ kind: z.literal('auto') }),
+  /**
+   * Revealed when a character within `maxDistance` hexes has
+   * passive skill >= dc (mode 'passive'), or via a DM-triggered roll
+   * (mode 'active').
+   */
+  z.object({
+    kind: z.literal('skill'),
+    skill: z.string().min(1),
+    dc: z.number().int().min(1).max(40),
+    maxDistance: z.number().int().min(0).max(30),
+    mode: z.enum(['passive', 'active']).default('passive'),
+  }),
+  /** Only the DM can reveal it. */
+  z.object({ kind: z.literal('manual') }),
+]);
+export type Gate = z.infer<typeof GateSchema>;
+
 // ---------------------------------------------------------------------------
 // Tokens & markers
 // ---------------------------------------------------------------------------
@@ -665,6 +685,19 @@ export const TokenSchema = z.object({
   encounterEveryMiles: z.number().min(0.1).max(10000).nullable().default(null),
   /** DM only: miles walked since the last encounter roll. */
   encounterMiles: z.number().min(0).default(0),
+  /** DM only: lay a tracks trail (`tracks:<id>`) behind the mover as it travels. */
+  layTracks: z.boolean().default(false),
+  /** DM only: how a cell of its tracks is noticed when fresh. */
+  tracksGate: GateSchema.default({ kind: 'auto' }),
+  /** DM only: DC added per day of age (skill gates), and days until a cell is gone. */
+  tracksDcPerDay: z.number().min(0).max(30).default(2),
+  tracksExpireDays: z.number().min(0.1).max(365).default(7),
+  /**
+   * DM only: a content item that travels with the mover — its clues become
+   * the mover's presence (smoke on the horizon, a column of dust) through
+   * the ordinary knowledge engine.
+   */
+  contentId: z.string().nullable().default(null),
 });
 export type Token = z.infer<typeof TokenSchema>;
 
@@ -679,6 +712,11 @@ export function tokenPlayerView(token: Token): Token {
     loop: false,
     encounterEveryMiles: null,
     encounterMiles: 0,
+    layTracks: false,
+    tracksGate: { kind: 'auto' },
+    tracksDcPerDay: 2,
+    tracksExpireDays: 7,
+    contentId: null,
   };
 }
 
@@ -710,6 +748,9 @@ export const MoverSummarySchema = z.object({
   playerVisible: z.boolean(),
   visibleThroughFog: z.boolean(),
   encounterEveryMiles: z.number().nullable(),
+  layTracks: z.boolean(),
+  /** Title of the attached presence content, if any. */
+  presence: z.string().nullable(),
 });
 export type MoverSummary = z.infer<typeof MoverSummarySchema>;
 
@@ -814,25 +855,6 @@ export const CONTENT_TYPE_GLYPHS: Record<ContentType, string> = {
   other: '📍',
 };
 
-export const GateSchema = z.discriminatedUnion('kind', [
-  /** Revealed to any character whose token enters the content hex. */
-  z.object({ kind: z.literal('auto') }),
-  /**
-   * Revealed when a character within `maxDistance` hexes has
-   * passive skill >= dc (mode 'passive'), or via a DM-triggered roll
-   * (mode 'active').
-   */
-  z.object({
-    kind: z.literal('skill'),
-    skill: z.string().min(1),
-    dc: z.number().int().min(1).max(40),
-    maxDistance: z.number().int().min(0).max(30),
-    mode: z.enum(['passive', 'active']).default('passive'),
-  }),
-  /** Only the DM can reveal it. */
-  z.object({ kind: z.literal('manual') }),
-]);
-export type Gate = z.infer<typeof GateSchema>;
 
 /** A hex coordinate pair as stored inside content areas and trail paths. */
 export const HexRefSchema = z.object({ q: z.number().int(), r: z.number().int() });
@@ -1041,7 +1063,21 @@ export const TrailSchema = z.object({
   dmNotes: z.string().max(10000).default(''),
   /** How a cell of the trail is noticed (distance is from the walker to the cell). */
   gate: GateSchema.default({ kind: 'auto' }),
-  cells: z.array(z.object({ q: z.number().int(), r: z.number().int() })).min(2),
+  /** Cells in walking order. `at` (clock minutes) is set on tracks a mover laid. */
+  cells: z
+    .array(z.object({ q: z.number().int(), r: z.number().int(), at: z.number().optional() }))
+    .min(2),
+  /**
+   * Tracks laid by a mover fade: each day of age adds `dcPerDay` to a skill
+   * gate's DC, and cells older than `expireDays` are removed. Null = a
+   * hand-drawn trail that never fades.
+   */
+  fade: z
+    .object({ dcPerDay: z.number().min(0).max(30), expireDays: z.number().min(0.1).max(365) })
+    .nullable()
+    .default(null),
+  /** The token whose journey laid this trail (its tracks trail id is `tracks:<tokenId>`). */
+  moverId: z.string().nullable().default(null),
   /**
    * `tracks` (the original: footprints a character can find, cell by cell)
    * or `road`: a travel way. Roads have no gate — players see the stretch on
@@ -1075,6 +1111,8 @@ export const TrailSignSchema = z.object({
   backward: z.string().nullable(),
   forwardAngle: z.number().nullable(),
   backwardAngle: z.number().nullable(),
+  /** When the tracks were made (clock minutes), for "about two days old". */
+  at: z.number().nullable().default(null),
 });
 export type TrailSign = z.infer<typeof TrailSignSchema>;
 

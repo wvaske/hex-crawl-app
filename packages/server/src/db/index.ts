@@ -331,6 +331,13 @@ export function migrate(d: DB): void {
   ensureColumn(d, 'token', 'loop', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'token', 'encounter_every_miles', 'REAL');
   ensureColumn(d, 'token', 'encounter_miles', 'REAL NOT NULL DEFAULT 0');
+  ensureColumn(d, 'token', 'lay_tracks', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(d, 'token', 'tracks_gate', `TEXT NOT NULL DEFAULT '{"kind":"auto"}'`);
+  ensureColumn(d, 'token', 'tracks_dc_per_day', 'REAL NOT NULL DEFAULT 2');
+  ensureColumn(d, 'token', 'tracks_expire_days', 'REAL NOT NULL DEFAULT 7');
+  ensureColumn(d, 'token', 'content_id', 'TEXT');
+  ensureColumn(d, 'trail', 'fade', 'TEXT');
+  ensureColumn(d, 'trail', 'mover_id', 'TEXT');
   ensureColumn(d, 'token', 'visible_through_fog', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'token', 'note', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(d, 'token', 'route', "TEXT NOT NULL DEFAULT '[]'");

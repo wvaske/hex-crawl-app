@@ -199,6 +199,7 @@ function computeTrailSigns(full: CampaignState, characterId: string | null): Tra
       backward: prev ? compassDirection(cell, prev, orientation) : null,
       forwardAngle: next ? bearingAngle(cell, next, orientation) : null,
       backwardAngle: prev ? bearingAngle(cell, prev, orientation) : null,
+      at: cell.at ?? null,
     });
   }
   return signs;

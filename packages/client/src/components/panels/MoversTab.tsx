@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { MoverSummary, Retinue } from '@hexcrawl/shared';
+import type { Gate, MoverSummary, Retinue } from '@hexcrawl/shared';
 import { GROUP_KIND_LABEL, PACE_LABEL, formatDuration, journeyMph, minutesPerHex, resolveTravelMode } from '@hexcrawl/shared';
 import { activeMap, useSession } from '../../stores/session.js';
 import { useUi } from '../../stores/ui.js';
@@ -163,6 +163,8 @@ function MoverRow({
           {resolveTravelMode(m.travelMode, custom).label}, {PACE_LABEL[m.pace]} · {m.mph.toFixed(1).replace(/\.0$/, '')} mph
         </span>
         {m.encounterEveryMiles && <span>🎲 every {m.encounterEveryMiles} mi</span>}
+        {m.layTracks && <span>👣 leaves tracks</span>}
+        {m.presence && <span title="Presence content travelling with it">👁 {m.presence}</span>}
       </div>
       <div className="mt-0.5 pl-7 flex flex-wrap items-center gap-x-1 gap-y-0.5">
         {!drafting && (
@@ -242,6 +244,8 @@ function MoverRow({
           <span>mi</span>
         </label>
       </div>
+      {token && <TracksControls token={token} />}
+      {token && <PresenceControls token={token} />}
       <div className="mt-0.5 pl-7">
         <input
           className="w-full bg-transparent border-b border-transparent focus:border-ink-600 px-0 py-0 text-[0.6875rem] text-ink-300 placeholder:text-ink-500"
@@ -266,6 +270,146 @@ function MoverRow({
       )}
       {drafting && !token && (
         <div className="mt-1 text-[0.6875rem] text-brass-300">Switching to {m.mapName}…</div>
+      )}
+    </div>
+  );
+}
+
+const TRACK_SKILLS = ['survival', 'perception', 'investigation', 'nature'] as const;
+
+/**
+ * Tracks: whether the mover leaves a trail, how hard a fresh sign is to
+ * notice, how fast it fades (DC per day) and when it is gone.
+ */
+function TracksControls({ token }: { token: import('@hexcrawl/shared').Token }) {
+  const gate = token.tracksGate;
+  const skillGate = gate.kind === 'skill' ? gate : null;
+  const patch = (p: Record<string, unknown>) => send({ kind: 'token.update', tokenId: token.id, patch: p as never });
+  const setGate = (g: Gate) => patch({ tracksGate: g });
+  return (
+    <div className="mt-0.5 pl-7 text-[0.6875rem] text-ink-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <label className="inline-flex items-center gap-1 cursor-pointer" title="Lay a tracks trail behind it as it travels; characters find the cells with the gate below">
+        <input type="checkbox" checked={token.layTracks} onChange={(e) => patch({ layTracks: e.target.checked })} />
+        👣 Tracks
+      </label>
+      {token.layTracks && (
+        <>
+          <select
+            className="bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100 cursor-pointer capitalize"
+            value={skillGate ? skillGate.skill : 'auto'}
+            title="How a fresh sign is noticed: obvious, or a passive skill DC"
+            onChange={(e) =>
+              setGate(
+                e.target.value === 'auto'
+                  ? { kind: 'auto' }
+                  : { kind: 'skill', skill: e.target.value, dc: skillGate?.dc ?? 12, maxDistance: 0, mode: 'passive' },
+              )
+            }
+          >
+            <option value="auto">Obvious</option>
+            {TRACK_SKILLS.map((sk) => (
+              <option key={sk} value={sk}>
+                {sk} DC
+              </option>
+            ))}
+          </select>
+          {skillGate && (
+            <input
+              type="number"
+              min={1}
+              max={40}
+              className="w-11 bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100"
+              value={skillGate.dc}
+              title="DC when fresh"
+              onChange={(e) => {
+                const v = Math.round(Number(e.target.value));
+                if (v >= 1 && v <= 40) setGate({ ...skillGate, dc: v });
+              }}
+            />
+          )}
+          {skillGate && (
+            <label className="inline-flex items-center gap-1" title="DC added per day of age">
+              +<input
+                type="number"
+                min={0}
+                max={30}
+                className="w-10 bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100"
+                value={token.tracksDcPerDay}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v >= 0 && v <= 30) patch({ tracksDcPerDay: v });
+                }}
+              />/day
+            </label>
+          )}
+          <label className="inline-flex items-center gap-1" title="Days until a sign is gone">
+            gone after
+            <input
+              type="number"
+              min={0.5}
+              max={365}
+              step={0.5}
+              className="w-12 bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100"
+              value={token.tracksExpireDays}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (v >= 0.1 && v <= 365) patch({ tracksExpireDays: v });
+              }}
+            />
+            d
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Presence: a content item on this map that travels with the mover. Its
+ * clues (with their distance gates and direction/distance indicators) are
+ * how the party senses the thing before they see it.
+ */
+function PresenceControls({ token }: { token: import('@hexcrawl/shared').Token }) {
+  const contents = useSession((s) => s.state?.mapState?.contents ?? []);
+  const setUi = useUi((s) => s.set);
+  const options = contents.filter((c): c is Extract<typeof c, { clues: unknown }> => 'clues' in c);
+  return (
+    <div className="mt-0.5 pl-7 text-[0.6875rem] text-ink-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span title="A content item whose clues travel with the mover (smoke on the horizon, a dust cloud)">👁 Presence</span>
+      <select
+        className="bg-ink-900 border border-ink-600 rounded px-1 py-0 text-[0.6875rem] text-ink-100 cursor-pointer max-w-[12rem]"
+        value={token.contentId ?? ''}
+        onChange={(e) => {
+          const id = e.target.value || null;
+          send({ kind: 'token.update', tokenId: token.id, patch: { contentId: id } });
+          // Bring it to the mover right away; from here it follows.
+          if (id) send({ kind: 'content.move', contentId: id, q: token.q, r: token.r });
+        }}
+      >
+        <option value="">None</option>
+        {options.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.title}
+          </option>
+        ))}
+      </select>
+      {token.contentId && (
+        <button
+          className="cursor-pointer hover:text-brass-300"
+          title="Edit the presence content: its clues and how far away they can be sensed"
+          onClick={() => setUi('editingContentId', token.contentId)}
+        >
+          ✎ clues
+        </button>
+      )}
+      {!token.contentId && (
+        <button
+          className="cursor-pointer hover:text-brass-300"
+          title="Create a content item on this hex to attach (give it clues with distance gates)"
+          onClick={() => setUi('contentDialogHex', { q: token.q, r: token.r })}
+        >
+          + new
+        </button>
       )}
     </div>
   );

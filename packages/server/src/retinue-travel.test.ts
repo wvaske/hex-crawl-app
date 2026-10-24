@@ -385,3 +385,111 @@ describe('movers: loops, encounter cadence, summaries', () => {
     expect(view.mapState!.tokens.find((t) => t.id === tokenId)!.waypoints).toEqual([]);
   });
 });
+
+describe('tracks and presence', () => {
+  function scoutAt(q: number, r: number, perception = 4, survival = 4): { charId: string; seat: SeatRecord } {
+    const mapId = runtime.campaign.activeMapId!;
+    dm({
+      kind: 'character.create',
+      character: { name: 'Tracker', color: '#00aa00', glyph: '', speed: 30, skills: { perception, survival }, extra: { bio: '', appearance: '', goals: '', inventory: '', notes: '' } },
+    } as never);
+    const charId = [...runtime.characters.keys()].pop()!;
+    const seat = runtime.createSeat('player', 'Alice');
+    asSeat(seat, { kind: 'seat.claimCharacter', characterId: charId } as never);
+    seat.characterId = charId;
+    dm({ kind: 'token.create', mapId, q, r, tokenKind: 'pc', characterId: charId, label: '', color: '#00aa00', glyph: '', playerVisible: true } as never);
+    return { charId, seat };
+  }
+
+  it('lays timestamped tracks behind a mover and undo takes them back', () => {
+    const { mapId, tokenId } = rider();
+    dm({ kind: 'token.update', tokenId, patch: { layTracks: true } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }] } as never);
+    const t0 = runtime.campaign.time.minutes;
+    dm({ kind: 'time.advance', minutes: 120 } as never); // 6 mph, 6-mile hexes: 2 hexes
+    const trail = runtime.findTrail(`tracks:${tokenId}`)!;
+    expect(trail.kind).toBe('tracks');
+    expect(trail.moverId).toBe(tokenId);
+    expect(trail.fade).toEqual({ dcPerDay: 2, expireDays: 7 });
+    expect(trail.cells.map((c) => [c.q, c.r])).toEqual([[10, 0], [11, 0], [12, 0]]);
+    expect(trail.cells[0]!.at).toBe(t0);
+    expect(trail.cells[2]!.at).toBe(t0 + 120);
+    dm({ kind: 'time.advance', minutes: 60 } as never);
+    expect(runtime.findTrail(`tracks:${tokenId}`)!.cells).toHaveLength(4);
+    dm({ kind: 'undo' } as never);
+    expect(runtime.findTrail(`tracks:${tokenId}`)!.cells).toHaveLength(3);
+    dm({ kind: 'undo' } as never);
+    expect(runtime.findTrail(`tracks:${tokenId}`)).toBeNull();
+  });
+
+  it('fresh tracks are found at the base DC; a day later the DC has climbed', () => {
+    const { mapId, tokenId } = rider();
+    dm({ kind: 'campaign.update', settings: { npcTravelHoursPerDay: 24 } } as never);
+    dm({
+      kind: 'token.update',
+      tokenId,
+      patch: { layTracks: true, tracksGate: { kind: 'skill', skill: 'survival', dc: 13, maxDistance: 0, mode: 'passive' }, tracksDcPerDay: 5 },
+    } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 12, r: 0 }] } as never);
+    dm({ kind: 'time.advance', minutes: 120 } as never);
+    // Passive survival 14 (10 + 4): beats 13 today.
+    const { charId } = scoutAt(11, 0);
+    expect([...runtime.trailDiscoveries.values()].filter((d) => d.characterId === charId)).toHaveLength(1);
+    // A second tracker arriving two days later faces DC 23 and finds nothing.
+    dm({ kind: 'time.advance', minutes: 2 * 1440 } as never);
+    const late = scoutAt(11, 0);
+    expect([...runtime.trailDiscoveries.values()].filter((d) => d.characterId === late.charId)).toHaveLength(0);
+    // Players see when the sign was made.
+    const view = filterStateForViewer(runtime.buildFullState(mapId), { role: 'player', seatId: 'x', characterId: charId });
+    expect(view.mapState!.trailSigns).toHaveLength(1);
+    expect(view.mapState!.trailSigns[0]!.at).not.toBeNull();
+  });
+
+  it('expired cells are pruned and the finds re-indexed; undo restores both', () => {
+    const { mapId, tokenId } = rider();
+    dm({ kind: 'campaign.update', settings: { npcTravelHoursPerDay: 24 } } as never);
+    dm({ kind: 'token.update', tokenId, patch: { layTracks: true, tracksExpireDays: 1 } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }] } as never);
+    dm({ kind: 'time.advance', minutes: 180 } as never); // cells 10,11,12,13 at t0..t0+180
+    const { charId } = scoutAt(13, 0); // finds cell index 3 (obvious gate)
+    const before = [...runtime.trailDiscoveries.values()].find((d) => d.characterId === charId)!;
+    expect(before.cellIndex).toBe(3);
+    // Clock now t0+180. At t0+1530 the cells stamped t0 and t0+60 are more
+    // than a day old; the ones at t0+120 and t0+180 are not.
+    dm({ kind: 'time.advance', minutes: 1350 } as never);
+    const trail = runtime.findTrail(`tracks:${tokenId}`)!;
+    expect(trail.cells.map((c) => c.q)).toEqual([12, 13]);
+    const after = [...runtime.trailDiscoveries.values()].find((d) => d.characterId === charId)!;
+    expect(after.cellIndex).toBe(1);
+    dm({ kind: 'undo' } as never);
+    expect(runtime.findTrail(`tracks:${tokenId}`)!.cells).toHaveLength(4);
+    expect([...runtime.trailDiscoveries.values()].find((d) => d.characterId === charId)!.cellIndex).toBe(3);
+  });
+
+  it('presence content follows the mover and opens its clue for a standing party', () => {
+    const { mapId, tokenId } = rider();
+    dm({
+      kind: 'content.upsert',
+      content: {
+        id: null, mapId, q: 10, r: 0, type: 'other', title: 'Dust cloud', dmNotes: '', glyph: '', showLabel: false,
+        scaleVisibility: 1, wikiPage: '', enabled: true, knownLocation: false, quest: '',
+        clues: [{ text: 'A column of dust on the road', gate: { kind: 'skill', skill: 'perception', dc: 10, maxDistance: 2, mode: 'passive' }, indicatesDirection: true, indicatesDistance: false, revealsLocation: false, observeFrom: [] }],
+      },
+    } as never);
+    const content = [...runtime.requireMap(mapId).contents.values()].find((c) => c.title === 'Dust cloud')!;
+    dm({ kind: 'token.update', tokenId, patch: { contentId: content.id } } as never);
+    const { charId } = scoutAt(15, 0); // 5 hexes off: out of range
+    expect([...runtime.discoveries.values()].filter((d) => d.characterId === charId)).toHaveLength(0);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }] } as never);
+    dm({ kind: 'time.advance', minutes: 180 } as never); // mover (and its dust) now at 13,0: 2 hexes away
+    const moved = runtime.requireMap(mapId).contents.get(content.id)!;
+    expect([moved.q, moved.r]).toEqual([13, 0]);
+    const found = [...runtime.discoveries.values()].filter((d) => d.characterId === charId);
+    expect(found).toHaveLength(1);
+    dm({ kind: 'undo' } as never);
+    expect(runtime.requireMap(mapId).contents.get(content.id)!.q).toBe(10);
+    expect([...runtime.discoveries.values()].filter((d) => d.characterId === charId)).toHaveLength(0);
+    const full = runtime.buildFullState(mapId);
+    expect(full.movers.find((m) => m.tokenId === tokenId)!.presence).toBe('Dust cloud');
+  });
+});
