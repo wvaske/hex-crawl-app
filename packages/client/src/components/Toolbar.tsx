@@ -758,6 +758,7 @@ function TrailOptions() {
   const [name, setName] = useState('');
   const [skill, setSkill] = useState<'auto' | (typeof TRAIL_SKILLS)[number]>('auto');
   const [dc, setDc] = useState('12');
+  const [kind, setKind] = useState<'tracks' | 'road'>('tracks');
 
   if (!map) return null;
   const editing = editingTrailId ? trails.find((t) => t.id === editingTrailId) : undefined;
@@ -768,6 +769,7 @@ function TrailOptions() {
     setName('');
     setSkill('auto');
     setDc('12');
+    setKind('tracks');
   };
 
   const startEdit = (trailId: string) => {
@@ -776,6 +778,7 @@ function TrailOptions() {
     useUi.getState().set('editingTrailId', t.id);
     useUi.getState().set('trailDraft', [...t.cells]);
     setName(t.name);
+    setKind(t.kind);
     if (t.gate.kind === 'skill') {
       setSkill(
         (TRAIL_SKILLS as readonly string[]).includes(t.gate.skill)
@@ -797,13 +800,14 @@ function TrailOptions() {
         id: editingTrailId,
         mapId: map.id,
         name: name.trim(),
-        glyph: editing?.glyph ?? '👣',
+        glyph: editing?.glyph ?? (kind === 'road' ? '🛣️' : '👣'),
         dmNotes: editing?.dmNotes ?? '',
         gate:
-          skill === 'auto'
+          skill === 'auto' || kind === 'road'
             ? { kind: 'auto' }
             : { kind: 'skill', skill, dc: dcNum, maxDistance: 0, mode: 'passive' },
         cells: draft,
+        kind,
       },
     });
     reset();
@@ -815,9 +819,26 @@ function TrailOptions() {
         {editing ? `Editing: ${editing.name}` : 'New trail'} — {draft.length} cell
         {draft.length === 1 ? '' : 's'}
       </p>
+      <div className="flex gap-1">
+        {(['tracks', 'road'] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => setKind(k)}
+            className={cx(
+              'flex-1 py-0.5 rounded text-[0.6875rem] cursor-pointer border capitalize',
+              kind === k
+                ? 'border-brass-500 bg-brass-500/15 text-brass-300'
+                : 'border-ink-700 hover:bg-ink-700 text-ink-300',
+            )}
+          >
+            {k === 'tracks' ? '👣 Tracks' : '🛣️ Road'}
+          </button>
+        ))}
+      </div>
       <p className="text-[0.6875rem] text-ink-400">
-        Click hexes in order; click the last cell again to step back. Walkers learn only the
-        direction onward and back.
+        {kind === 'road'
+          ? 'Click hexes in order along the road. Travellers prefer roads, and players see the stretch on ground they know.'
+          : 'Click hexes in order; click the last cell again to step back. Walkers learn only the direction onward and back.'}
       </p>
       <input
         className="w-full bg-ink-950 border border-ink-600 rounded px-2 py-1 text-xs text-ink-100"
@@ -826,6 +847,7 @@ function TrailOptions() {
         maxLength={120}
         onChange={(e) => setName(e.target.value)}
       />
+      {kind === 'tracks' && (
       <div className="flex items-center gap-1.5 text-[0.6875rem] text-ink-300">
         <select
           className="flex-1 bg-ink-950 border border-ink-600 rounded px-1 py-0.5 cursor-pointer capitalize"
@@ -852,6 +874,7 @@ function TrailOptions() {
           />
         )}
       </div>
+      )}
       <div className="flex gap-1.5">
         <button
           className="flex-1 py-1 rounded text-xs cursor-pointer bg-brass-500/20 text-brass-300 border border-brass-500/50 disabled:opacity-40"
@@ -876,7 +899,7 @@ function TrailOptions() {
                 <span className="text-ink-400">
                   {' '}
                   · {t.cells.length} ·{' '}
-                  {t.gate.kind === 'skill' ? `${t.gate.skill} ${t.gate.dc}` : 'auto'}
+                  {t.kind === 'road' ? 'road' : t.gate.kind === 'skill' ? `${t.gate.skill} ${t.gate.dc}` : 'auto'}
                 </span>
               </span>
               <button

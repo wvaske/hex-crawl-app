@@ -424,16 +424,31 @@ filtered content snapshot. Keep both transports in sync when extending discoveri
   never its `note`, `route` or `travelCredit` (`tokenPlayerView` in
   `filterStateForViewer`). A retinue reports its own position; a monster does
   not — leave the flag off for ordinary NPCs.
-- **Routes walk on the clock, not on a timer.** `token.route {waypoints}` strings
-  the waypoints with `planRoute` (`engine/travellers.ts`: explored route when
-  the map routes that way, else `hexLine`) and stores the hexes still to walk.
+- **Journeys are routed, not drawn** (`shared/rules/journey.ts`). `token.route
+  {waypoints}` → `planRoute` (`engine/travellers.ts`) → `planJourney`: A* that
+  ignores fog but respects the mover's travel *medium* (`land` cannot enter
+  `water`, `water` only `water`/`coast`, `air` anything; unpainted hexes are
+  open) and impassable edges. Step costs are integer tiers — road 1, known
+  off-road 2, unknown off-road 3 — times the edge effort, so a road detour wins
+  below twice the straight walk. `exploredRoute` (party moves) and the client's
+  `routeFor` use the same `journeyStepCost`, so the party prefers roads within
+  known ground too. A leg with no legal route falls back to the straight line
+  rather than refusing. Roads are trails with `kind: 'road'` (Trail tool →
+  Road): no gate, no signs, `evaluateTrails` skips them, players receive them
+  in `mapState.trails` clipped to non-hidden fog (tracks still never reach
+  players), and the engine draws them as a solid way for everyone.
+- **Speed is mode + pace, never a bare mph.** Token `travelMode`/`pace` → the
+  retinue's → `foot`/`normal` (`travellerMode`); `journeyMph(mode, pace)`.
+  Custom modes are campaign `customTravelModes` (now with `medium`), added from
+  the Tokens panel's "Custom…" so they are reusable. The old `token.mph`
+  column is kept but unread. The stored route is what gets walked.
   `runTravellers(ctx, before, after)` in `handlers.ts` is called after every
   clock advance — `performTravel` (the player tick) and `time.advance` — and
   banks only the minutes inside the daily travel window
   (`travelWindowMinutes`: `settings.npcTravelHoursPerDay` hours from sunrise),
-  buying hexes at `minutesPerHex(map.milesPerHex, speed) × stepCost`. Speed is
-  token `mph` → retinue `mph` → `DEFAULT_NPC_MPH` (3). A new path that moves
-  the clock must call `runTravellers` too. `time.set` deliberately does not.
+  buying hexes at `minutesPerHex(map.milesPerHex, speed) × stepCost`. A new path
+  that moves the clock must call `runTravellers` too. `time.set` deliberately
+  does not.
 - **Undo covers travellers.** `performTravel` captures `TravellerMove[]` and
   restores them with `restoreTravellers`; a hand-moved token abandons its route
   (captured in `prior`). `time.advance` pushes an undo entry only when a
@@ -449,8 +464,8 @@ filtered content snapshot. Keep both transports in sync when extending discoveri
 - **Seeding from the wiki:** `scripts/seed-retinues.mjs` + `scripts/retinues.json`
   upsert retinues (`POST /api/integration/.../retinues`) and members
   (`POST .../tokens`, matched by label; `at` / `routeTo` resolve content
-  titles on the map; `arriveInDays` scales a member's speed to the wiki's
-  stated transit time). Re-run after editing the roster.
+  titles on the map; members may override `travelMode`/`pace`). Re-run after
+  editing the roster.
 
 ## Plugins (sidebar extensions)
 

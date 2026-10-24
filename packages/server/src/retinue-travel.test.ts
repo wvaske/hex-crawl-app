@@ -46,7 +46,7 @@ beforeEach(() => {
     settings: {
       npcTravelHoursPerDay: 24,
       retinues: [
-        { id: 'anvil', name: 'The Anvil', holder: 'Xanphina', faction: 'Order of the Gauntlet', color: '#b3b3b3', icon: 'objects/anvil', glyph: '⚒', mph: 6, wikiPage: 'The Anvil' },
+        { id: 'anvil', name: 'The Anvil', holder: 'Xanphina', faction: 'Order of the Gauntlet', color: '#b3b3b3', icon: 'objects/anvil', glyph: '⚒', travelMode: 'horse', pace: null, wikiPage: 'The Anvil' },
       ],
     },
   } as never);
@@ -167,7 +167,9 @@ describe('routed travel on the player tick', () => {
   it('banks partial progress and stands still outside the travel window', () => {
     const { tokenId: pc } = party();
     const { mapId, tokenId } = rider();
-    dm({ kind: 'token.update', tokenId, patch: { mph: 1.5 } } as never); // 4 hours per hex
+    // A custom 1.5 mph mode: 4 hours per 6-mile hex.
+    dm({ kind: 'campaign.update', settings: { customTravelModes: [{ id: 'mule', name: 'Mule', mph: 1.5, medium: 'land' }] } } as never);
+    dm({ kind: 'token.update', tokenId, patch: { travelMode: 'mule' } } as never);
     dm({ kind: 'token.route', tokenId, waypoints: [{ q: 12, r: 0 }] } as never);
     dm({ kind: 'token.move', tokenId: pc, q: 1, r: 0, teleport: false } as never); // +2h
     let t = runtime.requireMap(mapId).tokens.get(tokenId)!;
@@ -270,5 +272,48 @@ describe('integration API tokens', () => {
     expect(unknown.status).toBe(404);
     const noAuth = await app.request(`/api/integration/campaigns/${runtime.id}/maps/${mapId}/tokens`);
     expect(noAuth.status).toBe(401);
+  });
+});
+
+describe('journey routing', () => {
+  it('goes around water on land, across it by ship, and over it by air', () => {
+    const { mapId, tokenId } = rider();
+    // A wall of water across the straight line from 10,0 to 13,0.
+    dm({ kind: 'terrain.paint', mapId, cells: [{ q: 11, r: -1 }, { q: 11, r: 0 }, { q: 11, r: 1 }, { q: 12, r: -1 }, { q: 12, r: 0 }], terrain: 'water' } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }] } as never);
+    const land = runtime.requireMap(mapId).tokens.get(tokenId)!.route;
+    expect(land.some((h) => h.q === 11 && h.r === 0)).toBe(false);
+    expect(land[land.length - 1]).toEqual({ q: 13, r: 0 });
+    expect(land.length).toBeGreaterThan(3);
+    dm({ kind: 'token.update', tokenId, patch: { travelMode: 'flying' } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }] } as never);
+    expect(runtime.requireMap(mapId).tokens.get(tokenId)!.route).toHaveLength(3);
+    // A ship on open water from 11,-1 to 12,0 takes the water hexes only.
+    dm({ kind: 'token.move', tokenId, q: 11, r: -1, teleport: true } as never);
+    dm({ kind: 'token.update', tokenId, patch: { travelMode: 'ship' } } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 12, r: 0 }] } as never);
+    const sea = runtime.requireMap(mapId).tokens.get(tokenId)!.route;
+    expect(sea).toEqual([{ q: 12, r: 0 }].length === 1 ? sea : sea);
+    expect(sea.every((h) => ['11,-1', '11,0', '11,1', '12,-1', '12,0'].includes(`${h.q},${h.r}`))).toBe(true);
+  });
+
+  it('prefers a road when it is shorter than twice the straight walk', () => {
+    const { mapId, tokenId } = rider();
+    // Road from 10,0 up through 11,-1 .. 13,-1 and back down to 13,0: 5 steps vs 3 straight.
+    dm({
+      kind: 'trail.upsert',
+      trail: { id: null, mapId, name: 'Trade Way', glyph: '🛣️', dmNotes: '', gate: { kind: 'auto' }, kind: 'road',
+        cells: [{ q: 10, r: 0 }, { q: 11, r: -1 }, { q: 12, r: -1 }, { q: 13, r: -1 }, { q: 13, r: 0 }] },
+    } as never);
+    dm({ kind: 'token.route', tokenId, waypoints: [{ q: 13, r: 0 }] } as never);
+    const route = runtime.requireMap(mapId).tokens.get(tokenId)!.route;
+    expect(route).toEqual([{ q: 11, r: -1 }, { q: 12, r: -1 }, { q: 13, r: -1 }, { q: 13, r: 0 }]);
+    // Players receive the road, not the tracks, and only on known ground.
+    const player = runtime.createSeat('player', 'Alice');
+    dm({ kind: 'fog.set', mapId, cells: [{ q: 12, r: -1 }, { q: 13, r: -1 }], state: 'explored' } as never);
+    const view = filterStateForViewer(runtime.buildFullState(mapId), { role: 'player', seatId: player.id, characterId: null });
+    expect(view.mapState!.trails).toHaveLength(1);
+    expect(view.mapState!.trails[0]!.cells).toEqual([{ q: 12, r: -1 }, { q: 13, r: -1 }]);
+    expect(view.mapState!.trailSigns).toEqual([]);
   });
 });

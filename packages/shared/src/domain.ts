@@ -128,6 +128,8 @@ export const CustomTravelModeSchema = z.object({
   name: z.string().min(1).max(60),
   /** Miles per hour at normal pace. */
   mph: z.number().min(0.1).max(500),
+  /** Land modes cannot cross water, water modes only water and coast, air anything. */
+  medium: z.enum(['land', 'water', 'air']).default('land'),
 });
 export type CustomTravelMode = z.infer<typeof CustomTravelModeSchema>;
 
@@ -269,6 +271,9 @@ export const DdbGameLogStatusSchema = z.object({
 });
 export type DdbGameLogStatus = z.infer<typeof DdbGameLogStatusSchema>;
 
+export const TravelPaceSchema = z.enum(['fast', 'normal', 'careful']);
+export type TravelPace = z.infer<typeof TravelPaceSchema>;
+
 /**
  * A retinue (faction cell / lance / crew): a named group of NPC tokens that
  * share a colour, a crest and a default travel speed. Tokens join one by
@@ -285,14 +290,13 @@ export const RetinueSchema = z.object({
   /** Crest: sticker id (`<category>/<slug>`); `glyph` is the fallback. */
   icon: z.string().max(120).default(''),
   glyph: z.string().max(8).default(''),
-  /** Members' default travel speed in miles per hour; null = on foot (3 mph). */
-  mph: z.number().min(0.1).max(500).nullable().default(null),
+  /** Members' default travel mode (built-in or campaign custom id); null = on foot. */
+  travelMode: z.string().max(40).nullable().default(null),
+  /** Members' default pace; null = normal. */
+  pace: TravelPaceSchema.nullable().default(null),
   wikiPage: z.string().max(300).default(''),
 });
 export type Retinue = z.infer<typeof RetinueSchema>;
-
-/** Travel speed of an NPC token with no speed of its own and no retinue default. */
-export const DEFAULT_NPC_MPH = 3;
 
 export const CampaignSettingsSchema = z.object({
   /** Free text shown on the join screen. */
@@ -352,9 +356,6 @@ export const CampaignSettingsSchema = z.object({
   plugins: z.record(z.string(), PluginSettingsSchema).default({}),
 });
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
-
-export const TravelPaceSchema = z.enum(['fast', 'normal', 'careful']);
-export type TravelPace = z.infer<typeof TravelPaceSchema>;
 
 /**
  * The campaign clock. `minutes` is in-game minutes since campaign start, so
@@ -622,8 +623,10 @@ export const TokenSchema = z.object({
   retinueId: z.string().nullable().default(null),
   /** Sticker id drawn in place of the glyph (a retinue crest, typically). */
   icon: z.string().max(120).default(''),
-  /** Own travel speed in mph; null falls back to the retinue's, then on foot. */
-  mph: z.number().min(0.1).max(500).nullable().default(null),
+  /** Own travel mode; null falls back to the retinue's, then on foot. */
+  travelMode: z.string().max(40).nullable().default(null),
+  /** Own pace; null falls back to the retinue's, then normal. */
+  pace: TravelPaceSchema.nullable().default(null),
   /**
    * Players see a `playerVisible` NPC only where the party can see (fog
    * `visible`). A retinue member reports its own position, so it may be
@@ -977,6 +980,12 @@ export const TrailSchema = z.object({
   /** How a cell of the trail is noticed (distance is from the walker to the cell). */
   gate: GateSchema.default({ kind: 'auto' }),
   cells: z.array(z.object({ q: z.number().int(), r: z.number().int() })).min(2),
+  /**
+   * `tracks` (the original: footprints a character can find, cell by cell)
+   * or `road`: a travel way. Roads have no gate — players see the stretch on
+   * ground they know — and the router prefers them (see `rules/journey.ts`).
+   */
+  kind: z.enum(['tracks', 'road']).default('tracks'),
 });
 export type Trail = z.infer<typeof TrailSchema>;
 

@@ -323,7 +323,10 @@ export function migrate(d: DB): void {
   // the campaign clock along a planned route.
   ensureColumn(d, 'token', 'retinue_id', 'TEXT');
   ensureColumn(d, 'token', 'icon', "TEXT NOT NULL DEFAULT ''");
-  ensureColumn(d, 'token', 'mph', 'REAL');
+  ensureColumn(d, 'token', 'mph', 'REAL'); // superseded by travel_mode + pace; kept, unread
+  ensureColumn(d, 'token', 'travel_mode', 'TEXT');
+  ensureColumn(d, 'token', 'pace', 'TEXT');
+  ensureColumn(d, 'trail', 'kind', "TEXT NOT NULL DEFAULT 'tracks'");
   ensureColumn(d, 'token', 'visible_through_fog', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(d, 'token', 'note', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(d, 'token', 'route', "TEXT NOT NULL DEFAULT '[]'");

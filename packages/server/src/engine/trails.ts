@@ -55,6 +55,7 @@ export function evaluateTrails(
     const character = runtime.characters.get(characterId);
     if (!character) continue;
     for (const trail of rt.trails.values()) {
+      if (trail.kind === 'road') continue;
       for (let i = 0; i < trail.cells.length; i++) {
         if (runtime.hasTrailDiscovery(trail.id, i, characterId)) continue;
         const cell = trail.cells[i]!;

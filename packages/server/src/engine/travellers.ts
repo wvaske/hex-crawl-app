@@ -1,14 +1,14 @@
-import type { HexCoord, MapInfo, Retinue, Token } from '@hexcrawl/shared';
+import type { HexCoord, MapInfo, Retinue, Token, TravelPace } from '@hexcrawl/shared';
 import {
-  DEFAULT_NPC_MPH,
-  exploredPassable,
-  findRoute,
-  hexDistance,
   hexKey,
-  hexLine,
+  journeyMph,
   minutesPerHex,
+  planJourney,
+  resolveTravelMode,
+  roadIndex,
   stepCost,
   travelWindowMinutes,
+  type TravelMode,
 } from '@hexcrawl/shared';
 import type { CampaignRuntime } from '../state/runtime.js';
 
@@ -42,12 +42,24 @@ export function retinueOf(runtime: CampaignRuntime, token: Token): Retinue | nul
   return runtime.campaign.settings.retinues.find((r) => r.id === token.retinueId) ?? null;
 }
 
+/** The mode and pace an NPC travels at: its own, else its retinue's, else on foot at normal. */
+export function travellerMode(
+  runtime: CampaignRuntime,
+  token: Token,
+): { mode: TravelMode; pace: TravelPace } {
+  const retinue = retinueOf(runtime, token);
+  const custom = runtime.campaign.settings.customTravelModes;
+  const modeId = token.travelMode ?? retinue?.travelMode ?? 'foot';
+  return {
+    mode: resolveTravelMode(modeId, custom),
+    pace: token.pace ?? retinue?.pace ?? 'normal',
+  };
+}
+
 /** Travel speed in miles per hour for an NPC token. */
 export function travellerSpeed(runtime: CampaignRuntime, token: Token): number {
-  if (token.mph && token.mph > 0) return token.mph;
-  const retinue = retinueOf(runtime, token);
-  if (retinue?.mph && retinue.mph > 0) return retinue.mph;
-  return DEFAULT_NPC_MPH;
+  const { mode, pace } = travellerMode(runtime, token);
+  return journeyMph(mode, pace);
 }
 
 /** How a DM pays for routing an NPC over an impassable edge: same as a party. */
@@ -156,31 +168,29 @@ export function routeMinutesLeft(
 }
 
 /**
- * String waypoints into the hexes an NPC will walk, using the party's own
- * routing: through explored ground when the map routes that way and a route
- * exists, the straight line otherwise. The token's current hex is not part of
- * the result; a waypoint equal to the current position is skipped.
+ * String waypoints into the hexes an NPC will walk: the cheapest legal route
+ * for its travel mode, preferring roads and then known ground (see shared
+ * `rules/journey.ts`). The token's current hex is not part of the result.
  */
 export function planRoute(
   runtime: CampaignRuntime,
   map: MapInfo,
-  from: HexCoord,
+  token: Token,
   waypoints: HexCoord[],
 ): HexCoord[] {
   const rt = runtime.mapStates.get(map.id);
-  const route: HexCoord[] = [];
-  let cur: HexCoord = { q: from.q, r: from.r };
-  for (const wp of waypoints) {
-    if (wp.q === cur.q && wp.r === cur.r) continue;
-    let leg: HexCoord[] | null = null;
-    if (rt && map.routeExplored && hexDistance(cur, wp) > 1) {
-      leg = findRoute(cur, wp, exploredPassable((h) => rt.fog.get(hexKey(h.q, h.r))), {
-        stepCost: (a, b) => stepCost(rt.edges, a, b),
-      });
-    }
-    leg ??= hexLine(cur, wp);
-    route.push(...leg.slice(1).map((h) => ({ q: h.q, r: h.r })));
-    cur = { q: wp.q, r: wp.r };
-  }
-  return route;
+  if (!rt) return [];
+  const roads = roadIndex(rt.trails.values());
+  const { mode } = travellerMode(runtime, token);
+  return planJourney(
+    {
+      terrainAt: (h) => rt.hexes.get(hexKey(h.q, h.r)),
+      fogAt: (h) => rt.fog.get(hexKey(h.q, h.r)),
+      roadAt: (h) => roads.has(hexKey(h.q, h.r)),
+      edges: rt.edges,
+    },
+    mode.medium,
+    token,
+    waypoints,
+  );
 }
