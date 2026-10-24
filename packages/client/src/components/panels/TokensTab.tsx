@@ -257,37 +257,6 @@ function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }) {
             {token.q},{token.r}
           </span>
         </button>
-        <SendTokenButton tokenId={token.id} name={token.label || 'token'} />
-        {token.kind === 'pc' && <TravelToButton tokenId={token.id} name={token.label || 'token'} />}
-        {token.kind === 'npc' && <RouteButton token={token} drafting={drafting} />}
-        <button
-          className={`text-xs cursor-pointer whitespace-nowrap ${token.partyId ? '' : 'opacity-35 grayscale'}`}
-          title={
-            token.partyId
-              ? 'In the party — moves with the group. Click to detach.'
-              : 'Solo — click to add to the party (party members move together).'
-          }
-          onClick={() =>
-            send({
-              kind: 'token.update',
-              tokenId: token.id,
-              patch: { partyId: token.partyId ? null : 'party' },
-            })
-          }
-        >
-          🧭<Lbl>{token.partyId ? 'Party' : 'Solo'}</Lbl>
-        </button>
-        {token.kind === 'npc' && (
-          <button
-            className="text-xs cursor-pointer"
-            title={token.playerVisible ? 'Players see this — click to hide' : 'Hidden — click to reveal'}
-            onClick={() =>
-              send({ kind: 'token.update', tokenId: token.id, patch: { playerVisible: !token.playerVisible } })
-            }
-          >
-            {token.playerVisible ? '👁️' : '🚫'}<Lbl>{token.playerVisible ? 'Shown' : 'Hidden'}</Lbl>
-          </button>
-        )}
         <input
           type="color"
           className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
@@ -305,8 +274,42 @@ function TokenRow({ token, retinue }: { token: Token; retinue?: Retinue }) {
           ✕<Lbl>Remove</Lbl>
         </button>
       </div>
+      {/* Actions on their own line: the name stays readable in a narrow panel. */}
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 mt-0.5 pl-6">
+        <SendTokenButton tokenId={token.id} name={token.label || 'token'} />
+        {token.kind === 'pc' && <TravelToButton tokenId={token.id} name={token.label || 'token'} />}
+        {token.kind === 'npc' && <RouteButton token={token} drafting={drafting} />}
+        <button
+          className={`text-xs cursor-pointer whitespace-nowrap px-2 py-1 mr-1.5 ${token.partyId ? '' : 'opacity-35 grayscale'}`}
+          title={
+            token.partyId
+              ? 'In the party — moves with the group. Click to detach.'
+              : 'Solo — click to add to the party (party members move together).'
+          }
+          onClick={() =>
+            send({
+              kind: 'token.update',
+              tokenId: token.id,
+              patch: { partyId: token.partyId ? null : 'party' },
+            })
+          }
+        >
+          🧭<Lbl>{token.partyId ? 'Party' : 'Solo'}</Lbl>
+        </button>
+        {token.kind === 'npc' && (
+          <button
+            className="text-xs cursor-pointer px-2 py-1 mr-1.5"
+            title={token.playerVisible ? 'Players see this — click to hide' : 'Hidden — click to reveal'}
+            onClick={() =>
+              send({ kind: 'token.update', tokenId: token.id, patch: { playerVisible: !token.playerVisible } })
+            }
+          >
+            {token.playerVisible ? '👁️' : '🚫'}<Lbl>{token.playerVisible ? 'Shown' : 'Hidden'}</Lbl>
+          </button>
+        )}
+      </div>
       {token.kind === 'npc' && (retinue || token.route.length > 0 || token.note) && (
-        <div className="mt-1 pl-7 text-[0.6875rem] text-ink-400 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        <div className="mt-0.5 pl-6 text-[0.6875rem] text-ink-400 flex flex-wrap items-center gap-x-3 gap-y-0.5">
           {token.note && <span className="text-ink-300 truncate max-w-full">{token.note}</span>}
           {token.route.length > 0 && (
             <span className="text-brass-300">
