@@ -25,6 +25,7 @@ import {
   type Content,
   type ContentPlayerView,
   type FogState,
+  type HexCoord,
   type SearchAttempt,
 } from '@hexcrawl/shared';
 import { SenseRow } from './SensesTab.js';
@@ -41,6 +42,7 @@ export function InspectTab() {
   const state = useSession((s) => s.state);
   const role = useSession((s) => s.role);
   const seatId = useSession((s) => s.seatId);
+  const viewingAs = useSession((s) => s.viewingAs);
   const hex = useUi((s) => s.selectedHex);
   const selectedTokenId = useUi((s) => s.selectedTokenId);
   const setUi = useUi((s) => s.set);
@@ -80,11 +82,12 @@ export function InspectTab() {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-3">
-        <h2 className="font-semibold text-ink-100">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h2 className="font-semibold text-ink-100 shrink-0">
           Hex {hex.q}, {hex.r}
         </h2>
-        <span className="text-xs text-ink-400">
+        {!isDm && <PlayerMoveButtons hex={hex} characterId={viewingAs?.characterId ?? myCharacterId} />}
+        <span className="text-xs text-ink-400 shrink-0">
           {cell ? TERRAINS[cell.terrain].label : 'Unpainted'}
         </span>
       </div>
@@ -1218,4 +1221,46 @@ function vantageNote(
   if (!set) return '';
   const own = (clue.observeFrom?.length ?? 0) > 0;
   return ` · from ${set.length} vantage hex${set.length === 1 ? '' : 'es'}${own ? '' : ' (content-wide)'}`;
+}
+
+/**
+ * A player's move controls live here, between the hex number and the
+ * terrain, rather than in a popup over the map: the selected hex is the
+ * destination, and either button only declares intent — the DM approves.
+ */
+function PlayerMoveButtons({ hex, characterId }: { hex: HexCoord; characterId: string | null }) {
+  const state = useSession((s) => s.state);
+  const token = state?.mapState?.tokens.find((t) => t.kind === 'pc' && characterId && t.characterId === characterId);
+  if (!token || (token.q === hex.q && token.r === hex.r)) return null;
+  const pending = state?.mapState?.pendingMoves.find(
+    (p) => p.tokenId === token.id && p.toQ === hex.q && p.toR === hex.r,
+  );
+  const request = (teleport: boolean) =>
+    send({ kind: 'move.request', tokenId: token.id, q: hex.q, r: hex.r, teleport });
+  return (
+    <span className="flex items-center gap-1 min-w-0" role="group" aria-label="Request movement to this hex">
+      <Button
+        size="sm"
+        onClick={() => request(false)}
+        disabled={pending?.teleport === false}
+        title={pending && !pending.teleport ? 'Waiting for DM approval' : 'Ask the DM to approve travel to this hex'}
+      >
+        Move
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => request(true)}
+        disabled={pending?.teleport === true}
+        title={pending?.teleport ? 'Waiting for DM approval' : 'Ask the DM to approve teleporting to this hex'}
+      >
+        ⚡<Lbl>Teleport</Lbl>
+      </Button>
+      {pending && (
+        <span className="text-xs text-brass-300" title="Waiting for the DM to approve this move" aria-label="Waiting for DM approval">
+          ⏳
+        </span>
+      )}
+    </span>
+  );
 }
