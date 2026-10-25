@@ -1256,7 +1256,11 @@ function PlayerMoveButtons({ hex, characterId }: { hex: HexCoord; characterId: s
       >
         ⚡<Lbl>Teleport</Lbl>
       </Button>
-      {pending && <span className="text-[0.6875rem] text-brass-300 truncate">awaiting DM</span>}
+      {pending && (
+        <span className="text-xs text-brass-300" title="Waiting for the DM to approve this move" aria-label="Waiting for DM approval">
+          ⏳
+        </span>
+      )}
     </span>
   );
 }
